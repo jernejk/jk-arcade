@@ -1,0 +1,51 @@
+[
+  {
+    "id": "piece-by-pixel",
+    "title": "Piece by Pixel",
+    "pitch": "Rebuild pixel-art postcards one piece at a time. Ten scenes, four tiers each.",
+    "note": "Opens Gull Harbor on Master",
+    "controls": "Drag pieces onto the outline; tap a piece to turn it; pinch or scroll to zoom.",
+    "url": "piece-by-pixel/#gull-harbor@master",
+    "shot": "shots/piece-by-pixel.webp"
+  },
+  {
+    "id": "tumbleverse",
+    "title": "Tumbleverse",
+    "pitch": "Topple toy worlds, break bridges, build contraptions and play with tiny planets.",
+    "controls": "Mouse aim/click fire, right-drag orbit; touch drag aim/release; two fingers orbit/zoom.",
+    "url": "tumbleverse/",
+    "shot": "shots/tumbleverse.webp"
+  },
+  {
+    "id": "loose-ends",
+    "title": "Loose Ends",
+    "pitch": "Unwind lacquered arrow cords from rotating porcelain shapes.",
+    "controls": "Tap clear cord; drag rotate; pinch/scroll zoom; hold preview; hint/undo.",
+    "url": "loose-ends/",
+    "shot": "shots/loose-ends.webp"
+  },
+  {
+    "id": "prism-pop-painter",
+    "title": "Prism Pop Painter",
+    "pitch": "Fill pixel art with glossy jewel bubbles, manage a colour reserve and unlock each section in order.",
+    "controls": "Tap a jewel colour, then tap matching numbered cells.",
+    "url": "prism-pop-painter/#play",
+    "shot": "shots/prism-pop-painter.webp"
+  },
+  {
+    "id": "block-loop-shooter",
+    "title": "Block Loop Shooter",
+    "pitch": "Place limited-ammo colour shooters to drain a bead loop without stranding slots.",
+    "controls": "Drag shooters to slots; 1–5 place, R restart, M mute, S speed, Esc levels.",
+    "url": "block-loop-shooter/",
+    "shot": "shots/block-loop-shooter.webp"
+  },
+  {
+    "id": "curator-of-impossibilities",
+    "title": "The Curator of Impossibilities",
+    "pitch": "A ten-minute interactive story: unseal a cosmic museum's archive and decide what mercy means. Three endings.",
+    "controls": "Tap a choice to continue; progress saves on the device.",
+    "url": "https://curator-of-impossibilities.surge.sh/",
+    "shot": "shots/curator-of-impossibilities.webp"
+  }
+]

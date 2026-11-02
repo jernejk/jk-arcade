@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+<meta name="robots" content="noindex, nofollow">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#4f9dff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Tumbleverse</title>
+    <link rel="preload" href="./fonts/fredoka-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <style>@font-face{font-family:Fredoka;font-weight:300 700;font-display:swap;src:url(./fonts/fredoka-latin.woff2)format("woff2")}#splash{z-index:100;-webkit-user-select:none;user-select:none;background:radial-gradient(80% 60% at 50% 35%,#8fd0ff,#4f9dff 55%,#5a46d6);flex-direction:column;justify-content:center;align-items:center;gap:28px;font-family:Fredoka,ui-rounded,system-ui,sans-serif;transition:opacity .5s,transform .5s;display:flex;position:fixed;inset:0;overflow:hidden}#splash.out{opacity:0;pointer-events:none;transform:scale(1.06)}#splash:before{content:"";background:repeating-conic-gradient(#ffffff14 0 10deg, transparent 10deg 20deg);animation:40s linear infinite sp-spin;position:absolute;inset:-50%}.sp-logo{color:#ffc21f;-webkit-text-stroke:.16em #1c2063;paint-order:stroke fill;text-shadow:0 .1em #1c2063;font-size:min(84px,13vw);font-weight:700;animation:.8s cubic-bezier(.34,1.56,.64,1) backwards sp-in;position:relative;transform:rotate(-3deg)}.sp-logo span{color:#5ccbff}.sp-stage{width:180px;height:110px;position:relative}.sp-ball{background:radial-gradient(circle at 35% 30%,#fff 0 12%,#ff6b6b 14%,#d8202c);border:3px solid #1c2063;border-radius:50%;width:34px;height:34px;animation:.9s cubic-bezier(.3,0,.7,1) infinite alternate sp-bounce;position:absolute;bottom:18px;left:26px}.sp-shadow{background:#1c206359;border-radius:50%;width:32px;height:8px;animation:.9s cubic-bezier(.3,0,.7,1) infinite alternate sp-shadow;position:absolute;bottom:10px;left:28px}.sp-blocks{flex-direction:column-reverse;align-items:center;display:flex;position:absolute;bottom:14px;right:20px}.sp-blocks i{background:linear-gradient(#6aa8ff,#3557e0);border:3px solid #1c2063;border-radius:8px;width:30px;height:30px;animation:1.8s ease-in-out infinite sp-wobble;display:block}.sp-blocks i:nth-child(2){background:linear-gradient(#fff07a,#ffb21e);animation-delay:.1s}.sp-blocks i:nth-child(3){background:linear-gradient(#a173ff,#6a3ae6);animation-delay:.2s}.sp-ground{background:linear-gradient(#8af064,#2bb94b);border:3px solid #1c2063;border-radius:8px;height:8px;position:absolute;bottom:6px;left:0;right:0}.sp-text{color:#fff;-webkit-text-stroke:5px #1c2063;paint-order:stroke fill;font-size:20px;font-weight:600;position:relative}@keyframes sp-spin{to{transform:rotate(360deg)}}@keyframes sp-in{0%{opacity:0;transform:scale(.4)rotate(-10deg)}}@keyframes sp-bounce{to{transform:translateY(-60px)}}@keyframes sp-shadow{to{opacity:.4;transform:scale(.5)}}@keyframes sp-wobble{50%{transform:rotate(-5deg)translate(-2px)}}@media (prefers-reduced-motion:reduce){#splash *,#splash:before{animation:none!important}}</style>
+    <script type="module" crossorigin src="./assets/index-BhhN-9_L.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Bid9f9Re.css">
+  </head>
+  <body>
+    <div id="splash" role="status" aria-label="Loading Tumbleverse">
+      <div class="sp-logo">Tumble<span>verse</span></div>
+      <div class="sp-stage" aria-hidden="true">
+        <div class="sp-ground"></div>
+        <div class="sp-shadow"></div>
+        <div class="sp-ball"></div>
+        <div class="sp-blocks"><i></i><i></i><i></i></div>
+      </div>
+      <div class="sp-text">Stacking blocks…</div>
+    </div>
+    <div id="app"></div>
+    <script>
+      addEventListener(
+        'tv-ready',
+        () => {
+          const s = document.getElementById('splash');
+          if (!s) return;
+          s.classList.add('out');
+          setTimeout(() => s.remove(), 600);
+        },
+        { once: true },
+      );
+    </script>
+  </body>
+</html>

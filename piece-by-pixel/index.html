@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#2a1f3d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Piece by Pixel">
+<title>Piece by Pixel</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main id="app">
+  <section id="album" class="screen album">
+    <header class="album-head">
+      <h1 class="logo"><span class="logo-mark" data-icon="piece"></span><span>Piece <em>by</em> Pixel</span></h1>
+      <button id="settings-btn" class="icon-btn" type="button" aria-label="Settings" data-icon="gear"></button>
+    </header>
+    <p class="tagline">Rebuild tiny worlds, one piece at a time.</p>
+    <p id="album-note" class="album-note" role="alert" hidden></p>
+    <div id="postcards" class="postcards" aria-live="polite"></div>
+    <p class="album-foot">No ads · no timers · no lives</p>
+  </section>
+
+  <section id="play" class="screen play" hidden>
+    <canvas id="scene" aria-label="Puzzle scene"></canvas>
+    <header class="play-top">
+      <button id="back-btn" class="icon-btn" type="button" aria-label="Back to album" data-icon="back"></button>
+      <div class="play-title">
+        <strong id="scene-name"></strong>
+        <span id="scene-progress"></span>
+      </div>
+      <button id="frame-btn" class="icon-btn" type="button" aria-label="Show whole picture" data-icon="frame"></button>
+    </header>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <aside id="tray" class="tray">
+      <div class="tray-head">
+        <div class="tray-label"><small id="tray-kicker">Rebuilding</small><strong id="object-name"></strong></div>
+        <div id="pips" class="pips" aria-hidden="true"></div>
+        <button id="hint-btn" class="icon-btn hint-btn" type="button" aria-label="Hint"><span class="icon" data-icon="bulb"></span><span id="hint-count" class="hint-count" hidden></span></button>
+      </div>
+      <div id="slots" class="slots"></div>
+    </aside>
+  </section>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <h2 id="sheet-title">Settings</h2>
+      <label class="toggle"><span>Sound effects</span><input type="checkbox" id="opt-sfx"><i></i></label>
+      <label class="toggle"><span>Music box</span><input type="checkbox" id="opt-music"><i></i></label>
+      <label class="toggle"><span>Twist mode on Normal<small>Pieces arrive turned; tap one to rotate it. Hard and Expert always twist.</small></span><input type="checkbox" id="opt-twist"><i></i></label>
+      <div class="sheet-actions">
+        <button id="reset-btn" class="btn ghost" type="button">Reset progress</button>
+        <button id="sheet-close" class="btn" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tiers" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="tiers-title">
+      <h2 id="tiers-title"></h2>
+      <p id="tiers-blurb"></p>
+      <div id="tier-list" class="tier-list"></div>
+      <div class="sheet-actions">
+        <button id="tiers-close" class="btn ghost" type="button">Not now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm" class="sheet" hidden>
+    <div class="sheet-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Start over?</h2>
+      <p>Every postcard goes back to blank outlines.</p>
+      <div class="sheet-actions">
+        <button id="confirm-no" class="btn ghost" type="button">Keep my progress</button>
+        <button id="confirm-yes" class="btn danger" type="button">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="finale" class="finale" hidden>
+    <div class="finale-card">
+      <p id="finale-kicker" class="finale-kicker">Postcard collected</p>
+      <div class="finale-photo"><canvas id="finale-canvas"></canvas><span class="postmark">Restored</span></div>
+      <h2 id="finale-title"></h2>
+      <p id="finale-stats"></p>
+      <button id="finale-harder" class="link-btn" type="button" hidden></button>
+      <div class="sheet-actions">
+        <button id="finale-album" class="btn ghost" type="button">Album</button>
+        <button id="finale-next" class="btn" type="button">Next postcard</button>
+      </div>
+    </div>
+  </div>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

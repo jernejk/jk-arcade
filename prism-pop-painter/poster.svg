@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Prism Pop Painter gameplay poster">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fbfaff"/>
+      <stop offset="0.5" stop-color="#effaff"/>
+      <stop offset="1" stop-color="#fff7ec"/>
+    </linearGradient>
+    <radialGradient id="gem" cx="32%" cy="24%" r="72%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.16" stop-color="#a6f6ff"/>
+      <stop offset="0.55" stop-color="#43d4d2"/>
+      <stop offset="1" stop-color="#7e63df"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="970" cy="145" r="122" fill="#ffd24a" opacity="0.24"/>
+  <circle cx="190" cy="195" r="155" fill="#43d4d2" opacity="0.16"/>
+  <g transform="translate(330 100)">
+    <rect width="620" height="460" rx="18" fill="#ffffff" opacity="0.72" stroke="#d9deeb"/>
+    <g transform="translate(90 45)">
+      <script type="application/ecmascript"><![CDATA[]]></script>
+      <rect x="0" y="0" width="430" height="344" rx="12" fill="#f8fafc"/>
+      <g fill="url(#gem)">
+        <circle cx="92" cy="70" r="13"/>
+        <circle cx="122" cy="70" r="13"/>
+        <circle cx="152" cy="70" r="13"/>
+        <circle cx="182" cy="70" r="13"/>
+        <circle cx="212" cy="70" r="13"/>
+        <circle cx="242" cy="70" r="13"/>
+        <circle cx="152" cy="100" r="13"/>
+        <circle cx="182" cy="100" r="13"/>
+        <circle cx="212" cy="100" r="13"/>
+        <circle cx="242" cy="100" r="13"/>
+        <circle cx="272" cy="100" r="13"/>
+        <circle cx="122" cy="130" r="13"/>
+        <circle cx="152" cy="130" r="13"/>
+        <circle cx="182" cy="130" r="13"/>
+        <circle cx="212" cy="130" r="13"/>
+        <circle cx="242" cy="130" r="13"/>
+        <circle cx="272" cy="130" r="13"/>
+        <circle cx="302" cy="130" r="13"/>
+        <circle cx="152" cy="160" r="13"/>
+        <circle cx="182" cy="160" r="13"/>
+        <circle cx="212" cy="160" r="13"/>
+        <circle cx="242" cy="160" r="13"/>
+        <circle cx="272" cy="160" r="13"/>
+        <circle cx="302" cy="160" r="13"/>
+        <circle cx="332" cy="160" r="13"/>
+        <circle cx="182" cy="190" r="13"/>
+        <circle cx="212" cy="190" r="13"/>
+        <circle cx="242" cy="190" r="13"/>
+        <circle cx="272" cy="190" r="13"/>
+        <circle cx="302" cy="190" r="13"/>
+        <circle cx="332" cy="190" r="13"/>
+        <circle cx="362" cy="190" r="13"/>
+      </g>
+    </g>
+    <rect x="90" y="405" width="430" height="42" rx="10" fill="#fff7ec" stroke="#efcda9"/>
+    <text x="310" y="300" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900" fill="#20222d">Gameplay Preview</text>
+  </g>
+</svg>

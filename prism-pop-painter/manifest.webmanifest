@@ -1,0 +1,11 @@
+{
+  "name": "Prism Pop Painter",
+  "short_name": "Prism Pop",
+  "description": "A jewel-bubble pixel puzzle for phone, tablet, and desktop.",
+  "start_url": "./#play",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ff",
+  "theme_color": "#43d4d2",
+  "orientation": "any"
+}

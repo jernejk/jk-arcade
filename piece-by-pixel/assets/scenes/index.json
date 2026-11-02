@@ -1,0 +1,134 @@
+{
+ "scenes": [
+  {
+   "id": "gull-harbor",
+   "name": "Gull Harbor",
+   "blurb": "A winter storm scattered the harbor's landmarks across the bay.",
+   "order": 1,
+   "landmarks": 6,
+   "tiers": {
+    "normal": 35,
+    "hard": 65,
+    "expert": 86,
+    "master": 150
+   }
+  },
+  {
+   "id": "windmill-meadows",
+   "name": "Windmill Meadows",
+   "blurb": "Harvest week, and a summer gale has carried half the farm away.",
+   "order": 2,
+   "landmarks": 6,
+   "tiers": {
+    "normal": 41,
+    "hard": 74,
+    "expert": 98,
+    "master": 149
+   }
+  },
+  {
+   "id": "snowpeak-station",
+   "name": "Snowpeak Station",
+   "blurb": "One long blizzard, and the village's favourite sights have vanished under the snow.",
+   "order": 3,
+   "landmarks": 6,
+   "tiers": {
+    "normal": 46,
+    "hard": 82,
+    "expert": 107,
+    "master": 153
+   }
+  },
+  {
+   "id": "lantern-market",
+   "name": "Lantern Market",
+   "blurb": "The night market opens at dusk, and nothing is where it should be.",
+   "order": 4,
+   "landmarks": 6,
+   "tiers": {
+    "normal": 53,
+    "hard": 95,
+    "expert": 127,
+    "master": 170
+   }
+  },
+  {
+   "id": "moonbase",
+   "name": "Crater Camp",
+   "blurb": "A solar flare scrambled the outpost. Put it back together before Earthrise.",
+   "order": 5,
+   "landmarks": 6,
+   "tiers": {
+    "normal": 59,
+    "hard": 104,
+    "expert": 139,
+    "master": 163
+   }
+  },
+  {
+   "id": "dino-valley",
+   "name": "Dino Valley",
+   "blurb": "The dinosaurs wandered off the map. Coax them back into the valley.",
+   "order": 6,
+   "landmarks": 8,
+   "tiers": {
+    "normal": 64,
+    "hard": 113,
+    "expert": 146,
+    "master": 208
+   }
+  },
+  {
+   "id": "coral-reef",
+   "name": "Coral Reef",
+   "blurb": "A storm surge stirred up the reef. Settle everything back on the sand.",
+   "order": 7,
+   "landmarks": 8,
+   "tiers": {
+    "normal": 67,
+    "hard": 116,
+    "expert": 151,
+    "master": 201
+   }
+  },
+  {
+   "id": "castle-hill",
+   "name": "Castle Hill",
+   "blurb": "The dragon sneezed. Rebuild the hill before it wakes up.",
+   "order": 8,
+   "landmarks": 8,
+   "tiers": {
+    "normal": 70,
+    "hard": 119,
+    "expert": 151,
+    "master": 188
+   }
+  },
+  {
+   "id": "mirage-oasis",
+   "name": "Mirage Oasis",
+   "blurb": "Was the oasis ever real? Put it back together and find out.",
+   "order": 9,
+   "landmarks": 8,
+   "tiers": {
+    "normal": 72,
+    "hard": 121,
+    "expert": 153,
+    "master": 198
+   }
+  },
+  {
+   "id": "cloud-isles",
+   "name": "Cloud Isles",
+   "blurb": "High above the clouds, the islands have lost their landmarks.",
+   "order": 10,
+   "landmarks": 8,
+   "tiers": {
+    "normal": 77,
+    "hard": 119,
+    "expert": 149,
+    "master": 195
+   }
+  }
+ ]
+}

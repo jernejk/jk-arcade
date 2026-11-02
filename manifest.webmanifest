@@ -1,0 +1,23 @@
+{
+  "id": "./",
+  "name": "JK's Arcade",
+  "short_name": "JK's Arcade",
+  "description": "Small browser games JK built with AI. Pick one, press play.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#13112a",
+  "theme_color": "#13112a",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "shots/piece-by-pixel.webp", "sizes": "960x600", "type": "image/webp", "form_factor": "wide", "label": "Piece by Pixel" },
+    { "src": "shots/tumbleverse.webp", "sizes": "960x600", "type": "image/webp", "form_factor": "wide", "label": "Tumbleverse" }
+  ]
+}

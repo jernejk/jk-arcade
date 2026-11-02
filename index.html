@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JK's Arcade</title>
+<meta name="description" content="Small browser games JK built with AI. Free, no sign-up, and most of them play fine on a phone.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f2f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#13112a" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-48.png" type="image/png" sizes="48x48">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="JK's Arcade">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preload" href="fonts/Bungee-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:title" content="JK's Arcade">
+<meta property="og:description" content="Small browser games by JK. Pick one. Press play.">
+<meta property="og:image" content="https://jernejk.github.io/jk-arcade/icons/icon-512.png">
+<link rel="stylesheet" href="launcher.css">
+<script>
+try { const t = localStorage.getItem('jk-arcade-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+</script>
+</head>
+<body>
+<a class="skip" href="#ready">Skip to the games</a>
+
+<header class="top">
+  <div class="brand">
+    <h1 class="name">JK's Arcade</h1>
+    <p class="intro">I've been building small games on the side, mostly to see how far I can push AI coding tools. These are the ones I'd hand to a friend. They're free, they run in the browser, and most of them play fine on a phone.</p>
+    <p class="ios-hint" id="ios-hint" hidden>To keep the arcade on your Home Screen, tap Share, then Add to Home Screen.</p>
+  </div>
+  <div class="top-actions">
+    <button class="install" id="install" type="button" hidden>Install</button>
+    <button class="theme" id="theme" type="button" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></g></svg>
+      <svg class="moon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <p id="status" class="status" role="status">Loading the games…</p>
+  <nav class="strip-wrap" aria-label="Jump to a game" hidden>
+    <ul class="strip" id="strip"></ul>
+  </nav>
+
+  <section class="aisle" id="ready" aria-labelledby="ready-h" hidden>
+    <h2 id="ready-h" class="section-h">Ready to play</h2>
+    <p class="section-p">Tap a screen or hit Play. No accounts, no downloads. Each game keeps its own progress on your device.</p>
+    <div id="ready-list"></div>
+  </section>
+  <noscript><p class="status">This page needs JavaScript to read the game list.</p></noscript>
+</main>
+
+<footer class="foot">
+  <p>Made by JK. The write-ups live at <a href="https://jkdev.me">jkdev.me</a>.</p>
+  <p>Licences and art credits are still being sorted out, so ask before reusing anything. Display font: Bungee, <a href="fonts/OFL-Bungee.txt">SIL Open Font License</a>.</p>
+</footer>
+
+<template id="machine-t">
+  <article class="machine" tabindex="-1">
+    <a class="screen" tabindex="-1" aria-hidden="true"><img alt="" decoding="async" width="960" height="600"></a>
+    <div class="panel">
+      <h3 class="marquee"></h3>
+      <p class="pitch"></p>
+      <p class="note" hidden></p>
+      <p class="controls"></p>
+      <ul class="plays" aria-label="Plays with"></ul>
+      <p class="go"></p>
+    </div>
+  </article>
+</template>
+
+<script src="launcher.js" type="module"></script>
+</body>
+</html>
