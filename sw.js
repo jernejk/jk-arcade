@@ -1,9 +1,10 @@
-const CACHE = 'jk-arcade-v2';
+const CACHE = 'jk-arcade-v3';
 const CORE = [
   './', 'index.html', 'launcher.css', 'launcher.js', 'games.json', 'manifest.webmanifest',
   'fonts/Bungee-Regular.ttf', 'icons/icon-192.png', 'icons/favicon-48.png', 'icons/apple-touch-icon.png',
   'shots/piece-by-pixel.webp', 'shots/tumbleverse.webp', 'shots/loose-ends.webp',
   'shots/prism-pop-painter.webp', 'shots/block-loop-shooter.webp', 'shots/curator-of-impossibilities.webp',
+  'shots/nap-patch.webp',
 ];
 
 self.addEventListener('install', (event) => {

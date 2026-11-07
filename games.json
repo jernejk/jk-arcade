@@ -47,5 +47,13 @@
     "controls": "Tap a choice to continue; progress saves on the device.",
     "url": "https://curator-of-impossibilities.surge.sh/",
     "shot": "shots/curator-of-impossibilities.webp"
+  },
+  {
+    "id": "nap-patch",
+    "title": "Nap Patch",
+    "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A new quilt every day.",
+    "controls": "Tap or click to cross out, again to tuck in a critter; drag to cross out lots. Arrows move, Space, X, Enter, Z undo, H hint.",
+    "url": "nap-patch/",
+    "shot": "shots/nap-patch.webp"
   }
 ]
