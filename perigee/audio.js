@@ -62,7 +62,18 @@ export function createAudio() {
       else if (name === "perfect") {
         tone(660, 0.16, "sine", 0.06, 880);
         tone(990, 0.2, "sine", 0.035);
-      } else if (name === "good") tone(420, 0.08, "triangle", 0.045, 360);
+      }       else if (name === "good") tone(420, 0.08, "triangle", 0.045, 360);
+      else if (name === "cash") tone(520, 0.09, "triangle", 0.04, 340);
+      else if (name === "relic") {
+        tone(740, 0.14, "sine", 0.05, 980);
+        tone(1180, 0.18, "sine", 0.03);
+      } else if (name === "milestone") {
+        tone(523, 0.16, "sine", 0.05);
+        tone(659, 0.18, "sine", 0.04);
+        tone(784, 0.22, "sine", 0.03);
+      } else if (name === "rift") tone(196, 0.12, "sine", 0.04, 330);
+      else if (name === "veil") tone(880, 0.06, "sine", 0.03, 1320);
+      else if (name === "hour") tone(392, 0.22, "sine", 0.04, 523);
       else if (name === "wait") tone(240, 0.05, "sine", 0.02);
       else if (name === "miss") noise(0.28, 0.08);
       else if (name === "start") tone(330, 0.12, "sine", 0.04, 660);

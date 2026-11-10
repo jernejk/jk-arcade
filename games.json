@@ -2,8 +2,8 @@
   {
     "id": "perigee",
     "title": "Perigee",
-    "pitch": "Fling a moon through a shrinking gold arc. Perfect flings hold it open. A new orbit every night.",
-    "controls": "Tap inside the gold arc. Space flings, R restarts, M mutes.",
+    "pitch": "Fling a moon through a shrinking gold arc. Cash the silver or wait for the core. A new night every day.",
+    "controls": "Tap the gold. Silver cashes out. Space flings, R restarts, M mutes.",
     "url": "perigee/",
     "shot": "shots/perigee.webp",
     "accent": "#ffc14d"

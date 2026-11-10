@@ -2,15 +2,27 @@
 
 Fling a moon through a shrinking gold arc. Perfect flings hold the arc open. Miss, and it drifts into the dark.
 
-A tap before the gold ends the run at once. A run that actually catches the arc lasts about a minute: the window shrinks and the moon speeds up either way, so a careful run and a messy one finish in a similar span. The score is what separates them. Perfects pay more and give a little of the arc back.
+A tap before the gold ends the run at once. Runs that catch the arc last about 45–110 seconds. The arc shrinks when you play safe and holds when you hit the white core, so the choice is on the screen as a meter, not only as a score.
 
-Tonight's orbit uses the date as a seed, so the pattern is the same until midnight. Score 250 on it to keep a streak. Best score, streak, trail, mute, and motion preference stay in `localStorage` under `perigee-v1`.
+## Inside a run
+
+The first three orbits are steady, so the white core is the only new idea. After that the ring changes:
+
+- **Wild** surges and slows. Ride it into the core.
+- **Echo** offers a silver arc first. Tapping it cashes out and breaks the chain. Waiting for the gold keeps the chain. The gap counts as a late cash, so the choice is not a trick death.
+- **Veil** leaves the gold dim until the core ignites. Take the dim gold or wait.
+- **Rift** turns the moon around. A perfect opens the arc a little wider.
+- Every seventh orbit from the sixth is a **relic** core: a star on the bead. Hitting it banks a relic. Missing it and taking the gold is safe.
+
+Three perfects raise the multiplier (Kindled, Bright, Corona). Quiet hour, after three finished runs, does not shrink the arc and closes itself at 100 seconds.
+
+## Across days
+
+Tonight's goal rotates through seven seals (score, perfects, combo, echo, relic, rift, veil). Clearing it lights that seal and keeps the streak. Moons, trails, and skies unlock from deeds: five perfects, a nightly clear, cash-then-perfect, a relic, a rift perfect, a second night, a three-day streak, a fourth day, three different goals, seven nights. Records are kept for free play, tonight, and quiet hour. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
 
 ## How to play
 
-Tap while the moon sits in the gold arc. The bright core is a perfect fling. Perfects give more points and a little of the arc back. Any other fling scores less and lets the arc shrink. Tap too early, too late, or let the moon pass the arc, and the run ends.
-
-Wild orbits speed up and slow down. Watch the moon.
+Tap while the moon sits in the gold. The white core chains. On an echo, silver cashes out and gold pays more. Miss the gold and the run ends.
 
 Tap targets are the whole screen except the buttons. Space flings, R restarts, M mutes.
 
