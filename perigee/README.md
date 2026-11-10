@@ -20,7 +20,7 @@ The gold always stays inside one lap, ahead of the moon. Three, six, twelve, and
 
 ## Across days
 
-Tonight is a seeded course of thirty orbits. The goal rotates through seven seals. A goal night plants that kind a fixed number of times and does not fill the rest of the course with it. One star lights the seal and counts the night. Three stars is gold. A perfect course is flawless. The share row is the night you played, in three lines of ten (★ perfect, ● good, ◌ cashed). Cleared nights stay on the title as a constellation and on the Shelf as a calendar. Rank is per-kind mastery, shown as bars, and Orrery sits past the first week. Later moons, trails, and skies wait on long streaks, every seal, and a flawless course. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
+Tonight is a seeded course of thirty orbits. The goal rotates through seven seals. A goal night plants that kind a fixed number of times and does not fill the rest of the course with it. One star lights the seal and counts the night. Three stars is gold. A perfect course is flawless. The share row is the night you played, in three lines of ten (★ perfect, ☆ good, ✶ cashed). Sharing copies a relative link that opens that same night. Cleared nights stay on the title as a constellation and on the Shelf as a calendar. Rank is per-kind mastery, shown as bars, and Orrery sits past the first week. Later moons, trails, and skies wait on long streaks, every seal, and a flawless course. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
 
 ## How to play
 

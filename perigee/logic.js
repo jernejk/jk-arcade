@@ -39,7 +39,7 @@ export const TRAILS = [
   { id: "aurora", name: "Aurora", hint: "A 3-day streak", test: (s) => s.bestStreak >= 3 || s.streak >= 3 },
   { id: "tideglass", name: "Tideglass", hint: "A second night", test: (s) => s.nightsCleared >= 2 || s.bestStreak >= 2 || s.streak >= 2 },
   { id: "ion", name: "Ion", hint: "Ten nights in a row", test: (s) => s.bestStreak >= 10 || s.streak >= 10 },
-  { id: "halo", name: "Halo", hint: "Fifteen of every orbit", test: (s) => ["steady", "wild", "echo", "veil", "rift", "relic"].every((key) => (s.mastery?.[key] || 0) >= 15) },
+  { id: "halo", name: "Halo", hint: "Fifteen of each kind. An echo bank counts.", test: (s) => ["steady", "wild", "echo", "veil", "rift", "relic"].every((key) => (s.mastery?.[key] || 0) >= 15) },
 ];
 
 export const TRAIL_LOOK = {
@@ -456,7 +456,7 @@ function blankRun(seed, mode) {
 
 export function createRun(seed, mode = "free", goalId = null) {
   const clean = (Number(seed) >>> 0) || 1;
-  const name = mode === "daily" || mode === "quiet" ? mode : "free";
+  const name = mode === "daily" || mode === "quiet" || mode === "challenge" ? mode : "free";
   const run = blankRun(clean, name);
   run.goalId = goalId || null;
   return setupWindow(run);
@@ -505,6 +505,7 @@ function succeed(run, kind) {
   } else banked += scoreGain;
   const mastery = { ...(run.mastery || {}) };
   if (perfect) mastery[run.kind] = (mastery[run.kind] || 0) + 1;
+  if (cash && run.kind === "echo") mastery.echo = (mastery.echo || 0) + 1;
     const history = [...(run.history || []), { kind: run.kind, result: perfect ? "perfect" : cash ? "cash" : "good" }].slice(-COURSE);
   const milestone = perfect && (combo === 3 || combo === 6 || combo === 12 || combo === 20);
   const next = {
@@ -529,7 +530,7 @@ function succeed(run, kind) {
     mastery,
     history,
   };
-  if (run.mode === "daily" && next.flings >= COURSE) {
+  if ((run.mode === "daily" || run.mode === "challenge") && next.flings >= COURSE) {
     const cleared = { ...next, banked: next.banked + next.pot, pot: 0, phase: "over", overReason: "clear", nearMiss: false };
     cleared.score = cleared.banked;
     return { run: cleared, scoreGain, milestone, relicHit, mult };
@@ -683,8 +684,8 @@ const MEDAL_RANK = { none: 0, bronze: 1, silver: 2, gold: 3, flawless: 4 };
 export function resultGlyph(entry) {
   if (entry && typeof entry === "object") {
     if (entry.result === "perfect") return "★";
-    if (entry.result === "cash") return "◌";
-    return "●";
+    if (entry.result === "cash") return "✶";
+    return "☆";
   }
   return "·";
 }
@@ -694,6 +695,61 @@ export function shareLines(history) {
   const lines = [];
   for (let i = 0; i < glyphs.length; i += 10) lines.push(glyphs.slice(i, i + 10).join(""));
   return lines;
+}
+
+const SHARE_CODE = { perfect: "P", good: "G", cash: "C" };
+const SHARE_RESULT = { P: "perfect", G: "good", C: "cash" };
+
+export function encodeNight(night) {
+  const history = (night.history || []).map((entry) => SHARE_CODE[entry.result] || "G").join("");
+  const params = new URLSearchParams();
+  params.set("d", night.date);
+  params.set("n", String(Math.max(1, night.number || 1)));
+  params.set("g", night.goal || "");
+  params.set("s", String(Math.max(0, night.score || 0)));
+  params.set("m", night.medal || "bronze");
+  params.set("h", history);
+  return `#night?${params.toString()}`;
+}
+
+export function decodeNight(hash) {
+  const raw = String(hash || "");
+  const body = raw.startsWith("#night?") ? raw.slice("#night?".length) : "";
+  if (!body) return null;
+  const params = new URLSearchParams(body);
+  const date = params.get("d") || "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const history = [...(params.get("h") || "")].filter((mark) => SHARE_RESULT[mark]).map((mark) => ({ result: SHARE_RESULT[mark] }));
+  return {
+    date,
+    number: Math.max(1, Number(params.get("n")) || 1),
+    goal: params.get("g") || "",
+    score: Math.max(0, Number(params.get("s")) || 0),
+    medal: params.get("m") || "bronze",
+    history,
+  };
+}
+
+export function shareCard(night, href) {
+  return [
+    `Perigee · night ${night.number}`,
+    night.goal || "Tonight",
+    ...shareLines(night.history),
+    `${night.medal || "bronze"} · ${night.score || 0}`,
+    href,
+  ].join("\n");
+}
+
+export function weekSlots(nights, today) {
+  let cursor = today;
+  for (let i = 0; i < 6; i++) cursor = prevDate(cursor);
+  const slots = [];
+  for (let i = 0; i < 7; i++) {
+    const found = (nights || []).find((night) => night.date === cursor);
+    slots.push(found ? { ...found, empty: false } : { date: cursor, medal: "empty", stars: 0, goal: "", empty: true });
+    cursor = nextDate(cursor);
+  }
+  return slots;
 }
 
 export function rememberNight(nights, entry) {

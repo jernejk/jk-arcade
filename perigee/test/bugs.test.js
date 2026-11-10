@@ -4,6 +4,8 @@ import {
   COURSE,
   TAU,
   createRun,
+  decodeNight,
+  encodeNight,
   fling,
   goalSlots,
   goalStars,
@@ -17,7 +19,9 @@ import {
   rankFor,
   rememberNight,
   settleRun,
+  shareCard,
   shareLines,
+  weekSlots,
   step,
   writeSave,
   coreProgress,
@@ -158,11 +162,57 @@ test("the perfect window stays near 35ms while the gold tightens", () => {
   assert.ok(goldWindowSeconds(run) < earlyGold, `gold ${goldWindowSeconds(run)} vs ${earlyGold}`);
 });
 
-test("the share row breaks into lines of ten", () => {
-  const history = Array.from({ length: 30 }, (_, i) => ({ result: i % 3 === 0 ? "cash" : "perfect" }));
+test("the share row breaks into lines of ten and one glyph family", () => {
+  const history = Array.from({ length: 30 }, (_, i) => ({ result: i % 3 === 0 ? "cash" : i % 3 === 1 ? "good" : "perfect" }));
   const lines = shareLines(history);
   assert.equal(lines.length, 3);
   assert.ok(lines.every((line) => [...line].length <= 10));
+  const glyphs = new Set(lines.join(""));
+  assert.deepEqual([...glyphs].sort(), ["★", "☆", "✶"].sort());
+});
+
+test("a share link opens the same night", () => {
+  const night = {
+    date: "2026-11-10",
+    number: 4,
+    goal: "Perfect 2 rifts tonight",
+    score: 2806,
+    medal: "gold",
+    history: [{ result: "perfect" }, { result: "good" }, { result: "cash" }],
+  };
+  const hash = encodeNight(night);
+  const back = decodeNight(hash);
+  assert.equal(back.date, night.date);
+  assert.equal(back.number, 4);
+  assert.equal(back.goal, night.goal);
+  assert.equal(back.score, 2806);
+  assert.deepEqual(back.history, night.history);
+  const card = shareCard(night, `index.html${hash}`);
+  assert.match(card, /night 4/);
+  assert.match(card, /Perfect 2 rifts tonight/);
+  assert.match(card, /^index\.html#night\?/m);
+});
+
+test("the week shows seven slots from the first night", () => {
+  const slots = weekSlots([{ date: "2026-11-10", medal: "gold", stars: 3, goal: "rift" }], "2026-11-10");
+  assert.equal(slots.length, 7);
+  assert.equal(slots.filter((slot) => !slot.empty).length, 1);
+  assert.equal(slots[6].medal, "gold");
+  assert.equal(slots[0].empty, true);
+});
+
+test("banking an echo counts toward Halo", () => {
+  let run = createRun(2);
+  run = {
+    ...run,
+    kind: "echo",
+    pot: 80,
+    echo: { entry: 0.1, exit: 0.5, center: 0.3, half: 0.2 },
+    progress: 0.3,
+  };
+  const cashed = fling(run);
+  assert.equal(cashed.event.type, "cash");
+  assert.equal(cashed.run.mastery.echo, 1);
 });
 
 test("a cleared Tonight is remembered, and a week does not reach Orrery", () => {

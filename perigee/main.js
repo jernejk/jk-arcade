@@ -27,8 +27,12 @@ import {
   missText,
   multiplierFor,
   rankFor,
+  decodeNight,
+  encodeNight,
   resultGlyph,
+  shareCard,
   shareLines,
+  weekSlots,
   selectMoon,
   selectTheme,
   selectTrail,
@@ -86,6 +90,7 @@ const THEME_HUE = { dusk: 28, harbor: 198, ember: 22, aurora: 162, ink: 230 };
 let today = localDateString();
 let save = loadSave(localStorage, today);
 let mode = "title";
+let challenge = decodeNight(location.hash);
 let helpOpen = false;
 let shelfOpen = false;
 let run = null;
@@ -182,51 +187,36 @@ function renderHome() {
   const moon = MOONS.find((m) => m.id === save.moon);
   statsEl.textContent = `${rankFor(save)} · ${moon ? moon.name : "Cinder"} · best ${format(save.best)}`;
   quietBtn.hidden = !save.quietUnlocked;
-  renderNights();
+  renderWeek();
+  renderChallenge();
   renderShelf();
 }
 
-function renderNights() {
-  const sky = document.querySelector("#night-sky");
-  const nights = save.nights || [];
+function renderWeek() {
+  const sky = document.querySelector("#week-sky");
+  const slots = weekSlots(save.nights, today);
   sky.replaceChildren();
-  if (!nights.length) {
-    sky.dataset.empty = "1";
-    sky.textContent = "Nights you clear gather here";
-    return;
+  for (const slot of slots) {
+    const star = document.createElement("i");
+    star.className = slot.empty ? "empty" : (slot.medal || "none");
+    star.title = slot.empty ? slot.date : `${slot.date} · ${slot.medal}`;
+    star.setAttribute("aria-label", slot.empty ? `${slot.date} open` : `${slot.date} ${slot.medal}`);
+    sky.append(star);
   }
-  sky.dataset.empty = "0";
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 96;
-  canvas.className = "constellation";
-  paintConstellation(canvas.getContext("2d"), nights, canvas.width, canvas.height);
-  sky.append(canvas);
 }
 
-function paintConstellation(g, nights, w, h) {
-  const shown = nights.slice(-28);
-  g.clearRect(0, 0, w, h);
-  const pts = shown.map((night, i) => {
-    const t = shown.length === 1 ? 0.5 : i / (shown.length - 1);
-    return {
-      x: 18 + t * (w - 36),
-      y: h * 0.52 + Math.sin(i * 1.35 + 0.4) * h * 0.28,
-      night,
-    };
-  });
-  g.strokeStyle = "rgba(255, 226, 170, 0.35)";
-  g.lineWidth = 1.5;
-  g.beginPath();
-  pts.forEach((point, i) => (i ? g.lineTo(point.x, point.y) : g.moveTo(point.x, point.y)));
-  if (pts.length > 1) g.stroke();
-  for (const point of pts) {
-    const color = { flawless: "#fffaf0", gold: "#ffd27a", silver: "#d5e6f8", bronze: "#e0a06a", none: "#6d6484" }[point.night.medal] || "#6d6484";
-    g.fillStyle = color;
-    g.beginPath();
-    g.arc(point.x, point.y, point.night.medal === "gold" || point.night.medal === "flawless" ? 5 : 3.2, 0, TAU);
-    g.fill();
+function renderChallenge() {
+  const card = document.querySelector("#challenge");
+  if (!challenge) {
+    card.hidden = true;
+    document.body.dataset.challenge = "0";
+    return;
   }
+  card.hidden = false;
+  document.body.dataset.challenge = "1";
+  document.querySelector("#challenge-k").textContent = `Night ${challenge.number}`;
+  document.querySelector("#challenge-goal").textContent = `${challenge.goal} · beat ${format(challenge.score)}`;
+  document.querySelector("#challenge-row").textContent = shareLines(challenge.history).join("\n");
 }
 
 function paintPreview(canvas, id, look) {
@@ -452,6 +442,7 @@ function syncChrome() {
   playHead.hidden = mode === "title";
   playDock.hidden = !playing;
   overDock.hidden = !over;
+  document.body.dataset.screen = over ? "over" : mode;
 }
 
 function showCallout(text) {
@@ -489,9 +480,17 @@ function buzz(pattern) {
 
 function start(kind) {
   today = localDateString();
-  const seed = kind === "daily" ? (dailySeed(today) || 1) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
-  const goal = kind === "daily" ? missionsFor(today, save).nightly.id : null;
-  run = createRun(seed, kind, goal);
+  if (kind === "challenge" && challenge) {
+    const goal = missionsFor(challenge.date).nightly;
+    run = createRun(dailySeed(challenge.date) || 1, "challenge", goal.id);
+    run.mark = challenge.score;
+    run.nightNumber = challenge.number;
+    run.goalLabel = challenge.goal || goal.label;
+  } else {
+    const seed = kind === "daily" ? (dailySeed(today) || 1) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
+    const goal = kind === "daily" ? missionsFor(today, save).nightly.id : null;
+    run = createRun(seed, kind, goal);
+  }
   mode = "play";
   overShown = false;
   hold = false;
@@ -741,7 +740,9 @@ function paintHud() {
     scoreEl.textContent = format(run.score);
     lastScore = run.score;
   }
-  const tag = run.mode === "daily" ? `Tonight ${Math.min(run.flings, COURSE)}/${COURSE}` : run.mode === "quiet" ? "Quiet" : "Free";
+  const tag = run.mode === "challenge"
+    ? `Night ${run.nightNumber || 1} · beat ${format(run.mark || 0)}`
+    : run.mode === "daily" ? `Tonight ${Math.min(run.flings, COURSE)}/${COURSE}` : run.mode === "quiet" ? "Quiet" : "Free";
   const mult = multiplierFor(run.combo);
   const chase = run.mode !== "daily" && save.bestFlings > run.flings ? ` · ${save.bestFlings - run.flings} to best` : "";
   metaEl.textContent = `${tag} · banked ${format(run.banked || 0)} · at risk ${format(run.pot || 0)}${chase}`;
@@ -800,6 +801,7 @@ function ripple(x, y, color) {
 }
 
 document.querySelector("#btn-play").addEventListener("click", () => start("free"));
+document.querySelector("#btn-challenge").addEventListener("click", () => start("challenge"));
 document.querySelector("#btn-daily").addEventListener("click", () => start("daily"));
 quietBtn.addEventListener("click", () => start("quiet"));
 document.querySelector("#btn-again").addEventListener("click", () => start(run && run.mode ? run.mode : "free"));
@@ -829,11 +831,24 @@ motionBtn.addEventListener("click", () => {
 document.querySelector("#btn-help").addEventListener("click", () => (helpOpen ? closeHelp() : openHelp()));
 document.querySelector("#btn-resume").addEventListener("click", closeHelp);
 document.querySelector("#btn-share").addEventListener("click", async () => {
-  const text = `Perigee ${today}\n${shareLines(run?.history).join("\n")}\n${document.querySelector("#medal").textContent} · ${format(run?.score || 0)}`;
+  const listed = save.nights || [];
+  const index = listed.findIndex((night) => night.date === today);
+  const night = {
+    date: today,
+    number: index >= 0 ? index + 1 : Math.max(1, listed.length),
+    goal: missionsFor(today, save).nightly.label,
+    score: run?.score || 0,
+    medal: (document.querySelector("#medal").textContent || "").split("·")[0].trim() || "bronze",
+    history: run?.history || [],
+  };
+  const file = location.pathname.split("/").pop() || "index.html";
+  const href = `${file}${encodeNight(night)}`;
+  const text = shareCard(night, href);
   try {
     if (navigator.share) await navigator.share({ text });
     else if (navigator.clipboard) await navigator.clipboard.writeText(text);
   } catch {}
+  window.__perigee.lastShare = { href, text };
 });
 document.querySelector("#btn-wear").addEventListener("click", () => {
   const item = revealQueue[0];
@@ -958,18 +973,37 @@ function resize() {
   ringCache.key = "";
 }
 
+let qualityHoldUntil = 0;
+let cleanWindows = 0;
 function noteFrame(ms) {
   if (!(ms > 0) || ms > 250) return;
   frameBudget.push(ms > 20 ? 1 : 0);
   if (frameBudget.length < 40) return;
   const slow = frameBudget.reduce((sum, value) => sum + value, 0) / frameBudget.length;
   frameBudget.length = 0;
+  const now = performance.now();
+  if (slow > 0.05) {
+    cleanWindows = 0;
+    const next = Math.max(1, +(quality - 0.25).toFixed(2));
+    if (next < quality - 0.01) {
+      quality = next;
+      qualityHoldUntil = now + 4000;
+      sizedDpr = -1;
+      resize();
+    }
+    return;
+  }
+  if (slow > 0 || now < qualityHoldUntil) {
+    cleanWindows = 0;
+    return;
+  }
+  cleanWindows += 1;
+  if (cleanWindows < 3) return;
+  cleanWindows = 0;
   const device = window.devicePixelRatio || 1;
-  let next = quality;
-  if (slow > 0.05) next = Math.max(1, quality - 0.25);
-  else if (slow === 0) next = Math.min(Math.min(device, 2.5), quality + 0.25);
-  if (Math.abs(next - quality) > 0.01) {
-    quality = Math.round(next * 100) / 100;
+  const next = Math.min(Math.min(device, 2.5), +(quality + 0.25).toFixed(2));
+  if (next > quality + 0.01) {
+    quality = next;
     sizedDpr = -1;
     resize();
   }
@@ -978,8 +1012,10 @@ function noteFrame(ms) {
 function orbitGeom() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const r = Math.max(100, Math.min(w * 0.4, h * 0.27, 214));
-  return { cx: w / 2, cy: Math.min(h * 0.4, r + 118), r };
+  const short = h <= 720;
+  const r = Math.max(short ? 86 : 100, Math.min(w * 0.38, h * (short ? 0.22 : 0.27), short ? 132 : 214));
+  const cy = short ? Math.min(h * 0.3, r + 86) : Math.min(h * 0.4, r + 118);
+  return { cx: w / 2, cy, r };
 }
 
 function drawSky(w, h) {
@@ -1220,9 +1256,9 @@ function drawCourseStars(cx, cy, r, history) {
   const shown = history || [];
   if (!shown.length) return;
   const pts = shown.map((entry, i) => {
-    const a = -Math.PI * 0.9 + (i / Math.max(1, shown.length - 1)) * Math.PI * 1.55;
-    const rad = r * (0.46 + ((i * 5) % 4) * 0.035);
-    return { x: cx + Math.cos(a) * rad, y: cy + Math.sin(a) * rad * 0.78, entry };
+    const a = Math.PI + (i / Math.max(1, shown.length - 1)) * Math.PI;
+    const rad = r * 0.7;
+    return { x: cx + Math.cos(a) * rad, y: cy + Math.sin(a) * rad * 0.82, entry };
   });
   ctx.save();
   ctx.strokeStyle = "rgba(255, 232, 186, 0.45)";
@@ -1301,7 +1337,26 @@ function drawScene(w, h, time) {
     lastMoon.y = cy + Math.sin(moonAngle) * r;
   }
 
-  if (showEcho) {
+  const cleared = playing && run.overReason === "clear";
+  if (novaSweep > 0 && !reduced()) {
+    const head = (1 - novaSweep) * TAU - Math.PI / 2;
+    ctx.save();
+    ctx.strokeStyle = "#fff6d4";
+    ctx.shadowColor = "#fff4c8";
+    ctx.shadowBlur = 18;
+    ctx.globalAlpha = novaSweep * 0.45;
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, head - 0.8, head);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (showEcho && !cleared) {
     strokeArc(cx, cy, r, echo.center - echo.half, echo.center + echo.half, 7, ink.ghost || "#d7e6f5", 0.95, [5, 7]);
     ctx.save();
     ctx.strokeStyle = "#f4fbff";
@@ -1328,6 +1383,7 @@ function drawScene(w, h, time) {
     const left = 1 - collapse.age / collapse.life;
     strokeArc(cx, cy, r, collapse.geo - collapse.half * left, collapse.geo + collapse.half * left, 5, "#ffc14d", left);
   }
+  if (!cleared) {
   strokeArc(cx, cy, r, center - half, center + half, 16, GOLD.wash, 1);
   strokeArc(cx, cy, r, center - half, center + half, wild ? 8 : 6, "#ffc14d", arcAlpha, wild || veilDim ? [9, 7] : null);
   if (lit) {
@@ -1350,25 +1406,7 @@ function drawScene(w, h, time) {
       ctx.fill();
     }
   }
-  if (novaSweep > 0 && !reduced()) {
-    const head = (1 - novaSweep) * TAU - Math.PI / 2;
-    ctx.save();
-    ctx.strokeStyle = "#fff6d4";
-    ctx.shadowColor = "#fff4c8";
-    ctx.shadowBlur = 22;
-    ctx.globalAlpha = novaSweep * 0.7;
-    ctx.lineWidth = 18;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, TAU);
-    ctx.stroke();
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 10, head - 0.8, head);
-    ctx.stroke();
-    ctx.restore();
-  }
-  if (rift) {
+  if (!cleared && rift) {
     const dir = run.dir || 1;
     const entry = dir < 0 ? center + half : center - half;
     const ex = cx + Math.cos(entry) * r;
@@ -1390,6 +1428,7 @@ function drawScene(w, h, time) {
     ctx.beginPath();
     ctx.arc(cx + Math.cos(end) * r, cy + Math.sin(end) * r, 3, 0, TAU);
     ctx.fill();
+  }
   }
 
   const hue = (THEME_HUE[save.theme] || 28) + (playing ? Math.min(18, (run.perfects || 0) * 0.4) : 0);
@@ -1554,6 +1593,8 @@ function frame(ts) {
 
 window.__perigee = {
   get mode() { return mode; },
+  get challenge() { return challenge; },
+  get orbit() { return orbitGeom(); },
   get run() { return run ? { ...run, zone: run.phase === "playing" ? zone(run) : run.phase } : null; },
   get save() { return { ...save, goalKinds: [...(save.goalKinds || [])], moons: [...(save.moons || [])] }; },
   get helpOpen() { return helpOpen; },
