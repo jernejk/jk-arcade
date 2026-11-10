@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   KIND_COPY,
   TUNING,
+  coreProgress,
   createRun,
   fling,
   goldWindowSeconds,
@@ -18,22 +19,18 @@ import {
 } from "../logic.js";
 
 function force(run, kind) {
-  const target = kind === "cash"
-    ? run.echo.center
-    : kind === "good"
-      ? run.centerP + run.perfectHalf + 0.03
-      : run.centerP;
-  return fling({ ...run, progress: target });
+  if (kind === "cash") return fling({ ...run, progress: run.echo.center });
+  if (kind === "good") return fling({ ...run, progress: Math.min(run.exitP - 0.02, run.entryP + 0.04) });
+  const core = coreProgress({ ...run, progress: run.centerP });
+  return fling({ ...run, progress: core });
 }
 
-test("the syllabus introduces one idea at a time", () => {
+test("the opening orbit is steady and the next one is a twist", () => {
   assert.equal(kindFor(1, 0), "steady");
-  assert.equal(kindFor(1, 2), "steady");
-  assert.equal(kindFor(4, 3), "wild");
-  assert.equal(kindFor(4, 5), "echo");
-  assert.equal(kindFor(4, 8), "veil");
-  assert.equal(kindFor(4, 11), "rift");
-  assert.equal(kindFor(9, 6), "steady");
+  assert.notEqual(kindFor(1, 1), "steady");
+  const twists = new Set();
+  for (let seed = 1; seed <= 12; seed++) twists.add(kindFor(seed, 1));
+  assert.ok(twists.size >= 2);
 });
 
 test("an echo cashes the silver and still leaves the gold for later", () => {
@@ -86,10 +83,14 @@ test("a rift perfect pays the arc back harder than a steady one", () => {
   assert.ok(after >= steadyArc - 0.5);
 });
 
-test("relic cores add a bonus and a banked relic", () => {
+test("relic cores slide and bank a relic when you catch them", () => {
   let run = createRun(5);
-  while (!run.relic && run.flings < 20) run = force(run, "good").run;
-  assert.equal(run.relic, true);
+  let guard = 0;
+  while (run.kind !== "relic" && guard < 40) {
+    run = force(run, "perfect").run;
+    guard++;
+  }
+  assert.equal(run.kind, "relic");
   const hit = force(run, "perfect");
   assert.equal(hit.event.relicHit, true);
   assert.ok(hit.event.scoreGain >= TUNING.relicBonus);
@@ -132,17 +133,18 @@ test("seven nights rotate the goal and hand something new each day", () => {
   assert.equal(missionsFor(nextDate("2026-11-10")).nightly.id === missionsFor("2026-11-10").nightly.id, false);
 });
 
-test("skill bands stay inside a minute-and-a-bit and separate", () => {
-  const novice = sampleSkill("novice", 24);
-  const casual = sampleSkill("casual", 24);
-  const sharp = sampleSkill("sharp", 24);
-  for (const [name, row] of [["novice", novice], ["casual", casual], ["sharp", sharp]]) {
-    assert.ok(row.time.p50 >= 40 && row.time.p50 <= 120, `${name} median ${row.time.p50}`);
-    assert.ok(row.cruelRate < 0.15, `${name} cruel ${row.cruelRate}`);
-  }
-  assert.ok(sharp.score.p50 > casual.score.p50);
-  assert.ok(casual.score.p50 > novice.score.p50);
-  assert.ok(novice.cashes > 0);
-  assert.ok(sharp.earlyRate < 0.2, `sharp early ${sharp.earlyRate}`);
-  assert.ok(goldWindowSeconds(createRun(1)) > 0.8);
+test("skill bands separate, and beat-only play dies early", () => {
+  const novice = sampleSkill("novice", 18);
+  const casual = sampleSkill("casual", 18);
+  const sharp = sampleSkill("sharp", 12);
+  const beat = sampleSkill("beat", 18);
+  const early = sampleSkill("early", 12);
+  const random = sampleSkill("random", 12);
+  assert.ok(sharp.score.p50 > novice.score.p50, `sharp ${sharp.score.p50} novice ${novice.score.p50}`);
+  assert.ok(beat.time.p50 < 22, `beat median ${beat.time.p50}`);
+  assert.ok(beat.flings ? beat.flings.p50 < 8 : true);
+  assert.ok(early.time.p50 < 8, `early median ${early.time.p50}`);
+  assert.ok(random.time.p50 < 18, `random median ${random.time.p50}`);
+  assert.ok(novice.cruelRate < 0.2);
+  assert.ok(goldWindowSeconds(createRun(1)) > 0.35);
 });

@@ -138,6 +138,26 @@ html:not([data-motion="reduce"]) .score.bump { animation: bump 200ms ease; }
 html:not([data-motion="reduce"]) .callout.show { animation: pop 720ms ease; }
 
 .dock { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.dock > div { transition: opacity 160ms ease; }
+html[data-motion="reduce"] .dock > div { transition: none; }
+.toast {
+  position: fixed;
+  z-index: 6;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(10, 6, 18, 0.88);
+  border: 1px solid var(--line);
+  color: var(--gold);
+  pointer-events: none;
+}
+.medal, .share-row { margin: 4px 0 0; text-align: center; }
+.medal { color: var(--gold); letter-spacing: 0.08em; font-weight: 700; }
+.share-row { font-size: 18px; letter-spacing: 0.12em; }
+.dot.big { width: 84px; height: 84px; margin: 8px auto; }
 .rule { margin: 0; color: var(--dim); font-size: 14.5px; text-align: center; }
 .plaque {
   display: flex;

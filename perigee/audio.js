@@ -52,17 +52,51 @@ export function createAudio() {
     src.start();
   }
 
+  const penta = [523.25, 587.33, 659.25, 783.99, 880];
+  let bed = null;
+  function ensureBed() {
+    const ac = context();
+    if (!ac || bed || muted) return;
+    const gain = ac.createGain();
+    gain.gain.value = 0.012;
+    const a = ac.createOscillator();
+    const b = ac.createOscillator();
+    a.type = "sine";
+    b.type = "triangle";
+    a.frequency.value = 196;
+    b.frequency.value = 247;
+    const g2 = ac.createGain();
+    g2.gain.value = 0;
+    a.connect(gain);
+    b.connect(g2);
+    g2.connect(gain);
+    gain.connect(ac.destination);
+    a.start();
+    b.start();
+    bed = { gain, g2, b };
+  }
   return {
-    setMuted(next) { muted = !!next; },
-    unlock() { if (!muted) context(); },
-    play(name) {
+    setMuted(next) {
+      muted = !!next;
+      if (bed) bed.gain.gain.value = muted ? 0 : 0.012;
+    },
+    unlock() { if (!muted) { context(); ensureBed(); } },
+    setChain(combo) {
+      if (!bed || muted) return;
+      const mult = combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
+      bed.gain.gain.value = 0.012 + (mult - 1) * 0.006;
+      bed.g2.gain.value = mult >= 2 ? 0.02 : 0;
+      bed.b.frequency.value = mult >= 3 ? 392 : 247;
+    },
+    play(name, step = 0) {
       if (muted) return;
       if (name === "tick") tone(880, 0.045, "sine", 0.03);
       else if (name === "wild") tone(520, 0.07, "triangle", 0.035, 740);
       else if (name === "perfect") {
-        tone(660, 0.16, "sine", 0.06, 880);
-        tone(990, 0.2, "sine", 0.035);
-      }       else if (name === "good") tone(420, 0.08, "triangle", 0.045, 360);
+        const freq = penta[Math.abs(step) % penta.length] * (2 ** Math.min(2, Math.floor(Math.abs(step) / 5)));
+        tone(freq, 0.12, "sine", 0.06);
+        tone(freq * 1.5, 0.16, "sine", 0.028);
+      } else if (name === "good") tone(420, 0.08, "triangle", 0.045, 360);
       else if (name === "cash") tone(520, 0.09, "triangle", 0.04, 340);
       else if (name === "relic") {
         tone(740, 0.14, "sine", 0.05, 980);

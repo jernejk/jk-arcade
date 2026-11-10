@@ -16,10 +16,16 @@ import {
   loadSave,
   localDateString,
   missionLine,
-  missionsFor,
   TUNING,
+  COURSE,
+  coreProgress,
+  goalStars,
+  medalFor,
+  missionPulse,
+  missionsFor,
+  missText,
   multiplierFor,
-  planetHue,
+  rankFor,
   selectMoon,
   selectTheme,
   selectTrail,
@@ -68,13 +74,9 @@ const sealsEl = document.querySelector("#seals");
 
 const audio = createAudio();
 const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-const KIND_INK = {
-  steady: { arc: "#ffc14d", core: "#fff6d8", wash: "rgba(255,193,77,0.2)" },
-  wild: { arc: "#ffb03a", core: "#fff1c2", wash: "rgba(255,160,50,0.22)" },
-  echo: { arc: "#ffc14d", core: "#fff6d8", wash: "rgba(255,193,77,0.18)", ghost: "#d7e6f5" },
-  veil: { arc: "#d9c6ff", core: "#ffffff", wash: "rgba(200,170,255,0.16)" },
-  rift: { arc: "#c9b0ff", core: "#f6efff", wash: "rgba(170,140,255,0.2)" },
-};
+const GOLD = { arc: "#ffc14d", core: "#fff6d8", wash: "rgba(255,193,77,0.22)", ghost: "#d7e7f6" };
+const KIND_INK = { steady: GOLD, wild: GOLD, echo: GOLD, veil: GOLD, rift: GOLD, relic: GOLD };
+const THEME_HUE = { dusk: 28, harbor: 198, ember: 22, aurora: 162, ink: 230 };
 
 let today = localDateString();
 let save = loadSave(localStorage, today);
@@ -97,6 +99,13 @@ let ripples = [];
 let demo = 0;
 let lastScore = -1;
 let lastKind = "";
+let hitPause = 0;
+let overAt = 0;
+let moonSquash = 1;
+let collapse = null;
+let floats = [];
+let shooter = null;
+let revealQueue = [];
 let skyCache = null;
 let flashTimer = 0;
 const frames = [];
@@ -166,7 +175,7 @@ function renderHome() {
     sealsEl.append(pip);
   }
   const moon = MOONS.find((m) => m.id === save.moon);
-  statsEl.textContent = `${moon ? moon.name : "Cinder"} · best ${format(save.best)}`;
+  statsEl.textContent = `${rankFor(save)} · ${moon ? moon.name : "Cinder"} · best ${format(save.best)}`;
   quietBtn.hidden = !save.quietUnlocked;
   renderShelf();
 }
@@ -318,8 +327,9 @@ function finish(event) {
   const settled = settleRun(save, run, today);
   save = settled.save;
   persist();
-  reasonEl.textContent = REASON[event.reason] || "Drifted";
-  nearEl.hidden = hour || !event.nearMiss;
+  reasonEl.textContent = missText(event);
+  nearEl.hidden = true;
+  if (run.overReason === "clear") metaEl.textContent = `Tonight ${COURSE}/${COURSE} · best ${format(run.score)}`;
   finalEl.textContent = format(run.score);
   const record = run.mode === "quiet" ? save.bestQuiet : run.mode === "daily" ? save.bestNight : save.bestFree;
   const bestLine = settled.isBest ? "New best" : `Best ${format(record || save.best)}`;
@@ -343,14 +353,70 @@ function finish(event) {
     flare("death");
     burst(lastMoon.x, lastMoon.y, "#ffb07a", 16, 90);
   }
+  const goal = missionsFor(today, save).nightly.id;
+  const stars = goalStars(run, goal);
+  const medal = medalFor(run, goal);
+  const medalEl = document.querySelector("#medal");
+  const shareBtn = document.querySelector("#btn-share");
+  const shareRow = document.querySelector("#share-row");
+  if (medal) {
+    medalEl.hidden = false;
+    medalEl.textContent = `${medal} · ${"★".repeat(stars)}${"☆".repeat(Math.max(0, 3 - stars))}`;
+    shareRow.hidden = false;
+    shareRow.textContent = (run.history || []).map((kind) => ({ steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" }[kind] || "·")).join("");
+    shareBtn.hidden = false;
+  } else {
+    medalEl.hidden = true;
+    shareRow.hidden = true;
+    shareBtn.hidden = true;
+  }
   say(`${reasonEl.textContent}. Score ${format(run.score)}.`);
+  queueReveal(settled.fresh);
   renderHome();
   syncChrome();
+}
+
+function clearFx() {
+  sparks = [];
+  ripples = [];
+  trailPts = [];
+  floats = [];
+  collapse = null;
+  shooter = null;
+}
+
+function queueReveal(fresh) {
+  revealQueue = [
+    ...names(fresh.moons || [], MOONS).map((name, i) => ({ kind: "moon", id: fresh.moons[i], name })),
+    ...names(fresh.trails || [], TRAILS).map((name, i) => ({ kind: "trail", id: fresh.trails[i], name })),
+    ...names(fresh.themes || [], THEMES).map((name, i) => ({ kind: "sky", id: fresh.themes[i], name })),
+  ];
+  if (fresh.quiet) revealQueue.push({ kind: "mode", id: "quiet", name: "Quiet hour" });
+  showReveal();
+}
+
+function showReveal() {
+  const card = document.querySelector("#reveal");
+  const item = revealQueue[0];
+  if (!item) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  document.querySelector("#reveal-name").textContent = item.name;
+  const sw = document.querySelector("#reveal-swatch");
+  const look = item.kind === "moon" ? MOON_LOOK[item.id] : item.kind === "trail" ? TRAIL_LOOK[item.id] : THEME_LOOK[item.id] || MOON_LOOK.cinder;
+  const core = look.core || look.sky0 || "#fff";
+  const shade = look.shade || look.sky2 || "#333";
+  sw.style.background = `radial-gradient(circle at 35% 32%, #fff, ${core} 45%, ${shade})`;
+  document.querySelector("#reveal-hint").textContent = item.kind === "mode" ? "The arc stays open until the hour closes." : "Yours now.";
 }
 
 function revealOver() {
   if (overShown) return;
   overShown = true;
+  overAt = performance.now();
+  clearFx();
   callout.textContent = "";
   callout.classList.remove("show");
   callout.style.opacity = "0";
@@ -367,6 +433,8 @@ function onPress() {
   audio.unlock();
   if (helpOpen || shelfOpen) return;
   if (mode !== "play" || !run || run.phase !== "playing" || hold) return;
+  const oldHalf = run.arcHalf;
+  const oldGeo = wrapAngle(run.startTheta + (run.dir || 1) * (run.entryP + run.arcHalf));
   const result = fling(run);
   if (!result.event) return;
   if (result.event.type === "wait") {
@@ -380,21 +448,30 @@ function onPress() {
   }
   const event = result.event;
   run = result.run;
-  if (event.type === "miss" || event.type === "hour") {
-    if (event.type === "miss") showCallout(REASON[event.reason] || "Drifted");
-    finish(event);
+  if (event.type === "miss" || event.type === "hour" || run.phase === "over") {
+    if (event.type === "miss") showCallout(missText(event));
+    else if (run.overReason === "clear") showCallout("Clear");
+    finish({ ...event, reason: run.overReason || event.reason });
     return;
   }
   const perfect = event.type === "perfect";
-  const word = event.relicHit ? "Relic" : event.milestone ? milestoneName(run.combo) : perfect ? "Perigee" : event.type === "cash" ? "Cashed" : "Fling";
+  const word = event.relicHit ? "Relic" : event.milestone ? milestoneName(run.combo) : perfect ? "Perigee" : event.type === "cash" ? "Banked" : "Fling";
   showCallout(word);
-  audio.play(event.relicHit ? "relic" : event.milestone ? "milestone" : perfect ? "perfect" : event.type === "cash" ? "cash" : "good");
-  buzz(perfect ? (event.milestone ? [10, 30, 16] : 12) : 6);
-  flare(event.relicHit ? "relic" : event.milestone ? "milestone" : "hit");
+  audio.play(event.relicHit ? "relic" : event.milestone ? "milestone" : perfect ? "perfect" : event.type === "cash" ? "cash" : "good", run.combo);
+  audio.setChain(run.combo);
+  buzz(perfect ? (event.milestone ? [8, 24, 12] : 10) : 5);
+  if (event.milestone || event.relicHit) flare(event.relicHit ? "relic" : "milestone");
   const color = (TRAIL_LOOK[save.trail] || TRAIL_LOOK.ember).glow;
-  burst(lastMoon.x, lastMoon.y, event.relicHit ? "#ffe27a" : color, event.milestone ? 22 : perfect ? 14 : 8, event.milestone ? 120 : 70);
-  ripple(lastMoon.x, lastMoon.y, perfect ? "#fff6d4" : "#ffc14d");
-  if (event.milestone && !reduced()) shake = 4;
+  burst(lastMoon.x, lastMoon.y, event.relicHit ? "#ffe7a3" : color, event.milestone ? 28 : perfect ? 18 : 10, event.milestone ? 160 : 110);
+  ripple(lastMoon.x, lastMoon.y, "#fff6d4");
+  floats.push({ text: `+${format(event.scoreGain)}${event.mult > 1 ? ` ×${event.mult}` : ""}`, x: lastMoon.x, y: lastMoon.y, age: 0 });
+  if (perfect) {
+    hitPause = reduced() ? 0.02 : 0.05;
+    moonSquash = 1.35;
+    collapse = { half: oldHalf, age: 0, life: 0.16, geo: oldGeo };
+  }
+  if (event.milestone && !reduced()) shake = 5;
+  ackMissions(run);
   scoreEl.classList.remove("bump");
   void scoreEl.offsetWidth;
   scoreEl.classList.add("bump");
@@ -403,15 +480,41 @@ function onPress() {
   paintHud();
 }
 
+function ackMissions(current) {
+  const hits = missionPulse(save, current, today);
+  if (!hits.length) return;
+  const prev = save.daily && save.daily.date === today ? save.daily : { date: today, best: 0, cleared: false, runsToday: 0, done: {}, stars: 0 };
+  const done = { ...(prev.done || {}) };
+  for (const hit of hits) done[hit.id] = true;
+  const nightly = hits.some((hit) => hit.id === "nightly");
+  save = {
+    ...save,
+    daily: {
+      ...prev,
+      done,
+      cleared: prev.cleared || nightly,
+      stars: Math.max(prev.stars || 0, goalStars(current, missionsFor(today, save).nightly.id)),
+    },
+  };
+  persist();
+  const toast = document.querySelector("#toast");
+  toast.hidden = false;
+  toast.textContent = hits[0].label;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.hidden = true; }, 1100);
+  audio.play("milestone");
+}
+
 function paintHud() {
   if (!run) return;
   if (run.score !== lastScore) {
     scoreEl.textContent = format(run.score);
     lastScore = run.score;
   }
-  const tag = run.mode === "daily" ? "Tonight" : run.mode === "quiet" ? "Quiet" : "Free";
+  const tag = run.mode === "daily" ? `Tonight ${Math.min(run.flings, COURSE)}/${COURSE}` : run.mode === "quiet" ? "Quiet" : "Free";
   const mult = multiplierFor(run.combo);
-  metaEl.textContent = `${tag} · best ${format(Math.max(save.best, run.score))}`;
+  const chase = run.mode !== "daily" && save.bestFlings > run.flings ? ` · ${save.bestFlings - run.flings} to best` : "";
+  metaEl.textContent = `${tag} · best ${format(Math.max(save.best, run.score))}${chase}`;
   if (run.kind !== lastKind) {
     lastKind = run.kind;
     if (run.kind === "rift") audio.play("rift");
@@ -452,7 +555,7 @@ function burst(x, y, color, n, speed) {
       age: 0,
       life: 0.28 + Math.random() * 0.28,
       color,
-      size: 1.4 + Math.random() * 2.1,
+      size: 3.2 + Math.random() * 4.4,
     });
   }
 }
@@ -471,6 +574,7 @@ document.querySelector("#btn-home").addEventListener("click", () => {
   run = null;
   fly = null;
   overShown = false;
+  clearFx();
   callout.textContent = "";
   callout.style.opacity = "0";
   renderHome();
@@ -490,6 +594,30 @@ motionBtn.addEventListener("click", () => {
 });
 document.querySelector("#btn-help").addEventListener("click", () => (helpOpen ? closeHelp() : openHelp()));
 document.querySelector("#btn-resume").addEventListener("click", closeHelp);
+document.querySelector("#btn-share").addEventListener("click", async () => {
+  const glyphs = { steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" };
+  const row = (run?.history || []).map((kind) => glyphs[kind] || "·").join("");
+  const text = `Perigee ${today}\n${row}\n${document.querySelector("#medal").textContent} · ${format(run?.score || 0)}`;
+  try {
+    if (navigator.share) await navigator.share({ text });
+    else if (navigator.clipboard) await navigator.clipboard.writeText(text);
+  } catch {}
+});
+document.querySelector("#btn-wear").addEventListener("click", () => {
+  const item = revealQueue[0];
+  if (item?.kind === "moon") save = selectMoon(save, item.id);
+  if (item?.kind === "trail") save = selectTrail(save, item.id);
+  if (item?.kind === "sky") save = selectTheme(save, item.id);
+  persist();
+  applySettings();
+  revealQueue.shift();
+  showReveal();
+  renderHome();
+});
+document.querySelector("#btn-reveal-close").addEventListener("click", () => {
+  revealQueue.shift();
+  showReveal();
+});
 document.querySelector("#btn-shelf").addEventListener("click", () => {
   shelfOpen = true;
   shelf.hidden = false;
@@ -503,7 +631,12 @@ document.querySelector("#btn-shelf-close").addEventListener("click", () => {
 
 document.addEventListener("pointerdown", (event) => {
   if (event.target.closest("button, a, input, label")) return;
-  if (helpOpen || shelfOpen) return;
+  if (helpOpen || shelfOpen || !document.querySelector("#reveal").hidden) return;
+  if (mode === "over" && overShown && performance.now() - overAt > 600) {
+    event.preventDefault();
+    start(run && run.mode ? run.mode : "free");
+    return;
+  }
   if (mode !== "play") return;
   event.preventDefault();
   onPress();
@@ -567,7 +700,7 @@ let sizedW = 0;
 let sizedH = 0;
 let sizedDpr = 0;
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const w = window.innerWidth;
   const h = window.innerHeight;
   if (w === sizedW && h === sizedH && dpr === sizedDpr) return;
@@ -580,10 +713,10 @@ function resize() {
 }
 
 function orbitGeom() {
-  const rect = slot.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) return null;
-  const r = Math.max(84, Math.min(rect.width * 0.43, rect.height * 0.46, 228));
-  return { cx: rect.left + rect.width / 2, cy: rect.top + rect.height * 0.48, r };
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const r = Math.max(100, Math.min(w * 0.4, h * 0.27, 214));
+  return { cx: w / 2, cy: Math.min(h * 0.4, r + 118), r };
 }
 
 function drawSky(w, h) {
@@ -609,10 +742,21 @@ function drawSky(w, h) {
   }
   ctx.drawImage(skyCache.canvas, 0, 0, w, h);
   const look = THEME_LOOK[theme] || THEME_LOOK.dusk;
+  const drift = reduced() ? 0 : Math.sin(performance.now() / 6000) * 8;
   ctx.fillStyle = look.star;
   for (const star of stars) {
-    ctx.globalAlpha = star.a;
-    ctx.fillRect(star.x * w, star.y * h, star.r, star.r);
+    const tw = reduced() ? star.a : star.a * (0.65 + 0.35 * Math.sin(performance.now() / 700 + star.x * 12));
+    ctx.globalAlpha = tw;
+    ctx.fillRect(star.x * w + drift * star.a, star.y * h, star.r, star.r);
+  }
+  if (shooter && !reduced()) {
+    ctx.globalAlpha = Math.max(0, 1 - shooter.age / 0.7);
+    ctx.strokeStyle = look.star;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(shooter.x, shooter.y);
+    ctx.lineTo(shooter.x - shooter.vx * 0.08, shooter.y - shooter.vy * 0.08);
+    ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
@@ -680,7 +824,9 @@ function drawPlanet(cx, cy, radius, hue) {
   ctx.restore();
 }
 
-function drawMoon(x, y, radius, look, time) {
+function drawMoon(x, y, radius, look, time, id) {
+  const sx = moonSquash;
+  const sy = 1 / Math.max(0.7, moonSquash);
   const glow = look.rainbow ? `hsl(${(time / 18) % 360} 80% 70%)` : look.glow;
   if (!reduced()) {
     ctx.save();
@@ -699,10 +845,38 @@ function drawMoon(x, y, radius, look, time) {
   body.addColorStop(0, "#fffef8");
   body.addColorStop(0.38, look.core);
   body.addColorStop(1, look.shade || "#8a5a3a");
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(sx, sy);
   ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, TAU);
-  ctx.fill();
+  if (id === "glass" || id === "hollow") {
+    ctx.strokeStyle = look.core;
+    ctx.lineWidth = id === "hollow" ? 2 : 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.72, 0, TAU);
+    ctx.stroke();
+  } else if (id === "tide") {
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, TAU);
+    ctx.fill();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(radius * 0.45, -radius * 0.1, radius * 0.72, 0, TAU);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  } else if (id === "crown") {
+    ctx.fillStyle = look.glow;
+    starShape(0, 0, radius * 1.35);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.72, 0, TAU);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * (id === "iris" ? 0.78 : 1), radius, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
   ctx.fillStyle = "rgba(40, 24, 48, 0.22)";
   ctx.beginPath();
   ctx.arc(x + radius * 0.28, y + radius * 0.08, radius * 0.32, 0, TAU);
@@ -767,14 +941,17 @@ function drawScene(w, h, time) {
   let rift = false;
   let wild = false;
   let moonAngle = demo;
+  let bead = center;
   if (playing) {
-    center = run.arcCenter;
+    const dir = run.dir || 1;
+    center = wrapAngle(run.startTheta + dir * (run.entryP + run.arcHalf));
+    bead = wrapAngle(run.startTheta + dir * coreProgress(run));
     half = run.arcHalf;
     perfectHalf = run.perfectHalf;
-    ink = KIND_INK[run.kind] || KIND_INK.steady;
+    ink = GOLD;
     showEcho = !!run.echo;
-    relic = !!run.relic;
-    lit = coreLit(run);
+    relic = run.kind === "relic";
+    lit = true;
     rift = !!run.rift;
     wild = !!run.wild;
     if (fly) {
@@ -790,10 +967,7 @@ function drawScene(w, h, time) {
       lastMoon.y = cy + Math.sin(moonAngle) * r;
     }
     if (showEcho && run.echo) {
-      const echoCenter = run.rift
-        ? wrapAngle(run.startTheta - run.echo.center)
-        : wrapAngle(run.startTheta + run.echo.center);
-      echo = { center: echoCenter, half: run.echo.half };
+      echo = { center: wrapAngle(run.startTheta + (run.dir || 1) * run.echo.center), half: run.echo.half };
     }
   } else {
     lastMoon.x = cx + Math.cos(moonAngle) * r;
@@ -812,14 +986,28 @@ function drawScene(w, h, time) {
   }
 
   const hot = playing && run.phase === "playing" ? zone(run) : "approach";
-  const arcAlpha = run && run.kind === "veil" && !lit ? 0.32 : hot === "perfect" ? 1 : 0.92;
-  strokeArc(cx, cy, r, center - half, center + half, 16, ink.wash, 1);
-  strokeArc(cx, cy, r, center - half, center + half, wild ? 8 : 6, ink.arc, arcAlpha, wild ? [10, 8] : null);
+  const veilDim = playing && run.kind === "veil" && run.progress < run.entryP - 0.12;
+  const arcAlpha = veilDim ? 0.4 : hot === "perfect" ? 1 : 0.94;
+  const open = playing ? Math.max(0.2, (run.arcHalf - TUNING.minArc) / Math.max(0.04, TUNING.startArc - TUNING.minArc)) : 0.85;
+  const halo = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r + 28 * open);
+  halo.addColorStop(0, "rgba(0,0,0,0)");
+  halo.addColorStop(0.72, `rgba(255, 193, 77, ${0.04 + open * 0.14})`);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 34, 0, TAU);
+  ctx.fill();
+  if (collapse && !reduced()) {
+    const left = 1 - collapse.age / collapse.life;
+    strokeArc(cx, cy, r, collapse.geo - collapse.half * left, collapse.geo + collapse.half * left, 5, "#ffc14d", left);
+  }
+  strokeArc(cx, cy, r, center - half, center + half, 16, GOLD.wash, 1);
+  strokeArc(cx, cy, r, center - half, center + half, wild ? 8 : 6, "#ffc14d", arcAlpha, wild || veilDim ? [9, 7] : null);
   if (lit) {
-    strokeArc(cx, cy, r, center - perfectHalf, center + perfectHalf, 14, "rgba(255,255,255,0.35)", 1);
-    strokeArc(cx, cy, r, center - perfectHalf, center + perfectHalf, relic ? 8 : 11, ink.core, 1);
-    const bx = cx + Math.cos(center) * r;
-    const by = cy + Math.sin(center) * r;
+    strokeArc(cx, cy, r, bead - perfectHalf, bead + perfectHalf, 14, "rgba(255,255,255,0.35)", veilDim ? 0.25 : 1);
+    strokeArc(cx, cy, r, bead - perfectHalf, bead + perfectHalf, relic ? 8 : 11, "#fff6d8", veilDim ? 0.3 : 1);
+    const bx = cx + Math.cos(bead) * r;
+    const by = cy + Math.sin(bead) * r;
     const pulse = relic ? 8 + Math.sin(time / 140) * 1.6 : hot === "perfect" ? 7.5 : 5.6;
     if (!reduced()) {
       ctx.fillStyle = relic ? "rgba(255, 214, 120, 0.45)" : "rgba(255,255,255,0.35)";
@@ -836,10 +1024,10 @@ function drawScene(w, h, time) {
     }
   }
   if (rift) {
-    const entry = center + half;
+    const entry = (run.dir || 1) < 0 ? center + half : center - half;
     const ex = cx + Math.cos(entry) * r;
     const ey = cy + Math.sin(entry) * r;
-    ctx.strokeStyle = "#efe6ff";
+    ctx.strokeStyle = "#ffe7a8";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(ex, ey);
@@ -855,19 +1043,44 @@ function drawScene(w, h, time) {
     ctx.fill();
   }
 
-  drawPlanet(cx, cy, Math.min(54, r * 0.28), playing ? planetHue(run.seed, run.flings) : 18);
+  const hue = (THEME_HUE[save.theme] || 28) + (playing ? Math.min(18, (run.perfects || 0) * 0.4) : 0);
+  drawPlanet(cx, cy, Math.min(54, r * 0.28), hue);
 
   if (!reduced()) {
     ctx.fillStyle = trail.glow;
+    const prev = { x: lastMoon.x, y: lastMoon.y };
     trailPts.forEach((p, i) => {
-      ctx.globalAlpha = (i / trailPts.length) * 0.5;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.6, 0, TAU);
-      ctx.fill();
+      const k = (i + 1) / trailPts.length;
+      ctx.globalAlpha = 0.25 + k * 0.55;
+      ctx.fillStyle = trail.glow;
+      ctx.strokeStyle = trail.glow;
+      if (save.trail === "pearl") {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5 + k * 2, 0, TAU);
+        ctx.fill();
+      } else if (save.trail === "comet") {
+        ctx.lineWidth = 2 + k * 3;
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      } else if (save.trail === "brass") {
+        ctx.fillRect(p.x - 1, p.y - 4, 2, 8);
+      } else if (save.trail === "aurora" || save.trail === "tideglass") {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y + Math.sin(i + time / 200) * 5, save.trail === "tideglass" ? 2.2 : 3, 0, TAU);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2 + k * multiplierFor(playing ? run.combo : 0), 0, TAU);
+        ctx.fill();
+      }
+      prev.x = p.x;
+      prev.y = p.y;
     });
     ctx.globalAlpha = 1;
   }
-  drawMoon(lastMoon.x, lastMoon.y, Math.max(8, r * 0.078), moonLook, time);
+  drawMoon(lastMoon.x, lastMoon.y, Math.max(8, r * 0.078), moonLook, time, save.moon);
 
   for (const wave of ripples) {
     const k = 1 - wave.age / wave.life;
@@ -878,7 +1091,8 @@ function drawScene(w, h, time) {
     ctx.arc(wave.x, wave.y, 10 + wave.age * 160, 0, TAU);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
   for (const spark of sparks) {
     const k = 1 - spark.age / spark.life;
     ctx.globalAlpha = Math.max(0, k);
@@ -886,6 +1100,15 @@ function drawScene(w, h, time) {
     ctx.beginPath();
     ctx.arc(spark.x + spark.vx * spark.age, spark.y + spark.vy * spark.age, spark.size * k, 0, TAU);
     ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.font = "700 18px Palatino, Georgia, serif";
+  ctx.textAlign = "center";
+  for (const item of floats) {
+    ctx.globalAlpha = Math.max(0, 1 - item.age / 0.7);
+    ctx.fillStyle = "#fff6d4";
+    ctx.fillText(item.text, item.x, item.y - 18 - item.age * 36);
   }
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -909,7 +1132,24 @@ function frame(ts) {
   }
   const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0;
   lastTs = ts;
-  if (mode === "play" && run && run.phase === "playing" && !hold && !helpOpen && !shelfOpen) {
+  if (hitPause > 0) hitPause = Math.max(0, hitPause - dt);
+  moonSquash += (1 - moonSquash) * Math.min(1, dt * 8);
+  if (collapse) {
+    collapse.age += dt;
+    if (collapse.age >= collapse.life) collapse = null;
+  }
+  for (const item of floats) item.age += dt;
+  floats = floats.filter((item) => item.age < 0.7);
+  if (!reduced() && !shooter && Math.random() < dt * 0.07) {
+    shooter = { x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight * 0.45, vx: 420, vy: 140, age: 0 };
+  }
+  if (shooter) {
+    shooter.x += shooter.vx * dt;
+    shooter.y += shooter.vy * dt;
+    shooter.age += dt;
+    if (shooter.age > 0.7) shooter = null;
+  }
+  if (hitPause <= 0 && mode === "play" && run && run.phase === "playing" && !hold && !helpOpen && !shelfOpen) {
     const before = zone(run);
     const stepped = step(run, dt);
     run = stepped.run;
@@ -944,7 +1184,7 @@ function frame(ts) {
   if (shake > 0) shake *= reduced() ? 0 : 0.86;
 
   resize();
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawScene(window.innerWidth, window.innerHeight, ts);
   requestAnimationFrame(frame);

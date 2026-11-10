@@ -6,7 +6,9 @@ A tap before the gold ends the run at once. Runs that catch the arc last about 4
 
 ## Inside a run
 
-The first three orbits are steady, so the white core is the only new idea. After that the ring changes:
+The moon never jumps. The next gold is placed a seeded distance ahead of wherever the moon already is, so a fixed beat dies within a few seconds. The opening orbit is steady and already moving; the second orbit is a twist. A perfect gives back the arc that orbit just took, and the white core stays at least about 50ms wide. Speed, a reverse, a sliding relic, and an off-centre core are what make later orbits harder.
+
+The first orbit is steady. After that the ring changes:
 
 - **Wild** surges and slows. Ride it into the core.
 - **Echo** offers a silver arc first. Tapping it cashes out and breaks the chain. Waiting for the gold keeps the chain. The gap counts as a late cash, so the choice is not a trick death.

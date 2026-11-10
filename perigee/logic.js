@@ -4,35 +4,38 @@
 export const TAU = Math.PI * 2;
 
 export const TUNING = {
-  startOmega: 1.28,
-  maxOmega: 5.6,
-  omegaGrowth: 0.05,
-  startArc: 0.96,
-  minArc: 0.11,
-  shrinkIntro: 0.012,
-  shrinkBase: 0.022,
-  shrinkLate: 0.03,
-  shrinkFinal: 0.04,
-  restore: 0.012,
-  perfectRatio: 0.36,
+  startOmega: 2.05,
+  maxOmega: 7.2,
+  omegaGrowth: 0.055,
+  startArc: 0.58,
+  minArc: 0.46,
+  shrinkIntro: 0.014,
+  shrinkBase: 0.016,
+  shrinkLate: 0.018,
+  shrinkFinal: 0.02,
+  restore: 0.016,
+  perfectRatio: 0.42,
   perfectSlop: 0.02,
-  graceTime: 0.028,
-  nearMiss: 0.18,
-  lockGap: 0.22,
+  graceTime: 0.026,
+  nearMissMs: 45,
+  lockGap: 0.16,
   goodScore: 25,
   perfectBase: 40,
   perfectCombo: 20,
   cashScore: 18,
-  relicBonus: 140,
+  relicBonus: 80,
   par: 250,
   quietSeconds: 100,
+  course: 30,
 };
+
+export const COURSE = TUNING.course;
 
 export const TRAILS = [
   { id: "ember", name: "Ember", hint: "Yours from the start", test: () => true },
-  { id: "pearl", name: "Pearl", hint: "Best 400", test: (s) => s.best >= 400 },
-  { id: "comet", name: "Comet", hint: "Best 1,600 or 3 relics", test: (s) => s.relics >= 3 || s.best >= 1600 },
-  { id: "brass", name: "Brass", hint: "80 flings or 2 rift perfects", test: (s) => s.riftPerfects >= 2 || s.lifetimeFlings >= 80 },
+  { id: "pearl", name: "Pearl", hint: "Best 1,200", test: (s) => s.best >= 1200 },
+  { id: "comet", name: "Comet", hint: "Eight relics and three nights", test: (s) => s.relics >= 8 && s.nightsCleared >= 3 },
+  { id: "brass", name: "Brass", hint: "Four rift perfects and three nights", test: (s) => s.riftPerfects >= 4 && s.nightsCleared >= 3 },
   { id: "aurora", name: "Aurora", hint: "A 3-day streak", test: (s) => s.bestStreak >= 3 || s.streak >= 3 },
   { id: "tideglass", name: "Tideglass", hint: "A second night", test: (s) => s.nightsCleared >= 2 || s.bestStreak >= 2 || s.streak >= 2 },
 ];
@@ -48,12 +51,12 @@ export const TRAIL_LOOK = {
 
 export const MOONS = [
   { id: "cinder", name: "Cinder", hint: "The first moon", test: () => true },
-  { id: "glass", name: "Glass", hint: "Five perfects in one run", test: (s) => s.bestPerfects >= 5 },
-  { id: "tide", name: "Tide", hint: "Clear a nightly goal", test: (s) => s.nightsCleared >= 1 },
-  { id: "wick", name: "Wick", hint: "Cash an echo, then perfect a later gold", test: (s) => s.echoMastered },
-  { id: "crown", name: "Crown", hint: "Catch a relic core", test: (s) => s.relics >= 1 },
+  { id: "glass", name: "Glass", hint: "Eight perfects in one run", test: (s) => s.bestPerfects >= 8 },
+  { id: "tide", name: "Tide", hint: "Earn a nightly star", test: (s) => s.nightsCleared >= 1 },
+  { id: "wick", name: "Wick", hint: "Bank an echo, then perfect later", test: (s) => s.echoMastered },
+  { id: "crown", name: "Crown", hint: "Six relics across two nights", test: (s) => s.relics >= 6 && s.nightsCleared >= 2 },
   { id: "iris", name: "Iris", hint: "A 3-day streak", test: (s) => s.bestStreak >= 3 },
-  { id: "hollow", name: "Hollow", hint: "Perfect a rift", test: (s) => s.riftPerfects >= 1 },
+  { id: "hollow", name: "Hollow", hint: "Three rift perfects, two nights", test: (s) => s.riftPerfects >= 3 && s.nightsCleared >= 2 },
   { id: "dusk", name: "Dusk", hint: "Come back on a fourth day", test: (s) => (s.days || []).length >= 4 },
   { id: "choir", name: "Choir", hint: "Clear three different nightly goals", test: (s) => (s.goalKinds || []).length >= 3 },
 ];
@@ -72,8 +75,8 @@ export const MOON_LOOK = {
 
 export const THEMES = [
   { id: "dusk", name: "Dusk", hint: "The opening sky", test: () => true },
-  { id: "harbor", name: "Harbor", hint: "Clear a nightly goal", test: (s) => s.nightsCleared >= 1 },
-  { id: "ember", name: "Ember", hint: "A combo of 6", test: (s) => s.bestCombo >= 6 },
+  { id: "harbor", name: "Harbor", hint: "Two nightly stars", test: (s) => s.nightsCleared >= 2 },
+  { id: "ember", name: "Ember", hint: "A combo of 8", test: (s) => s.bestCombo >= 8 },
   { id: "aurora", name: "Aurora", hint: "A 5-day streak", test: (s) => s.bestStreak >= 5 },
   { id: "ink", name: "Ink", hint: "Seven different nights", test: (s) => (s.days || []).length >= 7 },
 ];
@@ -90,8 +93,9 @@ export const KIND_COPY = {
   steady: { name: "Steady", line: "Gold is safe. The white core builds the chain." },
   wild: { name: "Wild", line: "It surges. Ride the swell into the core." },
   echo: { name: "Echo", line: "Silver cashes out. Gold pays the chain." },
-  veil: { name: "Veil", line: "Take the dim gold, or wait for it to ignite." },
-  rift: { name: "Rift", line: "It turned around. A perfect opens the arc." },
+  veil: { name: "Veil", line: "The white core sits off to one side." },
+  rift: { name: "Rift", line: "It will turn around. Gold stays gold." },
+  relic: { name: "Relic", line: "The core slides. Stay with it." },
 };
 
 export const SEAL_ORDER = ["score", "perfects", "combo", "echo", "relic", "rift", "veil"];
@@ -125,6 +129,7 @@ const SAVE_KEY_V1 = "perigee-v1";
 export function defaultSave() {
   return {
     best: 0,
+    bestFlings: 0,
     bestFree: 0,
     bestQuiet: 0,
     bestNight: 0,
@@ -137,6 +142,7 @@ export function defaultSave() {
     riftPerfects: 0,
     nightsCleared: 0,
     echoMastered: false,
+    mastery: { steady: 0, wild: 0, echo: 0, veil: 0, rift: 0, relic: 0 },
     runs: 0,
     quietUnlocked: false,
     days: [],
@@ -185,23 +191,33 @@ export function arcCenterFor(seed, index) {
   return u * TAU;
 }
 
+const KIND_POOL = ["steady", "wild", "echo", "veil", "rift", "relic"];
+
+function unit(seed, index, salt) {
+  const x = Math.sin((seed + 1) * 0.017 + (index + 1) * salt) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
 export function kindFor(seed, index) {
-  if (index < 3) return "steady";
-  if (index === 3) return "wild";
-  if (index === 5 || index === 10) return "echo";
-  if (index === 8 || index === 15) return "veil";
-  if (index === 11 || index === 17) return "rift";
-  if (index < 12) return "steady";
-  const cycle = ["steady", "wild", "echo", "steady", "veil", "rift", "steady", "echo"];
-  return cycle[(index + (seed % 3)) % cycle.length];
+  if (index <= 0) return "steady";
+  const pool = index < 2 ? ["wild", "echo", "veil", "rift"] : KIND_POOL;
+  return pool[Math.floor(unit(seed, index, 2.31) * pool.length) % pool.length];
+}
+
+export function waitSeconds(seed, index) {
+  const u = unit(seed, index, 1.71);
+  if (index <= 0) return 0.52 + u * 0.28;
+  const max = Math.max(0.78, 1.55 - index * 0.01);
+  return 0.42 + u * (max - 0.42);
 }
 
 export function isWild(seed, index) {
   return kindFor(seed, index) === "wild";
 }
 
-export function isRelic(index) {
-  return index >= 6 && index % 7 === 6;
+export function isRelic(seed, index) {
+  if (typeof index !== "number") return false;
+  return kindFor(seed, index) === "relic";
 }
 
 export function leadAngle(omega, arcHalf) {
@@ -225,7 +241,34 @@ export function planetHue(seed, flings) {
 }
 
 export function multiplierFor(combo) {
-  return Math.min(3, 1 + Math.floor(Math.max(0, combo) / 3));
+  const n = Math.max(0, combo);
+  if (n >= 20) return 5;
+  if (n >= 12) return 4;
+  if (n >= 6) return 3;
+  if (n >= 3) return 2;
+  return 1;
+}
+
+export function coreProgress(run) {
+  if (!run) return 0;
+  if (run.kind !== "relic") return run.centerP;
+  const span = Math.max(0.02, run.arcHalf - run.perfectHalf);
+  const slide = Math.sin(run.progress * (run.slideFreq || 2.4) + (run.slidePhase || 0)) * span * 0.9;
+  const lo = run.entryP + run.perfectHalf;
+  const hi = run.exitP - run.perfectHalf;
+  return Math.max(lo, Math.min(hi, run.centerP + slide));
+}
+
+export function missText(event) {
+  if (!event) return "Drifted";
+  const ms = Math.abs(event.ms || 0);
+  if (event.reason === "clear") return "Course clear";
+  if (event.reason === "hour") return "The hour closes";
+  if (event.reason === "overshot") return event.nearMiss ? `So close · ${ms} ms late` : "Slipped past";
+  if (event.reason === "late") return event.nearMiss ? `So close · ${ms} ms late` : `${ms} ms late`;
+  if (event.reason === "early") return event.nearMiss ? `So close · ${ms} ms early` : `${ms} ms early`;
+  if (event.reason === "gap") return "Between the arcs";
+  return "Drifted";
 }
 
 export function lockProgress(run) {
@@ -261,38 +304,42 @@ export function zone(run) {
   }
   if (run.progress < run.entryP - grace) return "approach";
   if (run.progress > run.exitP + grace) return "past";
-  if (coreLit(run) && Math.abs(run.progress - run.centerP) <= run.perfectHalf + TUNING.perfectSlop) return "perfect";
+  if (Math.abs(run.progress - coreProgress(run)) <= run.perfectHalf + TUNING.perfectSlop) return "perfect";
   return "good";
 }
 
 export function viewAngle(run) {
-  if (run.rift) return wrap(run.startTheta - run.progress);
-  return wrap(run.startTheta + run.progress);
+  return wrap((run.startTheta || 0) + (run.dir || 1) * (run.progress || 0));
 }
 
-function setupWindow(run) {
-  let kind = kindFor(run.seed, run.flings);
-  const relic = isRelic(run.flings);
-  const arcCenter = arcCenterFor(run.seed, run.flings);
+function setupWindow(run, opts = {}) {
+  const kind = opts.keepKind ? run.kind : kindFor(run.seed, run.flings);
+  const relic = kind === "relic";
   let ratio = TUNING.perfectRatio;
-  if (kind === "veil") ratio = 0.24;
-  if (relic) ratio = Math.min(ratio, 0.28);
+  if (kind === "veil") ratio = 0.34;
+  if (relic) ratio = 0.3;
   const perfectHalf = run.arcHalf * ratio;
-  const lead = leadAngle(run.omega, run.arcHalf);
-  const entryP = lead;
-  const centerP = lead + run.arcHalf;
-  const exitP = lead + run.arcHalf * 2;
+  let wait = opts.short ? 0.5 + unit(run.seed, run.flings, 0.77) * 0.28 : waitSeconds(run.seed, run.flings);
+  if (kind === "echo") wait = Math.max(wait, 0.78);
+  const travel = Math.max(0.38, wait * run.omega);
+  const entryP = travel;
+  const exitP = travel + run.arcHalf * 2;
+  let centerP = travel + run.arcHalf;
+  if (kind === "veil") {
+    const span = Math.max(0, run.arcHalf - perfectHalf);
+    const offset = (unit(run.seed, run.flings, 3.17) * 2 - 1) * span * 0.8;
+    centerP += offset;
+  }
+  centerP = Math.max(entryP + perfectHalf, Math.min(exitP - perfectHalf, centerP));
   const grace = angleGrace(run.omega);
-  const lock = Math.max(0, Math.min(entryP * 0.48, entryP - grace - TUNING.lockGap));
+  const lock = Math.max(0, Math.min(entryP * 0.42, entryP - grace - TUNING.lockGap));
   let echo = null;
   if (kind === "echo") {
     echo = placeEcho(entryP, lock, run.arcHalf);
-    if (!echo) kind = "steady";
   }
-  const rift = kind === "rift";
-  const startTheta = rift
-    ? wrap(arcCenter + run.arcHalf + lead)
-    : wrap(arcCenter - run.arcHalf - lead);
+  const dir = run.dir || 1;
+  const startTheta = run.startTheta == null ? wrap(unit(run.seed, 0, 4.2) * TAU) : viewAngle(run);
+  const arcCenter = wrap(startTheta + dir * centerP);
   const seen = run.kindsSeen || [];
   const kindsSeen = seen.includes(kind) ? seen : [...seen, kind];
   return {
@@ -300,15 +347,20 @@ function setupWindow(run) {
     kind,
     relic,
     wild: kind === "wild",
-    rift,
-    echo,
+    rift: kind === "rift",
+    riftFlipped: opts.keepKind ? true : false,
+    riftAt: entryP * (0.34 + unit(run.seed, run.flings, 5.1) * 0.18),
+    echo: kind === "echo" ? echo : null,
     perfectHalf,
     arcCenter,
     startTheta,
+    dir,
     progress: 0,
     entryP,
     centerP,
     exitP,
+    slideFreq: 2.1 + unit(run.seed, run.flings, 6.3) * 1.6,
+    slidePhase: unit(run.seed, run.flings, 7.1) * TAU,
     kindsSeen,
   };
 }
@@ -337,6 +389,14 @@ function blankRun(seed, mode) {
     cashed: false,
     echoThenPerfect: false,
     kindsSeen: [],
+    banked: 0,
+    pot: 0,
+    potLost: 0,
+    stars: 0,
+    history: [],
+    mastery: { steady: 0, wild: 0, echo: 0, veil: 0, rift: 0, relic: 0 },
+    dir: 1,
+    startTheta: null,
   };
 }
 
@@ -346,8 +406,17 @@ export function createRun(seed, mode = "free") {
   return setupWindow(blankRun(clean, name));
 }
 
-function fail(run, reason, nearMiss) {
-  return { ...run, phase: "over", overReason: reason, nearMiss: !!nearMiss };
+function fail(run, reason, nearMiss, ms) {
+  return {
+    ...run,
+    phase: "over",
+    overReason: reason,
+    nearMiss: !!nearMiss,
+    score: run.banked || 0,
+    potLost: run.pot || 0,
+    pot: 0,
+    missMs: ms || 0,
+  };
 }
 
 function succeed(run, kind) {
@@ -355,25 +424,38 @@ function succeed(run, kind) {
   const cash = kind === "cash";
   const combo = perfect ? run.combo + 1 : 0;
   const mult = multiplierFor(perfect ? combo : 0);
-  const steps = Math.min(4, Math.max(0, combo - 1));
+  const steps = Math.min(6, Math.max(0, combo - 1));
   const base = cash
     ? TUNING.cashScore
     : perfect
       ? TUNING.perfectBase + steps * TUNING.perfectCombo
       : TUNING.goodScore;
   let scoreGain = base * mult;
-  const relicHit = !!(perfect && run.relic);
+  const relicHit = !!(perfect && run.kind === "relic");
   if (relicHit) scoreGain += TUNING.relicBonus;
+  const shrink = shrinkFor(run.flings);
   let arcHalf = run.arcHalf;
   if (run.mode !== "quiet") {
-    arcHalf -= shrinkFor(run.flings);
-    if (perfect) arcHalf += TUNING.restore + (run.kind === "rift" ? 0.022 : 0);
+    arcHalf -= shrink;
+    if (perfect) arcHalf += shrink;
     arcHalf = Math.min(TUNING.startArc, Math.max(TUNING.minArc, arcHalf));
   }
-  const milestone = perfect && combo > 0 && combo % 3 === 0;
+  let pot = run.pot || 0;
+  let banked = run.banked || 0;
+  if (perfect) pot += scoreGain;
+  else if (cash) {
+    banked += pot + scoreGain;
+    pot = 0;
+  } else banked += scoreGain;
+  const mastery = { ...(run.mastery || {}) };
+  if (perfect) mastery[run.kind] = (mastery[run.kind] || 0) + 1;
+  const history = [...(run.history || []), run.kind].slice(-COURSE);
+  const milestone = perfect && (combo === 3 || combo === 6 || combo === 12 || combo === 20);
   const next = {
     ...run,
-    score: run.score + scoreGain,
+    banked,
+    pot,
+    score: banked + pot,
     combo,
     bestCombo: Math.max(run.bestCombo, combo),
     perfects: run.perfects + (perfect ? 1 : 0),
@@ -388,8 +470,20 @@ function succeed(run, kind) {
     echoCleared: run.echoCleared + (run.kind === "echo" ? 1 : 0),
     cashed: run.cashed || cash,
     echoThenPerfect: run.echoThenPerfect || (perfect && run.cashed),
+    mastery,
+    history,
   };
+  if (run.mode === "daily" && next.flings >= COURSE) {
+    const cleared = { ...next, banked: next.banked + next.pot, pot: 0, phase: "over", overReason: "clear", nearMiss: false };
+    cleared.score = cleared.banked;
+    return { run: cleared, scoreGain, milestone, relicHit, mult };
+  }
   return { run: setupWindow(next), scoreGain, milestone, relicHit, mult };
+}
+
+function msBetween(run, from, to) {
+  const omega = Math.max(0.35, omegaAt(run.omega, run.progress, run.startTheta, run.wild));
+  return Math.round(((to - from) / omega) * 1000);
 }
 
 export function fling(run) {
@@ -401,26 +495,29 @@ export function fling(run) {
     const inSilver = p >= run.echo.entry - eg && p <= run.echo.exit + eg;
     const inGap = p > run.echo.exit + eg && p < run.entryP - grace;
     if (inSilver || inGap) {
-      const { run: next, scoreGain } = succeed(run, "cash");
-      return { run: next, event: { type: "cash", scoreGain, nearMiss: false, kind: "echo", late: inGap } };
+      const { run: next, scoreGain, mult } = succeed(run, "cash");
+      return { run: next, event: { type: "cash", scoreGain, nearMiss: false, kind: "echo", late: inGap, mult, ms: 0 } };
     }
   }
   if (p < lockProgress(run)) return { run, event: { type: "wait" } };
   if (p < run.entryP - grace) {
-    const nearMiss = p > run.entryP - grace - TUNING.nearMiss;
-    const gap = !!(run.echo && p > run.echo.exit);
-    const next = fail(run, gap ? "gap" : "early", nearMiss);
-    return { run: next, event: { type: "miss", reason: next.overReason, nearMiss, scoreGain: 0 } };
+    const ms = msBetween(run, p, run.entryP);
+    const nearMiss = ms <= TUNING.nearMissMs;
+    const next = fail(run, "early", nearMiss, ms);
+    return { run: next, event: { type: "miss", reason: "early", nearMiss, scoreGain: 0, ms } };
   }
   if (p > run.exitP + grace) {
-    const next = fail(run, "late", true);
-    return { run: next, event: { type: "miss", reason: "late", nearMiss: true, scoreGain: 0 } };
+    const ms = msBetween(run, run.exitP, p);
+    const nearMiss = ms <= TUNING.nearMissMs;
+    const next = fail(run, "late", nearMiss, ms);
+    return { run: next, event: { type: "miss", reason: "late", nearMiss, scoreGain: 0, ms } };
   }
-  const perfect = coreLit(run) && Math.abs(p - run.centerP) <= run.perfectHalf + TUNING.perfectSlop;
+  const core = coreProgress(run);
+  const perfect = Math.abs(p - core) <= run.perfectHalf + TUNING.perfectSlop;
   const { run: next, scoreGain, milestone, relicHit, mult } = succeed(run, perfect ? "perfect" : "good");
   return {
     run: next,
-    event: { type: perfect ? "perfect" : "good", scoreGain, nearMiss: false, milestone, relicHit, mult },
+    event: { type: perfect ? "perfect" : "good", scoreGain, nearMiss: false, milestone, relicHit, mult, ms: msBetween(run, core, p) },
   };
 }
 
@@ -435,16 +532,22 @@ export function step(run, dt) {
     progress += omegaAt(run.omega, progress, run.startTheta, run.wild) * h;
     left -= h;
   }
-  const moved = { ...run, progress, elapsed: run.elapsed + capped };
+  let moved = { ...run, progress, elapsed: run.elapsed + capped };
+  if (moved.kind === "rift" && !moved.riftFlipped && progress >= moved.riftAt && progress < moved.entryP) {
+    moved = setupWindow(moved, { keepKind: true, short: true });
+    return { run: moved, event: { type: "turn" } };
+  }
   if (run.mode === "quiet" && moved.elapsed >= TUNING.quietSeconds) {
-    const next = { ...moved, phase: "over", overReason: "hour", nearMiss: false };
-    return { run: next, event: { type: "hour", reason: "hour", nearMiss: false, scoreGain: 0 } };
+    const banked = (moved.banked || 0) + (moved.pot || 0);
+    const next = { ...moved, phase: "over", overReason: "hour", nearMiss: false, banked, pot: 0, score: banked };
+    return { run: next, event: { type: "hour", reason: "hour", nearMiss: false, scoreGain: 0, ms: 0 } };
   }
   const grace = angleGrace(run.omega);
   if (progress > run.exitP + grace) {
-    const nearMiss = progress < run.exitP + grace + TUNING.nearMiss;
-    const next = fail(moved, "overshot", nearMiss);
-    return { run: next, event: { type: "miss", reason: "overshot", nearMiss, scoreGain: 0 } };
+    const ms = msBetween(run, run.exitP, progress);
+    const nearMiss = ms <= TUNING.nearMissMs;
+    const next = fail(moved, "overshot", nearMiss, ms);
+    return { run: next, event: { type: "miss", reason: "overshot", nearMiss, scoreGain: 0, ms } };
   }
   return { run: moved, event: null };
 }
@@ -496,6 +599,60 @@ export function missionsFor(dateStr, save = null) {
   return { nightly, free, charm };
 }
 
+const STAR_TIERS = {
+  score: [500, 1200, 2200],
+  perfects: [8, 16, 24],
+  combo: [4, 8, 12],
+  echo: [1, 3, 5],
+  relic: [1, 3, 5],
+  rift: [1, 3, 5],
+  veil: [2, 5, 8],
+};
+
+export function goalStars(run, goalId) {
+  const tiers = STAR_TIERS[goalId];
+  if (!tiers || !run) return 0;
+  const value = {
+    score: run.score,
+    perfects: run.perfects,
+    combo: run.bestCombo,
+    echo: run.echoCleared,
+    relic: run.relicsBanked,
+    rift: run.riftPerfects,
+    veil: run.veilPerfects,
+  }[goalId] || 0;
+  return tiers.reduce((n, tier) => n + (value >= tier ? 1 : 0), 0);
+}
+
+export function medalFor(run, goalId = "score") {
+  if (!run || run.overReason !== "clear" || run.flings < COURSE) return null;
+  if (run.perfects >= COURSE) return "flawless";
+  const stars = goalStars(run, goalId);
+  if (stars >= 3) return "gold";
+  if (stars >= 2) return "silver";
+  return "bronze";
+}
+
+export function rankFor(save) {
+  const mastery = save?.mastery || {};
+  const total = Object.values(mastery).reduce((sum, n) => sum + (n || 0), 0) + (save?.nightsCleared || 0) * 2;
+  if (total >= 70) return "Orrery";
+  if (total >= 40) return "Corona";
+  if (total >= 20) return "Lantern";
+  if (total >= 8) return "Wick";
+  return "Spark";
+}
+
+export function missionPulse(save, run, today) {
+  const board = missionsFor(today, save);
+  const done = save.daily && save.daily.date === today ? save.daily.done || {} : {};
+  const hits = [];
+  if (!done.nightly && goalStars(run, board.nightly.id) >= 1) hits.push({ id: "nightly", label: board.nightly.label });
+  if (!done.free && board.free.test(run, save)) hits.push({ id: "free", label: board.free.label });
+  if (!done.charm && board.charm.test(run, save, { runsToday: (save.daily?.runsToday || 0) })) hits.push({ id: "charm", label: board.charm.label });
+  return hits;
+}
+
 export function missionLine(save, today, mode) {
   const board = missionsFor(today, save);
   const done = save.daily && save.daily.date === today ? save.daily.done || {} : {};
@@ -542,7 +699,9 @@ function applyMissions(save, run, today) {
     goals: { nightly: board.nightly.id, free: board.free.id, charm: board.charm.id },
   };
   const done = { ...(prev.done || {}) };
-  if (!done.nightly && board.nightly.test(run, save, daily)) done.nightly = true;
+  const stars = goalStars(run, board.nightly.id);
+  daily.stars = Math.max(prev.stars || 0, stars);
+  if (!done.nightly && stars >= 1) done.nightly = true;
   if (!done.free && board.free.test(run, save, daily)) done.free = true;
   if (!done.charm && board.charm.test(run, save, daily)) done.charm = true;
   daily.done = done;
@@ -579,7 +738,7 @@ function grant(save) {
     unlocked: TRAILS.map((t) => t.id).filter((id) => trails.has(id)),
     moons: MOONS.map((m) => m.id).filter((id) => moons.has(id)),
     themes: THEMES.map((t) => t.id).filter((id) => themes.has(id)),
-    quietUnlocked: !!(primed.quietUnlocked || primed.runs >= 3),
+    quietUnlocked: !!(primed.quietUnlocked || primed.runs >= 6),
   };
 }
 
@@ -669,6 +828,7 @@ export function sanitizeSave(raw) {
   return {
     ...base,
     best: Math.max(0, finite(raw.best, 0)),
+    bestFlings: Math.max(0, finite(raw.bestFlings, 0)),
     bestFree: Math.max(0, finite(raw.bestFree, 0)),
     bestQuiet: Math.max(0, finite(raw.bestQuiet, 0)),
     bestNight: Math.max(0, finite(raw.bestNight, 0)),
@@ -709,6 +869,7 @@ export function settleRun(save, run, today) {
   let next = {
     ...before,
     best: Math.max(before.best, run.score),
+    bestFlings: Math.max(before.bestFlings || 0, run.flings || 0),
     bestFree: mode === "free" ? Math.max(before.bestFree || 0, run.score) : (before.bestFree || 0),
     bestQuiet: mode === "quiet" ? Math.max(before.bestQuiet || 0, run.score) : (before.bestQuiet || 0),
     bestNight: mode === "daily" ? Math.max(before.bestNight || 0, run.score) : (before.bestNight || 0),
@@ -719,6 +880,7 @@ export function settleRun(save, run, today) {
     relics: (before.relics || 0) + (run.relicsBanked || 0),
     riftPerfects: (before.riftPerfects || 0) + (run.riftPerfects || 0),
     echoMastered: before.echoMastered || !!run.echoThenPerfect,
+    mastery: Object.fromEntries(["steady", "wild", "echo", "veil", "rift", "relic"].map((key) => [key, (before.mastery?.[key] || 0) + (run.mastery?.[key] || 0)])),
     runs: (before.runs || 0) + 1,
     days: (before.days || []).includes(today) ? before.days : [...(before.days || []), today],
   };
@@ -773,6 +935,7 @@ function gauss(rand) {
 }
 
 function armPlan(run, skill, rand, now) {
+  if (skill === "beat" || skill === "early" || skill === "random") return null;
   const z = zone(run);
   if (z === "echo") {
     if (skill === "sharp") return null;
@@ -794,20 +957,37 @@ function armPlan(run, skill, rand, now) {
 
 export function playRun(seed, mode, skill, rand = Math.random) {
   let run = createRun(seed, mode);
+  const beat = waitSeconds(seed, 0) + run.arcHalf / Math.max(0.4, run.omega);
+  let nextBeat = beat;
+  let nextRandom = 0.16 + rand() * 0.25;
   let t = 0;
   const dt = 1 / 90;
   let plan = null;
   while (t < 150 && run.phase === "playing") {
-    if (plan == null) plan = armPlan(run, skill, rand, t);
-    if (plan != null && t >= plan) {
+    let tap = false;
+    if (skill === "beat" && t >= nextBeat) {
+      tap = true;
+      nextBeat += beat;
+    } else if (skill === "random" && t >= nextRandom) {
+      tap = true;
+      nextRandom = t + 0.16 + rand() * 0.5;
+    } else if (skill === "early") {
+      const grace = angleGrace(run.omega);
+      tap = run.progress > lockProgress(run) + 0.02 && run.progress < run.entryP - grace - 0.03;
+    } else {
+      if (plan == null) plan = armPlan(run, skill, rand, t);
+      tap = plan != null && t >= plan;
+      if (tap) plan = null;
+    }
+    if (tap) {
       const res = fling(run);
-      plan = null;
       if (res.event && res.event.type !== "wait") {
         run = res.run;
         if (run.phase !== "playing") break;
       }
     } else {
-      run = step(run, dt).run;
+      const stepped = step(run, dt);
+      run = stepped.run;
       if (run.phase !== "playing") break;
     }
     t += dt;
@@ -828,6 +1008,7 @@ function percentile(sorted, p) {
 export function summarizeRuns(rows) {
   const times = rows.map((r) => r.elapsed).sort((a, b) => a - b);
   const scores = rows.map((r) => r.score).sort((a, b) => a - b);
+  const flings = rows.map((r) => r.flings || 0).sort((a, b) => a - b);
   const reasons = {};
   let near = 0;
   let early = 0;
@@ -845,6 +1026,7 @@ export function summarizeRuns(rows) {
   return {
     n: rows.length,
     time: { p10: +percentile(times, 0.1).toFixed(1), p50: +percentile(times, 0.5).toFixed(1), p90: +percentile(times, 0.9).toFixed(1) },
+    flings: { p50: percentile(flings, 0.5) },
     score: { p10: Math.round(percentile(scores, 0.1)), p50: Math.round(percentile(scores, 0.5)), p90: Math.round(percentile(scores, 0.9)) },
     reasons,
     nearRate: +(near / n).toFixed(3),
@@ -881,8 +1063,10 @@ export function simulateWeek(skill, start = "2026-11-10") {
   let save = coerceSave(null, start);
   let date = start;
   const days = [];
+  const tag = (prefix, ids) => (ids || []).map((id) => `${prefix}:${id}`);
+  const snap = (current) => new Set([...tag("moon", current.moons), ...tag("trail", current.unlocked), ...tag("sky", current.themes), current.quietUnlocked ? "quiet" : ""]);
   for (let day = 1; day <= 7; day++) {
-    const before = new Set([...(save.moons || []), ...(save.unlocked || []), ...(save.themes || []), save.quietUnlocked ? "quiet" : ""]);
+    const before = snap(save);
     const board = missionsFor(date, save);
     const modes = ["daily", "free", save.quietUnlocked ? "quiet" : "free"];
     const runs = [];
@@ -900,7 +1084,7 @@ export function simulateWeek(skill, start = "2026-11-10") {
         perfects: played.run.perfects,
       });
     });
-    const after = new Set([...(save.moons || []), ...(save.unlocked || []), ...(save.themes || []), save.quietUnlocked ? "quiet" : ""]);
+    const after = snap(save);
     const gained = [...after].filter((id) => id && !before.has(id));
     days.push({
       day,
