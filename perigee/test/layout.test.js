@@ -11,7 +11,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
 
 async function loadChromium() {
-  const require = createRequire(import.meta.url);
+  const require = createRequire(path.join(root, "package.json"));
   for (const name of ["playwright", "playwright-core"]) {
     try {
       const mod = require(name);
@@ -50,8 +50,8 @@ function serve() {
 }
 
 const sample = {
-  date: "2026-11-10",
-  number: 4,
+  date: "2026-11-03",
+  number: 3,
   goal: "Perfect 2 rifts tonight",
   score: 2806,
   medal: "gold",
@@ -61,7 +61,7 @@ const sample = {
 test("a shared night link fits, and a short title stays off the ring", async (t) => {
   const chromium = await loadChromium();
   if (!chromium) {
-    t.skip("no browser found: playwright is not installed");
+    t.skip("playwright-core is not installed. In perigee/, run npm install, then npm test. No browser found.");
     return;
   }
   const browser = await launch(chromium);
@@ -96,7 +96,7 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
         };
       });
       assert.equal(box.hidden, false);
-      assert.match(box.night, /Night 4/);
+      assert.match(box.night, /Night 3/);
       assert.match(box.goal, /Perfect 2 rifts tonight/);
       assert.match(box.goal, /2,806/);
       assert.ok(box.row.includes("★") && box.row.includes("☆") && box.row.includes("✶"));
@@ -135,8 +135,79 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
       assert.equal(box.slots, 7);
       assert.ok(box.dockTop >= box.ringBottom - 8, `${width}x${height} dock ${box.dockTop} ring ${box.ringBottom}`);
       assert.ok(box.playBottom <= box.h, `${width} play ${box.playBottom}`);
+      await page.evaluate(() => document.querySelector("#btn-play").click());
+      await page.waitForTimeout(250);
+      const playing = await page.evaluate(() => {
+        const header = document.querySelector(".top").getBoundingClientRect().bottom;
+        const dock = document.querySelector(".dock").getBoundingClientRect().top;
+        const orbit = window.__perigee.orbit;
+        const meta = document.querySelector("#meta");
+        return {
+          header,
+          dock,
+          top: orbit.cy - orbit.r,
+          bottom: orbit.cy + orbit.r,
+          metaText: meta.textContent,
+          overflow: meta.scrollWidth - meta.clientWidth,
+        };
+      });
+      assert.ok(playing.top >= playing.header - 1, `${width}x${height} ring ${playing.top} header ${playing.header}`);
+      assert.ok(playing.bottom <= playing.dock + 1, `${width}x${height} ring ${playing.bottom} dock ${playing.dock}`);
+      assert.ok(playing.overflow <= 1, `${width} meta ${playing.metaText}`);
       await page.close();
     }
+    const challenge = await (await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    })).newPage();
+    await challenge.goto(`http://127.0.0.1:${port}/index.html${hash}`);
+    const playVisible = await challenge.evaluate(() => {
+      const play = document.querySelector("#btn-play");
+      const tonight = document.querySelector("#btn-daily");
+      return play.getBoundingClientRect().height > 0 && tonight.getBoundingClientRect().height > 0;
+    });
+    assert.equal(playVisible, true);
+    await challenge.evaluate(() => document.querySelector("#btn-challenge").click());
+    const started = Date.now();
+    while (Date.now() - started < 90000) {
+      const state = await challenge.evaluate(() => window.__perigee.mode);
+      if (state === "over") break;
+      const tap = await challenge.evaluate(() => {
+        const run = window.__perigee.run;
+        return run && run.phase === "playing" && (run.zone === "perfect" || (run.zone === "echo" && run.pot > 0));
+      });
+      if (tap) await challenge.touchscreen.tap(195, 280);
+      await challenge.waitForTimeout(16);
+    }
+    for (let i = 0; i < 4; i++) {
+      if (await challenge.evaluate(() => document.querySelector("#reveal").hidden)) break;
+      await challenge.evaluate(() => document.querySelector("#btn-reveal-close").click());
+    }
+    const verdict = await challenge.evaluate(() => ({
+      reason: document.querySelector("#reason").textContent,
+      yours: document.querySelector("#share-row").textContent,
+      theirs: document.querySelector("#share-theirs").textContent,
+      hash: location.hash,
+    }));
+    assert.match(verdict.reason, /Beat it by|short|Matched/);
+    assert.ok(verdict.yours.length > 0 && verdict.theirs.length > 0);
+    assert.equal(verdict.hash, "");
+    await challenge.evaluate(() => document.querySelector("#btn-share").click());
+    const shared = await challenge.evaluate(() => window.__perigee.lastShare);
+    assert.match(shared.href, /^https?:\/\/.+#night\?/);
+    assert.match(shared.href, /d=2026-11-03/);
+    assert.equal(shared.date, "2026-11-03");
+    await challenge.evaluate(() => document.querySelector("#btn-home").click());
+    const home = await challenge.evaluate(() => ({
+      play: document.querySelector("#btn-play").getBoundingClientRect().height,
+      hash: location.hash,
+      challengeHidden: document.querySelector("#challenge").hidden,
+    }));
+    assert.ok(home.play > 0);
+    assert.equal(home.hash, "");
+    assert.equal(home.challengeHidden, true);
+    await challenge.close();
   } finally {
     await browser.close();
     server.close();

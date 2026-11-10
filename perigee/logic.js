@@ -700,6 +700,72 @@ export function shareLines(history) {
 const SHARE_CODE = { perfect: "P", good: "G", cash: "C" };
 const SHARE_RESULT = { P: "perfect", G: "good", C: "cash" };
 
+export const LAUNCH_DATE = "2026-11-01";
+
+export function nightNumber(date) {
+  const [y, m, d] = String(date).split("-").map(Number);
+  const [Y, M, D] = LAUNCH_DATE.split("-").map(Number);
+  const days = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(Y, M - 1, D)) / 86400000);
+  return Math.max(1, days + 1);
+}
+
+export function challengeVerdict(score, mark) {
+  const delta = Math.round(score) - Math.round(mark);
+  if (delta > 0) return { delta, text: `Beat it by ${delta}` };
+  if (delta < 0) return { delta, text: `${-delta} short` };
+  return { delta: 0, text: "Matched" };
+}
+
+export function absoluteShareUrl(hash, base) {
+  return new URL(hash, base).href;
+}
+
+export function adaptQuality(state, slowRatio, now, device = 2) {
+  const quality = state.quality;
+  let { nextProbeAt = 0, cleanWindows = 0, steppedUp = false, backoff = 0 } = state;
+  const hold = (next, extra = {}) => ({
+    quality: next,
+    nextProbeAt,
+    cleanWindows,
+    steppedUp,
+    backoff,
+    changed: Math.abs(next - quality) > 0.01,
+    ...extra,
+  });
+  if (slowRatio > 0.05) {
+    if (steppedUp) {
+      const wait = backoff || 30000;
+      const next = Math.max(1, +(quality - 0.25).toFixed(2));
+      return {
+        quality: next,
+        nextProbeAt: now + wait,
+        cleanWindows: 0,
+        steppedUp: false,
+        backoff: Math.min(wait * 2, 480000),
+        changed: Math.abs(next - quality) > 0.01,
+      };
+    }
+    const next = Math.max(1, +(quality - 0.25).toFixed(2));
+    const wait = 30000;
+    return {
+      quality: next,
+      nextProbeAt: now + wait,
+      cleanWindows: 0,
+      steppedUp: false,
+      backoff: wait,
+      changed: Math.abs(next - quality) > 0.01,
+    };
+  }
+  if (now < nextProbeAt) return hold(quality, { cleanWindows: 0 });
+  cleanWindows += 1;
+  if (cleanWindows < 3) return hold(quality, { cleanWindows });
+  const next = Math.min(Math.min(device, 2.5), +(quality + 0.25).toFixed(2));
+  if (next > quality + 0.01) {
+    return { quality: next, nextProbeAt: now + 30000, cleanWindows: 0, steppedUp: true, backoff, changed: true };
+  }
+  return hold(quality, { cleanWindows: 0 });
+}
+
 export function encodeNight(night) {
   const history = (night.history || []).map((entry) => SHARE_CODE[entry.result] || "G").join("");
   const params = new URLSearchParams();

@@ -27,8 +27,12 @@ import {
   missText,
   multiplierFor,
   rankFor,
+  absoluteShareUrl,
+  adaptQuality,
+  challengeVerdict,
   decodeNight,
   encodeNight,
+  nightNumber,
   resultGlyph,
   shareCard,
   shareLines,
@@ -214,7 +218,7 @@ function renderChallenge() {
   }
   card.hidden = false;
   document.body.dataset.challenge = "1";
-  document.querySelector("#challenge-k").textContent = `Night ${challenge.number}`;
+  document.querySelector("#challenge-k").textContent = `Night ${nightNumber(challenge.date)}`;
   document.querySelector("#challenge-goal").textContent = `${challenge.goal} · beat ${format(challenge.score)}`;
   document.querySelector("#challenge-row").textContent = shareLines(challenge.history).join("\n");
 }
@@ -480,13 +484,24 @@ function buzz(pattern) {
 
 function start(kind) {
   today = localDateString();
-  if (kind === "challenge" && challenge) {
-    const goal = missionsFor(challenge.date).nightly;
-    run = createRun(dailySeed(challenge.date) || 1, "challenge", goal.id);
-    run.mark = challenge.score;
-    run.nightNumber = challenge.number;
-    run.goalLabel = challenge.goal || goal.label;
+  const replay = kind === "challenge"
+    ? challenge || (run?.challengeDate ? {
+      date: run.challengeDate,
+      score: run.mark,
+      goal: run.goalLabel,
+      history: run.theirHistory,
+    } : null)
+    : null;
+  if (replay) {
+    const goal = missionsFor(replay.date).nightly;
+    run = createRun(dailySeed(replay.date) || 1, "challenge", goal.id);
+    run.mark = replay.score;
+    run.nightNumber = nightNumber(replay.date);
+    run.challengeDate = replay.date;
+    run.goalLabel = replay.goal || goal.label;
+    run.theirHistory = replay.history || [];
   } else {
+    leaveChallenge();
     const seed = kind === "daily" ? (dailySeed(today) || 1) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
     const goal = kind === "daily" ? missionsFor(today, save).nightly.id : null;
     run = createRun(seed, kind, goal);
@@ -539,10 +554,19 @@ function finish(event) {
   const settled = settleRun(save, run, today);
   save = settled.save;
   persist();
-  reasonEl.textContent = missText(event);
+  const challenging = run.mode === "challenge";
+  const verdict = challenging ? challengeVerdict(run.score || 0, run.mark || 0) : null;
+  reasonEl.textContent = !verdict
+    ? missText(event)
+    : verdict.delta > 0
+      ? `Beat it by ${format(verdict.delta)}`
+      : verdict.delta < 0
+        ? `${format(-verdict.delta)} short`
+        : "Matched";
   nearEl.hidden = true;
   const lostPot = run.potLost || 0;
-  if (run.overReason === "clear") metaEl.textContent = `Tonight ${COURSE}/${COURSE} · best ${format(run.score)}`;
+  if (challenging) metaEl.textContent = `Night ${run.nightNumber} · ${format(run.mark || 0)} to beat`;
+  else if (run.overReason === "clear") metaEl.textContent = `Tonight ${COURSE}/${COURSE} · best ${format(run.score)}`;
   else metaEl.textContent = lostPot ? `Banked ${format(run.score)} · lost ${format(lostPot)}` : `Banked ${format(run.score)}`;
   finalEl.textContent = format(run.score);
   const record = run.mode === "quiet" ? save.bestQuiet : run.mode === "daily" ? save.bestNight : save.bestFree;
@@ -570,28 +594,50 @@ function finish(event) {
     flare("death");
     burst(lastMoon.x, lastMoon.y, "#ffb07a", 16, 90);
   }
-  const goal = missionsFor(today, save).nightly.id;
+  const goal = challenging ? run.goalId : missionsFor(today, save).nightly.id;
   const stars = goalStars(run, goal);
   const medal = medalFor(run, goal);
   const medalEl = document.querySelector("#medal");
   const shareBtn = document.querySelector("#btn-share");
   const shareRow = document.querySelector("#share-row");
+  const theirs = document.querySelector("#share-theirs");
+  const yoursLabel = document.querySelector("#share-yours-label");
+  const theirsLabel = document.querySelector("#share-theirs-label");
   if (medal) {
     medalEl.hidden = false;
     const shown = medal === "flawless" ? 3 : stars;
     medalEl.textContent = `${medal} · ${"★".repeat(shown)}${"☆".repeat(Math.max(0, 3 - shown))}`;
+  } else medalEl.hidden = true;
+  if (challenging || medal) {
     shareRow.hidden = false;
     shareRow.textContent = shareLines(run.history).join("\n");
     shareBtn.hidden = false;
   } else {
-    medalEl.hidden = true;
     shareRow.hidden = true;
     shareBtn.hidden = true;
+  }
+  if (challenging) {
+    yoursLabel.hidden = false;
+    theirsLabel.hidden = false;
+    theirs.hidden = false;
+    theirs.textContent = shareLines(run.theirHistory || []).join("\n");
+    leaveChallenge();
+  } else {
+    yoursLabel.hidden = true;
+    theirsLabel.hidden = true;
+    theirs.hidden = true;
   }
   say(`${reasonEl.textContent}. Score ${format(run.score)}.`);
   queueReveal(settled.fresh);
   renderHome();
   syncChrome();
+}
+
+function leaveChallenge() {
+  challenge = null;
+  if (String(location.hash || "").startsWith("#night")) {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
 }
 
 function clearFx() {
@@ -741,11 +787,11 @@ function paintHud() {
     lastScore = run.score;
   }
   const tag = run.mode === "challenge"
-    ? `Night ${run.nightNumber || 1} · beat ${format(run.mark || 0)}`
+    ? `Night ${run.nightNumber || 1}`
     : run.mode === "daily" ? `Tonight ${Math.min(run.flings, COURSE)}/${COURSE}` : run.mode === "quiet" ? "Quiet" : "Free";
   const mult = multiplierFor(run.combo);
-  const chase = run.mode !== "daily" && save.bestFlings > run.flings ? ` · ${save.bestFlings - run.flings} to best` : "";
-  metaEl.textContent = `${tag} · banked ${format(run.banked || 0)} · at risk ${format(run.pot || 0)}${chase}`;
+  const chase = run.mode === "free" && save.bestFlings > run.flings ? `${save.bestFlings - run.flings} to best` : "";
+  metaEl.textContent = `${tag} · ${format(run.banked || 0)} banked · ${format(run.pot || 0)} risk`;
   if (run.kind !== lastKind) {
     lastKind = run.kind;
     if (run.kind === "rift") audio.play("rift");
@@ -754,7 +800,7 @@ function paintHud() {
   ledger.dataset.kind = run.kind;
   kindEl.textContent = `${KIND_COPY[run.kind].name}${run.relic && run.kind !== "relic" ? " · relic" : ""}`;
   coachEl.textContent = coachLine();
-  chainEl.textContent = `x${mult} · ${run.combo} chain${run.relicsBanked ? ` · ${run.relicsBanked} relic` : ""}`;
+  chainEl.textContent = `x${mult} · ${run.combo} chain${run.relicsBanked ? ` · ${run.relicsBanked} relic` : ""}${chase ? ` · ${chase}` : ""}`;
   const away = orbitsUntilEcho(run.seed, run.flings, run.goalId);
   echoEl.textContent = run.kind === "echo" ? "Echo now" : `echo in ${away}`;
   const flashing = missionFlash && performance.now() < missionFlash.until;
@@ -831,24 +877,23 @@ motionBtn.addEventListener("click", () => {
 document.querySelector("#btn-help").addEventListener("click", () => (helpOpen ? closeHelp() : openHelp()));
 document.querySelector("#btn-resume").addEventListener("click", closeHelp);
 document.querySelector("#btn-share").addEventListener("click", async () => {
-  const listed = save.nights || [];
-  const index = listed.findIndex((night) => night.date === today);
+  const fromChallenge = run?.mode === "challenge";
+  const date = fromChallenge ? run.challengeDate : today;
   const night = {
-    date: today,
-    number: index >= 0 ? index + 1 : Math.max(1, listed.length),
-    goal: missionsFor(today, save).nightly.label,
+    date,
+    number: nightNumber(date),
+    goal: fromChallenge ? (run.goalLabel || missionsFor(date).nightly.label) : missionsFor(today, save).nightly.label,
     score: run?.score || 0,
     medal: (document.querySelector("#medal").textContent || "").split("·")[0].trim() || "bronze",
     history: run?.history || [],
   };
-  const file = location.pathname.split("/").pop() || "index.html";
-  const href = `${file}${encodeNight(night)}`;
+  const href = absoluteShareUrl(encodeNight(night), location.href);
   const text = shareCard(night, href);
   try {
-    if (navigator.share) await navigator.share({ text });
-    else if (navigator.clipboard) await navigator.clipboard.writeText(text);
+    if (navigator.share) await navigator.share({ text, url: href });
+    else if (navigator.clipboard) await navigator.clipboard.writeText(`${text}`);
   } catch {}
-  window.__perigee.lastShare = { href, text };
+  window.__perigee.lastShare = { href, text, date };
 });
 document.querySelector("#btn-wear").addEventListener("click", () => {
   const item = revealQueue[0];
@@ -973,37 +1018,18 @@ function resize() {
   ringCache.key = "";
 }
 
-let qualityHoldUntil = 0;
-let cleanWindows = 0;
+let qualityState = { quality, nextProbeAt: 0, cleanWindows: 0, steppedUp: false, backoff: 0 };
 function noteFrame(ms) {
   if (!(ms > 0) || ms > 250) return;
   frameBudget.push(ms > 20 ? 1 : 0);
   if (frameBudget.length < 40) return;
   const slow = frameBudget.reduce((sum, value) => sum + value, 0) / frameBudget.length;
   frameBudget.length = 0;
-  const now = performance.now();
-  if (slow > 0.05) {
-    cleanWindows = 0;
-    const next = Math.max(1, +(quality - 0.25).toFixed(2));
-    if (next < quality - 0.01) {
-      quality = next;
-      qualityHoldUntil = now + 4000;
-      sizedDpr = -1;
-      resize();
-    }
-    return;
-  }
-  if (slow > 0 || now < qualityHoldUntil) {
-    cleanWindows = 0;
-    return;
-  }
-  cleanWindows += 1;
-  if (cleanWindows < 3) return;
-  cleanWindows = 0;
   const device = window.devicePixelRatio || 1;
-  const next = Math.min(Math.min(device, 2.5), +(quality + 0.25).toFixed(2));
-  if (next > quality + 0.01) {
-    quality = next;
+  const next = adaptQuality({ ...qualityState, quality }, slow, performance.now(), device);
+  qualityState = next;
+  if (next.changed) {
+    quality = next.quality;
     sizedDpr = -1;
     resize();
   }
@@ -1012,9 +1038,14 @@ function noteFrame(ms) {
 function orbitGeom() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const short = h <= 720;
-  const r = Math.max(short ? 86 : 100, Math.min(w * 0.38, h * (short ? 0.22 : 0.27), short ? 132 : 214));
-  const cy = short ? Math.min(h * 0.3, r + 86) : Math.min(h * 0.4, r + 118);
+  const headerBottom = document.querySelector(".top")?.getBoundingClientRect().bottom ?? 72;
+  const dockTop = document.querySelector(".dock")?.getBoundingClientRect().top ?? h - 140;
+  const gap = 12;
+  const moonPad = 18;
+  const room = Math.max(48, dockTop - headerBottom - gap * 2 - moonPad);
+  const cap = h <= 720 ? 118 : 214;
+  const r = Math.max(60, Math.min(w * 0.34, room / 2, cap));
+  const cy = headerBottom + gap + moonPad + r;
   return { cx: w / 2, cy, r };
 }
 

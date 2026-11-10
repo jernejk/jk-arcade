@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 import {
   COURSE,
   TAU,
+  absoluteShareUrl,
+  adaptQuality,
+  challengeVerdict,
   createRun,
   decodeNight,
   encodeNight,
+  nightNumber,
   fling,
   goalSlots,
   goalStars,
@@ -169,6 +173,41 @@ test("the share row breaks into lines of ten and one glyph family", () => {
   assert.ok(lines.every((line) => [...line].length <= 10));
   const glyphs = new Set(lines.join(""));
   assert.deepEqual([...glyphs].sort(), ["★", "☆", "✶"].sort());
+});
+
+test("a share link is absolute and names the night by days since launch", () => {
+  assert.equal(nightNumber("2026-11-01"), 1);
+  assert.equal(nightNumber("2026-11-10"), 10);
+  const night = {
+    date: "2026-11-03",
+    number: nightNumber("2026-11-03"),
+    goal: "Perfect 2 rifts tonight",
+    score: 1400,
+    medal: "silver",
+    history: [{ result: "perfect" }, { result: "cash" }],
+  };
+  const href = absoluteShareUrl(encodeNight(night), "https://arcade.example/perigee/index.html");
+  assert.match(href, /^https:\/\/arcade\.example\/perigee\/index\.html#night\?/);
+  const back = decodeNight(new URL(href).hash);
+  assert.equal(back.date, "2026-11-03");
+  assert.equal(back.number, 3);
+  assert.equal(challengeVerdict(1800, 1400).text, "Beat it by 400");
+  assert.equal(challengeVerdict(900, 1400).text, "500 short");
+});
+
+test("resolution stays put when a higher setting is too slow", () => {
+  let state = { quality: 1.5, nextProbeAt: 0, cleanWindows: 0, steppedUp: false, backoff: 0 };
+  const changes = [];
+  for (let t = 0; t <= 40000; t += 700) {
+    const slow = state.quality >= 1.5 ? 0.11 : 0;
+    const before = state.quality;
+    state = adaptQuality(state, slow, t, 3);
+    if (Math.abs(state.quality - before) > 0.01) changes.push({ t, quality: state.quality });
+  }
+  assert.ok(changes.length <= 3, JSON.stringify(changes));
+  assert.equal(changes[0].quality, 1.25);
+  assert.equal(state.quality, 1.25);
+  assert.ok(state.nextProbeAt >= 60000, `next probe ${state.nextProbeAt}`);
 });
 
 test("a share link opens the same night", () => {
