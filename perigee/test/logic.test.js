@@ -147,7 +147,7 @@ test("idling through the window is an overshoot", () => {
   assert.equal(run.overReason, "overshot");
   assert.equal(run.flings, 0);
   assert.ok(run.elapsed < 4, `elapsed ${run.elapsed}`);
-  assert.equal(run.nearMiss, true);
+  assert.equal(run.nearMiss, false);
 });
 
 test("stepping never skips the opening approach", () => {
@@ -271,21 +271,41 @@ test("daily seeds are stable and date-shaped", () => {
   assert.equal(stamped, "2026-11-10");
 });
 
-test("streaks count once a day and break after a gap", () => {
+test("a nightly star counts once a day and a gap breaks the streak", () => {
+  const starRun = {
+    ...createRun(1, "daily", "score"),
+    mode: "daily",
+    score: 800,
+    bestCombo: 4,
+    flings: 12,
+    perfects: 8,
+    echoCleared: 2,
+    relicsBanked: 2,
+    riftPerfects: 2,
+    veilPerfects: 3,
+    phase: "over",
+  };
   let save = coerceSave(null, "2026-11-08");
-  save = registerDaily(save, "2026-11-08", TUNING.par);
+  save = settleRun(save, starRun, "2026-11-08").save;
   assert.equal(save.streak, 1);
-  save = registerDaily(save, "2026-11-08", 999);
+  assert.equal(save.nightsCleared, 1);
+  save = settleRun(save, starRun, "2026-11-08").save;
   assert.equal(save.streak, 1);
-  assert.equal(save.daily.best, 999);
-  save = registerDaily(save, "2026-11-09", TUNING.par - 1);
+  assert.equal(save.nightsCleared, 1);
+  save = settleRun(save, {
+    ...starRun,
+    score: 0,
+    bestCombo: 0,
+    perfects: 0,
+    echoCleared: 0,
+    relicsBanked: 0,
+    riftPerfects: 0,
+    veilPerfects: 0,
+  }, "2026-11-09").save;
   assert.equal(save.streak, 1);
-  assert.equal(save.daily.cleared, false);
-  assert.equal(activeStreak(save, "2026-11-09"), 1);
-  save = registerDaily(save, "2026-11-09", TUNING.par);
+  save = settleRun(save, starRun, "2026-11-09").save;
   assert.equal(save.streak, 2);
-  save = registerDaily(expireStreak(save, "2026-11-12"), "2026-11-12", TUNING.par);
-  assert.equal(save.streak, 1);
+  assert.equal(save.nightsCleared, 2);
   assert.equal(activeStreak({ ...save, lastStreakDate: "2026-11-01", streak: 4 }, "2026-11-10"), 0);
 });
 

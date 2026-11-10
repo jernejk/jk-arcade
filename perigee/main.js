@@ -180,6 +180,53 @@ function renderHome() {
   renderShelf();
 }
 
+function paintPreview(canvas, id, look) {
+  const g = canvas.getContext("2d");
+  const w = canvas.width;
+  const r = w * 0.28;
+  g.clearRect(0, 0, w, w);
+  g.save();
+  g.translate(w / 2, w / 2);
+  const body = g.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+  body.addColorStop(0, "#fffef8");
+  body.addColorStop(0.42, look.core || "#fff");
+  body.addColorStop(1, look.shade || look.glow || "#333");
+  g.fillStyle = body;
+  if (id === "tide") {
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.fill();
+    g.globalCompositeOperation = "destination-out";
+    g.beginPath();
+    g.arc(r * 0.42, -r * 0.05, r * 0.7, 0, TAU);
+    g.fill();
+  } else if (id === "crown") {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i / 10) * TAU;
+      const rad = i % 2 === 0 ? r * 1.25 : r * 0.55;
+      g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    g.closePath();
+    g.fill();
+  } else if (id === "hollow" || id === "glass") {
+    g.strokeStyle = look.core;
+    g.lineWidth = id === "hollow" ? 2 : 4;
+    g.beginPath();
+    g.arc(0, 0, r * 0.72, 0, TAU);
+    g.stroke();
+  } else if (id === "comet") {
+    g.beginPath();
+    g.ellipse(0, 0, r * 0.7, r, 0.6, 0, TAU);
+    g.fill();
+  } else {
+    g.beginPath();
+    g.ellipse(0, 0, id === "iris" ? r * 0.75 : r, r, 0, 0, TAU);
+    g.fill();
+  }
+  g.restore();
+}
+
 function swatch(list, items, equipped, owned, onPick) {
   list.replaceChildren();
   for (const item of items) {
@@ -189,10 +236,16 @@ function swatch(list, items, equipped, owned, onPick) {
     btn.className = "swatch";
     btn.setAttribute("aria-pressed", equipped === item.id ? "true" : "false");
     btn.setAttribute("aria-disabled", open ? "false" : "true");
-    const dot = document.createElement("span");
-    dot.className = "dot";
     const look = item.look;
-    dot.style.background = `radial-gradient(circle at 35% 32%, #fff, ${look.core} 42%, ${look.shade || look.glow})`;
+    const dot = document.createElement(MOON_LOOK[item.id] ? "canvas" : "span");
+    dot.className = "dot";
+    if (MOON_LOOK[item.id]) {
+      dot.width = 64;
+      dot.height = 64;
+      paintPreview(dot, item.id, look);
+    } else {
+      dot.style.background = `radial-gradient(circle at 35% 32%, #fff, ${look.core} 42%, ${look.shade || look.glow})`;
+    }
     dot.style.setProperty("--glow", look.glow);
     const label = document.createElement("span");
     label.textContent = item.name;
@@ -278,7 +331,8 @@ function buzz(pattern) {
 function start(kind) {
   today = localDateString();
   const seed = kind === "daily" ? (dailySeed(today) || 1) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
-  run = createRun(seed, kind);
+  const goal = kind === "daily" ? missionsFor(today, save).nightly.id : null;
+  run = createRun(seed, kind, goal);
   mode = "play";
   overShown = false;
   hold = false;
@@ -334,7 +388,10 @@ function finish(event) {
   const record = run.mode === "quiet" ? save.bestQuiet : run.mode === "daily" ? save.bestNight : save.bestFree;
   const bestLine = settled.isBest ? "New best" : `Best ${format(record || save.best)}`;
   const streak = activeStreak(save, today);
-  detailEl.textContent = `${run.flings} flings · ${run.perfects} perfect · ${run.cashes || 0} cashed · ${bestLine}${run.mode === "daily" && streak ? ` · streak ${streak}` : ""}`;
+  const lost = run.potLost ? ` · lost ${format(run.potLost)} unbanked` : "";
+  detailEl.textContent = `${run.flings} flings · ${run.perfects} perfect · ${run.cashes || 0} cashed · ${bestLine}${run.mode === "daily" && streak ? ` · streak ${streak}` : ""}${lost}`;
+  scoreEl.textContent = format(run.score);
+  lastScore = run.score;
   const bits = [
     ...names(settled.fresh.moons, MOONS).map((n) => `${n} moon`),
     ...names(settled.fresh.trails, TRAILS).map((n) => `${n} trail`),
@@ -361,9 +418,10 @@ function finish(event) {
   const shareRow = document.querySelector("#share-row");
   if (medal) {
     medalEl.hidden = false;
-    medalEl.textContent = `${medal} · ${"★".repeat(stars)}${"☆".repeat(Math.max(0, 3 - stars))}`;
+    const shown = medal === "flawless" ? 3 : stars;
+    medalEl.textContent = `${medal} · ${"★".repeat(shown)}${"☆".repeat(Math.max(0, 3 - shown))}`;
     shareRow.hidden = false;
-    shareRow.textContent = (run.history || []).map((kind) => ({ steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" }[kind] || "·")).join("");
+    shareRow.textContent = (run.history || []).map(nightGlyph).join("");
     shareBtn.hidden = false;
   } else {
     medalEl.hidden = true;
@@ -406,9 +464,20 @@ function showReveal() {
   document.querySelector("#reveal-name").textContent = item.name;
   const sw = document.querySelector("#reveal-swatch");
   const look = item.kind === "moon" ? MOON_LOOK[item.id] : item.kind === "trail" ? TRAIL_LOOK[item.id] : THEME_LOOK[item.id] || MOON_LOOK.cinder;
-  const core = look.core || look.sky0 || "#fff";
-  const shade = look.shade || look.sky2 || "#333";
-  sw.style.background = `radial-gradient(circle at 35% 32%, #fff, ${core} 45%, ${shade})`;
+  if (item.kind === "moon") {
+    sw.replaceChildren();
+    const canvas = document.createElement("canvas");
+    canvas.width = 72;
+    canvas.height = 72;
+    paintPreview(canvas, item.id, look);
+    sw.append(canvas);
+    sw.style.background = "transparent";
+  } else {
+    sw.replaceChildren();
+    const core = look.core || look.sky0 || "#fff";
+    const shade = look.shade || look.sky2 || "#333";
+    sw.style.background = `radial-gradient(circle at 35% 32%, #fff, ${core} 45%, ${shade})`;
+  }
   document.querySelector("#reveal-hint").textContent = item.kind === "mode" ? "The arc stays open until the hour closes." : "Yours now.";
 }
 
@@ -424,9 +493,19 @@ function revealOver() {
 }
 
 function milestoneName(combo) {
-  if (combo >= 9) return "Corona";
-  if (combo >= 6) return "Bright";
+  if (combo >= 20) return "Nova";
+  if (combo >= 12) return "Flare";
+  if (combo >= 6) return "Corona";
   return "Kindled";
+}
+
+function nightGlyph(entry) {
+  if (entry && typeof entry === "object") {
+    if (entry.result === "perfect") return "★";
+    if (entry.result === "cash") return "◌";
+    return "●";
+  }
+  return { steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" }[entry] || "·";
 }
 
 function onPress() {
@@ -457,6 +536,8 @@ function onPress() {
   const perfect = event.type === "perfect";
   const word = event.relicHit ? "Relic" : event.milestone ? milestoneName(run.combo) : perfect ? "Perigee" : event.type === "cash" ? "Banked" : "Fling";
   showCallout(word);
+  const milestoneInk = { Kindled: "#ffb067", Corona: "#ffe7a3", Flare: "#ff7a45", Nova: "#fff4c8" };
+  callout.style.color = event.milestone ? (milestoneInk[word] || "#fff6df") : "";
   audio.play(event.relicHit ? "relic" : event.milestone ? "milestone" : perfect ? "perfect" : event.type === "cash" ? "cash" : "good", run.combo);
   audio.setChain(run.combo);
   buzz(perfect ? (event.milestone ? [8, 24, 12] : 10) : 5);
@@ -499,7 +580,7 @@ function ackMissions(current) {
   persist();
   const toast = document.querySelector("#toast");
   toast.hidden = false;
-  toast.textContent = hits[0].label;
+  toast.textContent = `Done · ${hits[0].label}`;
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toast.hidden = true; }, 1100);
   audio.play("milestone");
@@ -514,14 +595,14 @@ function paintHud() {
   const tag = run.mode === "daily" ? `Tonight ${Math.min(run.flings, COURSE)}/${COURSE}` : run.mode === "quiet" ? "Quiet" : "Free";
   const mult = multiplierFor(run.combo);
   const chase = run.mode !== "daily" && save.bestFlings > run.flings ? ` · ${save.bestFlings - run.flings} to best` : "";
-  metaEl.textContent = `${tag} · best ${format(Math.max(save.best, run.score))}${chase}`;
+  metaEl.textContent = `${tag} · banked ${format(run.banked || 0)} · at risk ${format(run.pot || 0)}${chase}`;
   if (run.kind !== lastKind) {
     lastKind = run.kind;
     if (run.kind === "rift") audio.play("rift");
     if (run.kind === "wild") audio.play("wild");
   }
   ledger.dataset.kind = run.kind;
-  kindEl.textContent = `${KIND_COPY[run.kind].name}${run.relic ? " · relic" : ""}`;
+  kindEl.textContent = `${KIND_COPY[run.kind].name}${run.relic && run.kind !== "relic" ? " · relic" : ""}`;
   coachEl.textContent = coachLine();
   chainEl.textContent = `x${mult} · ${run.combo} chain${run.relicsBanked ? ` · ${run.relicsBanked} relic` : ""}`;
   const span = TUNING.startArc - TUNING.minArc;
@@ -595,8 +676,7 @@ motionBtn.addEventListener("click", () => {
 document.querySelector("#btn-help").addEventListener("click", () => (helpOpen ? closeHelp() : openHelp()));
 document.querySelector("#btn-resume").addEventListener("click", closeHelp);
 document.querySelector("#btn-share").addEventListener("click", async () => {
-  const glyphs = { steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" };
-  const row = (run?.history || []).map((kind) => glyphs[kind] || "·").join("");
+  const row = (run?.history || []).map(nightGlyph).join("");
   const text = `Perigee ${today}\n${row}\n${document.querySelector("#medal").textContent} · ${format(run?.score || 0)}`;
   try {
     if (navigator.share) await navigator.share({ text });
@@ -699,8 +779,11 @@ function makeStars(n) {
 let sizedW = 0;
 let sizedH = 0;
 let sizedDpr = 0;
+let quality = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2);
+const frameBudget = [];
+let turnPulse = 0;
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const dpr = quality;
   const w = window.innerWidth;
   const h = window.innerHeight;
   if (w === sizedW && h === sizedH && dpr === sizedDpr) return;
@@ -710,6 +793,24 @@ function resize() {
   canvas.width = Math.max(1, Math.round(w * dpr));
   canvas.height = Math.max(1, Math.round(h * dpr));
   skyCache = null;
+  ringCache.key = "";
+}
+
+function noteFrame(ms) {
+  if (!(ms > 0) || ms > 250) return;
+  frameBudget.push(ms);
+  if (frameBudget.length < 40) return;
+  const avg = frameBudget.reduce((sum, value) => sum + value, 0) / frameBudget.length;
+  frameBudget.length = 0;
+  const device = window.devicePixelRatio || 1;
+  let next = quality;
+  if (avg > 20) next = Math.max(1.25, quality - 0.25);
+  else if (avg < 11) next = Math.min(Math.min(device, 2.5), quality + 0.25);
+  if (Math.abs(next - quality) > 0.01) {
+    quality = Math.round(next * 100) / 100;
+    sizedDpr = -1;
+    resize();
+  }
 }
 
 function orbitGeom() {
@@ -824,30 +925,33 @@ function drawPlanet(cx, cy, radius, hue) {
   ctx.restore();
 }
 
+const tideScratch = document.createElement("canvas");
+
 function drawMoon(x, y, radius, look, time, id) {
   const sx = moonSquash;
   const sy = 1 / Math.max(0.7, moonSquash);
   const glow = look.rainbow ? `hsl(${(time / 18) % 360} 80% 70%)` : look.glow;
   if (!reduced()) {
+    const halo = ctx.createRadialGradient(x, y, radius * 0.2, x, y, radius * 3.2);
+    halo.addColorStop(0, glow);
+    halo.addColorStop(0.45, glow);
+    halo.addColorStop(1, "rgba(0,0,0,0)");
     ctx.save();
-    ctx.fillStyle = glow;
-    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = halo;
+    ctx.globalAlpha = 0.45;
     ctx.beginPath();
-    ctx.arc(x, y, radius * 3.1, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 0.4;
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 1.8, 0, TAU);
+    ctx.arc(x, y, radius * 3.2, 0, TAU);
     ctx.fill();
     ctx.restore();
   }
-  const body = ctx.createRadialGradient(x - radius * 0.4, y - radius * 0.45, radius * 0.15, x, y, radius);
-  body.addColorStop(0, "#fffef8");
-  body.addColorStop(0.38, look.core);
-  body.addColorStop(1, look.shade || "#8a5a3a");
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(sx, sy);
+  const body = ctx.createRadialGradient(-radius * 0.38, -radius * 0.42, radius * 0.12, 0, 0, radius);
+  body.addColorStop(0, "#fffef8");
+  body.addColorStop(0.28, look.core);
+  body.addColorStop(0.72, look.shade || "#8a5a3a");
+  body.addColorStop(1, "#3a2218");
   ctx.fillStyle = body;
   if (id === "glass" || id === "hollow") {
     ctx.strokeStyle = look.core;
@@ -856,14 +960,8 @@ function drawMoon(x, y, radius, look, time, id) {
     ctx.arc(0, 0, radius * 0.72, 0, TAU);
     ctx.stroke();
   } else if (id === "tide") {
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, TAU);
-    ctx.fill();
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.beginPath();
-    ctx.arc(radius * 0.45, -radius * 0.1, radius * 0.72, 0, TAU);
-    ctx.fill();
-    ctx.globalCompositeOperation = "source-over";
+    const scratch = paintTide(radius, body);
+    ctx.drawImage(scratch, -scratch.width / 2, -scratch.height / 2);
   } else if (id === "crown") {
     ctx.fillStyle = look.glow;
     starShape(0, 0, radius * 1.35);
@@ -887,32 +985,67 @@ function drawMoon(x, y, radius, look, time, id) {
   ctx.fill();
 }
 
-function drawRing(cx, cy, r, look) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.strokeStyle = look.ring;
-  ctx.globalAlpha = 0.9;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.stroke();
-  ctx.globalAlpha = 0.45;
-  ctx.lineWidth = 10;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.stroke();
-  ctx.globalAlpha = 0.55;
-  ctx.strokeStyle = look.brass;
-  ctx.lineWidth = 1.4;
-  for (let i = 0; i < 72; i++) {
-    const a = (i / 72) * TAU;
-    const inner = i % 6 === 0 ? r - 12 : r - 7;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
-    ctx.lineTo(Math.cos(a) * (r - 2), Math.sin(a) * (r - 2));
-    ctx.stroke();
+function paintTide(radius, body) {
+  const size = Math.ceil(radius * 2 + 8);
+  if (tideScratch.width !== size) {
+    tideScratch.width = size;
+    tideScratch.height = size;
   }
-  ctx.restore();
+  const g = tideScratch.getContext("2d");
+  g.clearRect(0, 0, size, size);
+  g.save();
+  g.translate(size / 2, size / 2);
+  g.fillStyle = body;
+  g.beginPath();
+  g.arc(0, 0, radius, 0, TAU);
+  g.fill();
+  g.globalCompositeOperation = "destination-out";
+  g.beginPath();
+  g.arc(radius * 0.45, -radius * 0.1, radius * 0.72, 0, TAU);
+  g.fill();
+  g.restore();
+  return tideScratch;
+}
+
+const ringCache = { key: "", canvas: null };
+
+function drawRing(cx, cy, r, look) {
+  const key = `${Math.round(r)}|${look.ring}|${look.brass}`;
+  if (ringCache.key !== key) {
+    const pad = 18;
+    const size = Math.ceil(r * 2 + pad * 2);
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const g = canvas.getContext("2d");
+    g.translate(size / 2, size / 2);
+    g.strokeStyle = look.ring;
+    g.globalAlpha = 0.9;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.stroke();
+    g.globalAlpha = 0.45;
+    g.lineWidth = 10;
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.stroke();
+    g.globalAlpha = 0.55;
+    g.strokeStyle = look.brass;
+    g.lineWidth = 1.4;
+    for (let i = 0; i < 72; i++) {
+      const a = (i / 72) * TAU;
+      const inner = i % 6 === 0 ? r - 12 : r - 7;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      g.lineTo(Math.cos(a) * (r - 2), Math.sin(a) * (r - 2));
+      g.stroke();
+    }
+    ringCache.key = key;
+    ringCache.canvas = canvas;
+  }
+  const canvas = ringCache.canvas;
+  ctx.drawImage(canvas, cx - canvas.width / 2, cy - canvas.height / 2);
 }
 
 function drawScene(w, h, time) {
@@ -957,7 +1090,7 @@ function drawScene(w, h, time) {
     if (fly) {
       const tx = -Math.sin(fly.angle);
       const ty = Math.cos(fly.angle);
-      const dist = fly.age * 240;
+      const dist = Math.min(52, fly.age * 140);
       lastMoon.x = cx + Math.cos(fly.angle) * r + tx * dist;
       lastMoon.y = cy + Math.sin(fly.angle) * r + ty * dist;
       moonAngle = fly.angle;
@@ -1024,16 +1157,23 @@ function drawScene(w, h, time) {
     }
   }
   if (rift) {
-    const entry = (run.dir || 1) < 0 ? center + half : center - half;
+    const dir = run.dir || 1;
+    const entry = dir < 0 ? center + half : center - half;
     const ex = cx + Math.cos(entry) * r;
     const ey = cy + Math.sin(entry) * r;
+    const ux = Math.cos(entry + dir * 1.2);
+    const uy = Math.sin(entry + dir * 1.2);
+    const px = -uy;
+    const py = ux;
+    const scale = 28 + (turnPulse || 0) * 14;
     ctx.strokeStyle = "#ffe7a8";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.beginPath();
+    ctx.moveTo(ex - ux * scale, ey - uy * scale);
+    ctx.lineTo(ex, ey);
+    ctx.lineTo(ex - ux * scale * 0.65 + px * scale * 0.55, ey - uy * scale * 0.65 + py * scale * 0.55);
     ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - 8, ey - 6);
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - 8, ey + 6);
+    ctx.lineTo(ex - ux * scale * 0.65 - px * scale * 0.55, ey - uy * scale * 0.65 - py * scale * 0.55);
     ctx.stroke();
   }
   for (const end of [center - half, center + half]) {
@@ -1080,7 +1220,10 @@ function drawScene(w, h, time) {
     });
     ctx.globalAlpha = 1;
   }
-  drawMoon(lastMoon.x, lastMoon.y, Math.max(8, r * 0.078), moonLook, time, save.moon);
+  ctx.save();
+  if (fly) ctx.globalAlpha = Math.max(0, 1 - fly.age / 0.42);
+  drawMoon(lastMoon.x, lastMoon.y, Math.max(11, r * 0.11), moonLook, time, save.moon);
+  ctx.restore();
 
   for (const wave of ripples) {
     const k = 1 - wave.age / wave.life;
@@ -1159,6 +1302,11 @@ function frame(ts) {
       audio.play(run.kind === "veil" ? "veil" : "tick");
     }
     if (after === "approach" || after === "echo") wasHot = false;
+    if (stepped.event && stepped.event.type === "turn") {
+      showCallout("Turned");
+      audio.play("rift");
+      turnPulse = 1;
+    }
     if (stepped.event && (stepped.event.type === "miss" || stepped.event.type === "hour")) {
       if (stepped.event.type === "miss") showCallout(REASON[stepped.event.reason] || "Drifted");
       finish(stepped.event);
@@ -1182,10 +1330,12 @@ function frame(ts) {
   for (const wave of ripples) wave.age += dt;
   ripples = ripples.filter((w) => w.age < w.life);
   if (shake > 0) shake *= reduced() ? 0 : 0.86;
+  if (turnPulse > 0) turnPulse = Math.max(0, turnPulse - dt * 2.2);
+  noteFrame((ts - (frame._prev || ts)));
+  frame._prev = ts;
 
   resize();
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(quality, 0, 0, quality, 0, 0);
   drawScene(window.innerWidth, window.innerHeight, ts);
   requestAnimationFrame(frame);
 }

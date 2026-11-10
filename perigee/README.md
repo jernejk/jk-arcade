@@ -2,7 +2,7 @@
 
 Fling a moon through a shrinking gold arc. Perfect flings hold the arc open. Miss, and it drifts into the dark.
 
-A tap before the gold ends the run at once. Runs that catch the arc last about 45–110 seconds. The arc shrinks when you play safe and holds when you hit the white core, so the choice is on the screen as a meter, not only as a score.
+A tap before the gold ends the run at once. Letting the moon slip past ends it too, and that miss is not called "so close". A careful run lasts a couple of minutes; strong play, once speed has capped, keeps getting a tighter core and more wild swings, and tends to end between two and three minutes. The arc shrinks when you play safe and holds when you hit the white core.
 
 ## Inside a run
 
@@ -11,16 +11,16 @@ The moon never jumps. The next gold is placed a seeded distance ahead of whereve
 The first orbit is steady. After that the ring changes:
 
 - **Wild** surges and slows. Ride it into the core.
-- **Echo** offers a silver arc first. Tapping it cashes out and breaks the chain. Waiting for the gold keeps the chain. The gap counts as a late cash, so the choice is not a trick death.
-- **Veil** leaves the gold dim until the core ignites. Take the dim gold or wait.
-- **Rift** turns the moon around. A perfect opens the arc a little wider.
-- Every seventh orbit from the sixth is a **relic** core: a star on the bead. Hitting it banks a relic. Missing it and taking the gold is safe.
+- **Echo** offers silver first, at least about every six orbits. Perfects sit in a pot marked "at risk". Tapping silver banks that pot and breaks the chain. Waiting for the gold keeps the chain and leaves the pot at risk. Dying spends the unbanked pot; the result says how much was lost.
+- **Veil** leaves the gold dim until the core ignites. The core sits off-centre. Take the dim gold or wait.
+- **Rift** reverses the moon. A chevron shows the new direction, and a perfect opens the arc a little wider.
+- **Relic** slides the core while you are in the gold. Hitting the star banks a relic. Taking the gold without it is safe.
 
-Three perfects raise the multiplier (Kindled, Bright, Corona). Quiet hour, after three finished runs, does not shrink the arc and closes itself at 100 seconds.
+The gold always stays inside one lap, ahead of the moon. Three, six, twelve, and twenty perfects raise the multiplier: Kindled, Corona, Flare, Nova. Quiet hour, after six finished runs, does not shrink the arc and closes itself at 100 seconds.
 
 ## Across days
 
-Tonight's goal rotates through seven seals (score, perfects, combo, echo, relic, rift, veil). Clearing it lights that seal and keeps the streak. Moons, trails, and skies unlock from deeds: five perfects, a nightly clear, cash-then-perfect, a relic, a rift perfect, a second night, a three-day streak, a fourth day, three different goals, seven nights. Records are kept for free play, tonight, and quiet hour. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
+Tonight is a seeded course of thirty orbits. The goal rotates through seven seals, and the course plants enough of that kind that a gold medal is reachable. One star lights the seal and counts the night. Three stars is gold. A perfect course is flawless. The share row is the night you played (★ perfect, ● good, ◌ cashed), not just which kinds appeared. A score without a star does not keep the streak. Rank is the sum of per-kind mastery and is saved with the rest of the shelf. Moons, trails, and skies unlock from deeds, including nights cleared. Records are kept for free play, tonight, and quiet hour. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
 
 ## How to play
 

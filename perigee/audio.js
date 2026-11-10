@@ -83,10 +83,10 @@ export function createAudio() {
     unlock() { if (!muted) { context(); ensureBed(); } },
     setChain(combo) {
       if (!bed || muted) return;
-      const mult = combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
-      bed.gain.gain.value = 0.012 + (mult - 1) * 0.006;
-      bed.g2.gain.value = mult >= 2 ? 0.02 : 0;
-      bed.b.frequency.value = mult >= 3 ? 392 : 247;
+      const mult = combo >= 20 ? 5 : combo >= 12 ? 4 : combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
+      bed.gain.gain.value = 0.012 + Math.min(4, mult - 1) * 0.005;
+      bed.g2.gain.value = mult >= 2 ? 0.016 + (mult >= 4 ? 0.012 : 0) : 0;
+      bed.b.frequency.value = mult >= 5 ? 523 : mult >= 4 ? 440 : mult >= 3 ? 392 : 247;
     },
     play(name, step = 0) {
       if (muted) return;
@@ -102,10 +102,10 @@ export function createAudio() {
         tone(740, 0.14, "sine", 0.05, 980);
         tone(1180, 0.18, "sine", 0.03);
       } else if (name === "milestone") {
-        tone(523, 0.16, "sine", 0.05);
-        tone(659, 0.18, "sine", 0.04);
-        tone(784, 0.22, "sine", 0.03);
-      } else if (name === "rift") tone(196, 0.12, "sine", 0.04, 330);
+        [523, 659, 784, 1046].forEach((freq, index) => {
+          setTimeout(() => tone(freq, 0.12, "sine", 0.045), index * 68);
+        });
+      } else if (name === "rift") tone(196, 0.16, "sine", 0.05, 90);
       else if (name === "veil") tone(880, 0.06, "sine", 0.03, 1320);
       else if (name === "hour") tone(392, 0.22, "sine", 0.04, 523);
       else if (name === "wait") tone(240, 0.05, "sine", 0.02);

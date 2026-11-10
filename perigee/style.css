@@ -137,14 +137,26 @@ html:not([data-motion="reduce"]) .score.bump { animation: bump 200ms ease; }
 }
 html:not([data-motion="reduce"]) .callout.show { animation: pop 720ms ease; }
 
-.dock { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.dock { position: relative; min-height: 132px; padding: 0 14px 12px; display: flex; flex-direction: column; gap: 8px; }
 .dock > div { transition: opacity 160ms ease; }
+.dock > div[hidden] {
+  display: flex !important;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+}
 html[data-motion="reduce"] .dock > div { transition: none; }
 .toast {
   position: fixed;
   z-index: 6;
   left: 50%;
-  top: 18%;
+  bottom: 168px;
+  top: auto;
   transform: translateX(-50%);
   margin: 0;
   padding: 8px 14px;
@@ -265,7 +277,7 @@ html[data-motion="reduce"] .dock > div { transition: none; }
   line-height: 0.9;
   font-variant-numeric: tabular-nums;
 }
-.detail, .unlock { margin: 6px 0 0; text-align: center; color: var(--dim); font-size: 14.5px; }
+.detail, .unlock { margin: 6px 0 0; text-align: center; color: var(--dim); font-size: 14.5px; line-height: 1.35; }
 .unlock { color: var(--gold); }
 
 .sheet {
@@ -314,6 +326,21 @@ html[data-motion="reduce"] .dock > div { transition: none; }
   flex: 0 0 auto;
   box-shadow: 0 0 10px var(--glow, transparent);
 }
+canvas.dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#reveal-swatch.dot.big {
+  width: 96px;
+  height: 96px;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+#reveal-swatch canvas { width: 96px; height: 96px; display: block; }
 
 .sr {
   position: absolute;
