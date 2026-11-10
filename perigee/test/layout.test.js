@@ -127,12 +127,16 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
         return {
           dockTop: dock.top,
           ringBottom: orbit.cy + orbit.r,
+          r: orbit.r,
+          cy: orbit.cy,
           playBottom: play.bottom,
           slots: document.querySelectorAll("#week-sky i").length,
+          labels: [...document.querySelectorAll(".dot-label")].map((node) => node.textContent),
           h: window.innerHeight,
         };
       });
       assert.equal(box.slots, 7);
+      assert.deepEqual(box.labels, ["Seals", "Week"]);
       assert.ok(box.dockTop >= box.ringBottom - 8, `${width}x${height} dock ${box.dockTop} ring ${box.ringBottom}`);
       assert.ok(box.playBottom <= box.h, `${width} play ${box.playBottom}`);
       await page.evaluate(() => document.querySelector("#btn-play").click());
@@ -149,15 +153,19 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
           bottom: orbit.cy + orbit.r,
           metaText: meta.textContent,
           overflow: meta.scrollWidth - meta.clientWidth,
+          r: orbit.r,
+          cy: orbit.cy,
         };
       });
+      assert.ok(Math.abs(playing.r - box.r) < 0.5, `${width} ring snapped ${box.r} -> ${playing.r}`);
+      assert.ok(Math.abs(playing.cy - box.cy) < 0.5, `${width} center snapped ${box.cy} -> ${playing.cy}`);
       assert.ok(playing.top >= playing.header - 1, `${width}x${height} ring ${playing.top} header ${playing.header}`);
       assert.ok(playing.bottom <= playing.dock + 1, `${width}x${height} ring ${playing.bottom} dock ${playing.dock}`);
       assert.ok(playing.overflow <= 1, `${width} meta ${playing.metaText}`);
       await page.close();
     }
     const challenge = await (await browser.newContext({
-      viewport: { width: 390, height: 844 },
+      viewport: { width: 360, height: 640 },
       hasTouch: true,
       isMobile: true,
     })).newPage();
@@ -177,7 +185,7 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
         const run = window.__perigee.run;
         return run && run.phase === "playing" && (run.zone === "perfect" || (run.zone === "echo" && run.pot > 0));
       });
-      if (tap) await challenge.touchscreen.tap(195, 280);
+      if (tap) await challenge.touchscreen.tap(180, 240);
       await challenge.waitForTimeout(16);
     }
     for (let i = 0; i < 4; i++) {
@@ -193,7 +201,15 @@ test("a shared night link fits, and a short title stays off the ring", async (t)
     assert.match(verdict.reason, /Beat it by|short|Matched/);
     assert.ok(verdict.yours.length > 0 && verdict.theirs.length > 0);
     assert.equal(verdict.hash, "");
+    const fit = await challenge.evaluate(() => {
+      const dock = document.querySelector("#over-dock");
+      dock.scrollTop = dock.scrollHeight;
+      const back = document.querySelector("#btn-home").getBoundingClientRect();
+      return { bottom: back.bottom, h: window.innerHeight };
+    });
+    assert.ok(fit.bottom <= fit.h + 1, `Back cut off at ${fit.bottom} of ${fit.h}`);
     await challenge.evaluate(() => document.querySelector("#btn-share").click());
+    await challenge.waitForFunction(() => window.__perigee.lastShare && window.__perigee.lastShare.date);
     const shared = await challenge.evaluate(() => window.__perigee.lastShare);
     assert.match(shared.href, /^https?:\/\/.+#night\?/);
     assert.match(shared.href, /d=2026-11-03/);

@@ -226,6 +226,7 @@ test("a share link opens the same night", () => {
   assert.equal(back.goal, night.goal);
   assert.equal(back.score, 2806);
   assert.deepEqual(back.history, night.history);
+  assert.equal(shareCard(night).includes("http"), false);
   const card = shareCard(night, `index.html${hash}`);
   assert.match(card, /night 4/);
   assert.match(card, /Perfect 2 rifts tonight/);

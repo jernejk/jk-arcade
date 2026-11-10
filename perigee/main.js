@@ -94,6 +94,7 @@ const THEME_HUE = { dusk: 28, harbor: 198, ember: 22, aurora: 162, ink: 230 };
 let today = localDateString();
 let save = loadSave(localStorage, today);
 let mode = "title";
+let orbit = { cx: 195, cy: 220, r: 100 };
 let challenge = decodeNight(location.hash);
 let helpOpen = false;
 let shelfOpen = false;
@@ -447,6 +448,7 @@ function syncChrome() {
   playDock.hidden = !playing;
   overDock.hidden = !over;
   document.body.dataset.screen = over ? "over" : mode;
+  measureOrbit();
 }
 
 function showCallout(text) {
@@ -888,12 +890,13 @@ document.querySelector("#btn-share").addEventListener("click", async () => {
     history: run?.history || [],
   };
   const href = absoluteShareUrl(encodeNight(night), location.href);
-  const text = shareCard(night, href);
+  const text = shareCard(night);
+  const copied = shareCard(night, href);
+  window.__perigee.lastShare = { href, text, date };
   try {
     if (navigator.share) await navigator.share({ text, url: href });
-    else if (navigator.clipboard) await navigator.clipboard.writeText(`${text}`);
+    else if (navigator.clipboard) await navigator.clipboard.writeText(copied);
   } catch {}
-  window.__perigee.lastShare = { href, text, date };
 });
 document.querySelector("#btn-wear").addEventListener("click", () => {
   const item = revealQueue[0];
@@ -1016,6 +1019,7 @@ function resize() {
   canvas.height = Math.max(1, Math.round(h * dpr));
   skyCache = null;
   ringCache.key = "";
+  measureOrbit();
 }
 
 let qualityState = { quality, nextProbeAt: 0, cleanWindows: 0, steppedUp: false, backoff: 0 };
@@ -1035,18 +1039,19 @@ function noteFrame(ms) {
   }
 }
 
-function orbitGeom() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const headerBottom = document.querySelector(".top")?.getBoundingClientRect().bottom ?? 72;
-  const dockTop = document.querySelector(".dock")?.getBoundingClientRect().top ?? h - 140;
-  const gap = 12;
-  const moonPad = 18;
+function measureOrbit() {
+  const w = window.innerWidth || 390;
+  const h = window.innerHeight || 844;
+  const score = Math.min(58, Math.max(40, w * 0.11));
+  const headerBottom = 10 + score * 0.88 + 22;
+  const dockHeight = h <= 720 ? 176 : 184;
+  const dockTop = h - dockHeight;
+  const gap = 10;
+  const moonPad = 16;
   const room = Math.max(48, dockTop - headerBottom - gap * 2 - moonPad);
   const cap = h <= 720 ? 118 : 214;
   const r = Math.max(60, Math.min(w * 0.34, room / 2, cap));
-  const cy = headerBottom + gap + moonPad + r;
-  return { cx: w / 2, cy, r };
+  orbit = { cx: w / 2, cy: headerBottom + gap + moonPad + r, r };
 }
 
 function drawSky(w, h) {
@@ -1313,7 +1318,7 @@ function drawScene(w, h, time) {
   drawSky(w, h);
   ctx.save();
   if (shake > 0.25) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  const geom = orbitGeom();
+  const geom = orbit;
   const look = THEME_LOOK[save.theme] || THEME_LOOK.dusk;
   const moonLook = MOON_LOOK[save.moon] || MOON_LOOK.cinder;
   const trail = TRAIL_LOOK[save.trail] || TRAIL_LOOK.ember;
@@ -1373,10 +1378,8 @@ function drawScene(w, h, time) {
     const head = (1 - novaSweep) * TAU - Math.PI / 2;
     ctx.save();
     ctx.strokeStyle = "#fff6d4";
-    ctx.shadowColor = "#fff4c8";
-    ctx.shadowBlur = 18;
-    ctx.globalAlpha = novaSweep * 0.45;
-    ctx.lineWidth = 14;
+    ctx.globalAlpha = novaSweep * 0.28;
+    ctx.lineWidth = 26;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, TAU);
     ctx.stroke();
@@ -1625,7 +1628,7 @@ function frame(ts) {
 window.__perigee = {
   get mode() { return mode; },
   get challenge() { return challenge; },
-  get orbit() { return orbitGeom(); },
+  get orbit() { return orbit; },
   get run() { return run ? { ...run, zone: run.phase === "playing" ? zone(run) : run.phase } : null; },
   get save() { return { ...save, goalKinds: [...(save.goalKinds || [])], moons: [...(save.moons || [])] }; },
   get helpOpen() { return helpOpen; },
@@ -1638,4 +1641,5 @@ window.__perigee = {
   },
 };
 
+measureOrbit();
 requestAnimationFrame(frame);

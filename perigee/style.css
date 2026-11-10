@@ -271,7 +271,12 @@ html[data-motion="reduce"] .dock > div[hidden] { transition: none; }
 .coach { margin: 6px 0 0; font-size: 16px; min-height: 22px; }
 .chain { margin: 6px 0 0; color: var(--gold); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: 0.04em; }
 .echo-when { margin: 6px 0 0; color: var(--dim); font-size: 13px; letter-spacing: 0.04em; }
-#over-dock { max-height: 62dvh; overflow: auto; }
+#over-dock {
+  max-height: calc(100dvh - 64px);
+  overflow: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
 #over-dock .text-btn { width: 100%; }
 #over-dock .unlock { margin-bottom: 8px; }
 .challenge { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
@@ -280,7 +285,9 @@ html[data-motion="reduce"] .dock > div[hidden] { transition: none; }
 .challenge .share-row { margin: 2px 0 0; }
 .challenge .btn { margin-top: 6px; }
 .share-label { margin: 8px 0 0; text-align: center; color: var(--dim); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
-.week { display: flex; gap: 8px; margin-top: 6px; }
+.dot-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot-label { width: 38px; color: var(--dim); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+.week { display: flex; gap: 8px; }
 .week i {
   width: 10px;
   height: 10px;
@@ -297,10 +304,13 @@ html[data-motion="reduce"] .dock > div[hidden] { transition: none; }
   h1 { font-size: 36px; }
   .btn { min-height: 44px; font-size: 16px; }
   .btn.secondary { min-height: 40px; }
-  #over-dock .reason { font-size: 26px; }
-  #over-dock .final { font-size: 34px; }
-  #over-dock .detail, #over-dock .unlock, #over-dock .medal { font-size: 12.5px; margin: 2px 0; }
-  .share-row { font-size: 13px; letter-spacing: 0.08em; line-height: 1.25; }
+  #over-dock .reason { font-size: 22px; }
+  #over-dock .final { font-size: 30px; margin: 0; }
+  #over-dock .detail, #over-dock .unlock, #over-dock .medal { font-size: 12px; margin: 2px 0; }
+  #over-dock .share-label { margin: 2px 0 0; }
+  #over-dock .btn { min-height: 40px; }
+  .share-row { font-size: 13px; letter-spacing: 0.06em; line-height: 1.15; }
+  .dock { gap: 4px; padding-bottom: 8px; }
 }
 body[data-screen="over"]::before {
   content: "";

@@ -796,14 +796,15 @@ export function decodeNight(hash) {
   };
 }
 
-export function shareCard(night, href) {
-  return [
+export function shareCard(night, href = "") {
+  const lines = [
     `Perigee · night ${night.number}`,
     night.goal || "Tonight",
     ...shareLines(night.history),
     `${night.medal || "bronze"} · ${night.score || 0}`,
-    href,
-  ].join("\n");
+  ];
+  if (href) lines.push(href);
+  return lines.join("\n");
 }
 
 export function weekSlots(nights, today) {
