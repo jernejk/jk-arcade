@@ -1,0 +1,11 @@
+{
+  "name": "perigee",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.0"
+  }
+}

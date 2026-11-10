@@ -1,5 +1,14 @@
 [
   {
+    "id": "perigee",
+    "title": "Perigee",
+    "pitch": "Fling a moon through a shrinking gold arc. Cash the silver or wait for the core. A new night every day.",
+    "controls": "Tap the gold. Silver cashes out. Space flings, R restarts, M mutes.",
+    "url": "perigee/",
+    "shot": "shots/perigee.webp",
+    "accent": "#ffc14d"
+  },
+  {
     "id": "nap-patch",
     "title": "Nap Patch",
     "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A new quilt every day.",

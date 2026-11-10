@@ -6,6 +6,7 @@ Small browser games I built with AI coding tools. Free, no accounts, and most of
 
 | Game | Play |
 |---|---|
+| Perigee — fling a moon through a shrinking gold arc | [perigee/](https://jernejk.github.io/jk-arcade/perigee/) |
 | Piece by Pixel — rebuild pixel-art postcards one piece at a time | [Gull Harbor, Master tier](https://jernejk.github.io/jk-arcade/piece-by-pixel/#gull-harbor@master) |
 | Tumbleverse — topple toy worlds, break bridges, play with tiny planets | [tumbleverse/](https://jernejk.github.io/jk-arcade/tumbleverse/) |
 | Loose Ends — unwind arrow cords from rotating porcelain shapes | [loose-ends/](https://jernejk.github.io/jk-arcade/loose-ends/) |

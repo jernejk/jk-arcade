@@ -1,0 +1,289 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  COURSE,
+  TAU,
+  absoluteShareUrl,
+  adaptQuality,
+  challengeVerdict,
+  createRun,
+  decodeNight,
+  encodeNight,
+  nightNumber,
+  fling,
+  goalSlots,
+  goalStars,
+  goldWindowSeconds,
+  kindFor,
+  loadSave,
+  medalFor,
+  missionsFor,
+  orbitsUntilEcho,
+  perfectWindowSeconds,
+  rankFor,
+  rememberNight,
+  settleRun,
+  shareCard,
+  shareLines,
+  weekSlots,
+  step,
+  writeSave,
+  coreProgress,
+} from "../logic.js";
+
+function memory() {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+}
+
+function perfect(run) {
+  const core = coreProgress({ ...run, progress: run.centerP });
+  return fling({ ...run, progress: core }).run;
+}
+
+test("mastery survives a save round-trip", () => {
+  const storage = memory();
+  const save = {
+    mastery: { steady: 4, wild: 2, echo: 0, veil: 1, rift: 3, relic: 6 },
+    best: 10,
+  };
+  writeSave(storage, save);
+  const loaded = loadSave(storage, "2026-11-10");
+  assert.equal(loaded.mastery.rift, 3);
+  assert.equal(loaded.mastery.relic, 6);
+  assert.equal(loaded.mastery.steady, 4);
+});
+
+test("a cleared Tonight increments nightsCleared even after the live toast", () => {
+  const today = "2026-11-10";
+  let save = loadSave(memory(), today);
+  const run = {
+    ...createRun(3, "daily", "score"),
+    mode: "daily",
+    score: 900,
+    bestCombo: 4,
+    perfects: 8,
+    echoCleared: 2,
+    relicsBanked: 2,
+    riftPerfects: 2,
+    veilPerfects: 3,
+    flings: 12,
+    phase: "over",
+  };
+  save = {
+    ...save,
+    daily: { date: today, best: 0, cleared: true, runsToday: 0, done: { nightly: true }, stars: 1, nightCounted: false },
+  };
+  const settled = settleRun(save, run, today);
+  assert.equal(settled.save.nightsCleared, 1);
+  const again = settleRun(settled.save, run, today);
+  assert.equal(again.save.nightsCleared, 1);
+});
+
+test("gold stays inside one lap", () => {
+  for (let seed = 1; seed <= 30; seed++) {
+    let run = createRun(seed);
+    for (let i = 0; i < 24 && run.phase === "playing"; i++) {
+      assert.ok(run.exitP < TAU - 0.2, `seed ${seed} fling ${i} exit ${run.exitP}`);
+      assert.ok(run.entryP + run.arcHalf * 2 <= run.exitP + 0.001);
+      run = perfect(run);
+    }
+  }
+});
+
+test("a rift flips direction", () => {
+  let run = createRun(1);
+  let guard = 0;
+  while (run.kind !== "rift" && guard < 40) {
+    run = perfect(run);
+    guard += 1;
+  }
+  assert.equal(run.kind, "rift");
+  const dir = run.dir || 1;
+  let flipped = false;
+  guard = 0;
+  while (run.phase === "playing" && guard < 4000) {
+    const stepped = step(run, 1 / 90);
+    if (stepped.event && stepped.event.type === "turn") {
+      assert.equal(stepped.run.dir, -dir);
+      assert.notEqual(stepped.run.dir, dir);
+      flipped = true;
+      break;
+    }
+    run = stepped.run;
+    guard += 1;
+  }
+  assert.equal(flipped, true);
+});
+
+test("every nightly goal can reach a gold medal", () => {
+  for (const goal of ["score", "perfects", "combo", "echo", "relic", "rift", "veil"]) {
+    let reachable = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      let run = createRun(seed, "daily", goal);
+      let steps = 0;
+      while (run.phase === "playing" && steps < 4000) {
+        if (goal === "echo" && run.kind === "echo" && run.echo && run.pot > 0 && run.progress >= run.echo.entry && run.progress <= run.echo.exit) {
+          run = fling(run).run;
+        } else if (zoneSafe(run)) {
+          run = fling({ ...run, progress: coreProgress(run) }).run;
+        } else {
+          run = step(run, 1 / 90).run;
+        }
+        steps += 1;
+      }
+      const stars = goalStars(run, goal);
+      const medal = medalFor(run, goal);
+      if (stars >= 3 && (medal === "gold" || medal === "flawless")) reachable += 1;
+    }
+    assert.ok(reachable >= 20, `${goal} reachable ${reachable}/24`);
+    assert.equal(missionsFor("2026-11-10").nightly.label.includes(String(({
+      score: 500, perfects: 8, combo: 4, echo: 2, relic: 2, rift: 2, veil: 3,
+    })[missionsFor("2026-11-10").nightly.id] || "")), true);
+  }
+  assert.equal(goalSlots(4, "veil").size, 10);
+  assert.ok(kindFor(4, 0) === "steady");
+  void COURSE;
+});
+
+test("a goal night plants its kind exactly once per slot", () => {
+  const quota = { veil: 10, echo: 8, rift: 8, relic: 8 };
+  for (const goal of Object.keys(quota)) {
+    for (let seed = 1; seed <= 12; seed++) {
+      let count = 0;
+      for (let i = 0; i < 30; i++) if (kindFor(seed, i, goal) === goal) count += 1;
+      assert.equal(count, quota[goal], `${goal} seed ${seed} planted ${count}`);
+    }
+  }
+});
+
+test("the perfect window stays near 35ms while the gold tightens", () => {
+  let run = createRun(4);
+  const earlyGold = goldWindowSeconds(run);
+  for (let i = 0; i < 180 && run.phase === "playing"; i++) run = perfect(run);
+  const late = perfectWindowSeconds(run) * 1000;
+  assert.ok(late >= 34, `late perfect ${late}`);
+  assert.ok(goldWindowSeconds(run) < earlyGold, `gold ${goldWindowSeconds(run)} vs ${earlyGold}`);
+});
+
+test("the share row breaks into lines of ten and one glyph family", () => {
+  const history = Array.from({ length: 30 }, (_, i) => ({ result: i % 3 === 0 ? "cash" : i % 3 === 1 ? "good" : "perfect" }));
+  const lines = shareLines(history);
+  assert.equal(lines.length, 3);
+  assert.ok(lines.every((line) => [...line].length <= 10));
+  const glyphs = new Set(lines.join(""));
+  assert.deepEqual([...glyphs].sort(), ["★", "☆", "✶"].sort());
+});
+
+test("a share link is absolute and names the night by days since launch", () => {
+  assert.equal(nightNumber("2026-11-01"), 1);
+  assert.equal(nightNumber("2026-11-10"), 10);
+  const night = {
+    date: "2026-11-03",
+    number: nightNumber("2026-11-03"),
+    goal: "Perfect 2 rifts tonight",
+    score: 1400,
+    medal: "silver",
+    history: [{ result: "perfect" }, { result: "cash" }],
+  };
+  const href = absoluteShareUrl(encodeNight(night), "https://arcade.example/perigee/index.html");
+  assert.match(href, /^https:\/\/arcade\.example\/perigee\/index\.html#night\?/);
+  const back = decodeNight(new URL(href).hash);
+  assert.equal(back.date, "2026-11-03");
+  assert.equal(back.number, 3);
+  assert.equal(challengeVerdict(1800, 1400).text, "Beat it by 400");
+  assert.equal(challengeVerdict(900, 1400).text, "500 short");
+});
+
+test("resolution stays put when a higher setting is too slow", () => {
+  let state = { quality: 1.5, nextProbeAt: 0, cleanWindows: 0, steppedUp: false, backoff: 0 };
+  const changes = [];
+  for (let t = 0; t <= 40000; t += 700) {
+    const slow = state.quality >= 1.5 ? 0.11 : 0;
+    const before = state.quality;
+    state = adaptQuality(state, slow, t, 3);
+    if (Math.abs(state.quality - before) > 0.01) changes.push({ t, quality: state.quality });
+  }
+  assert.ok(changes.length <= 3, JSON.stringify(changes));
+  assert.equal(changes[0].quality, 1.25);
+  assert.equal(state.quality, 1.25);
+  assert.ok(state.nextProbeAt >= 60000, `next probe ${state.nextProbeAt}`);
+});
+
+test("a share link opens the same night", () => {
+  const night = {
+    date: "2026-11-10",
+    number: 4,
+    goal: "Perfect 2 rifts tonight",
+    score: 2806,
+    medal: "gold",
+    history: [{ result: "perfect" }, { result: "good" }, { result: "cash" }],
+  };
+  const hash = encodeNight(night);
+  const back = decodeNight(hash);
+  assert.equal(back.date, night.date);
+  assert.equal(back.number, 4);
+  assert.equal(back.goal, night.goal);
+  assert.equal(back.score, 2806);
+  assert.deepEqual(back.history, night.history);
+  assert.equal(shareCard(night).includes("http"), false);
+  const card = shareCard(night, `index.html${hash}`);
+  assert.match(card, /night 4/);
+  assert.match(card, /Perfect 2 rifts tonight/);
+  assert.match(card, /^index\.html#night\?/m);
+});
+
+test("the week shows seven slots from the first night", () => {
+  const slots = weekSlots([{ date: "2026-11-10", medal: "gold", stars: 3, goal: "rift" }], "2026-11-10");
+  assert.equal(slots.length, 7);
+  assert.equal(slots.filter((slot) => !slot.empty).length, 1);
+  assert.equal(slots[6].medal, "gold");
+  assert.equal(slots[0].empty, true);
+});
+
+test("banking an echo counts toward Halo", () => {
+  let run = createRun(2);
+  run = {
+    ...run,
+    kind: "echo",
+    pot: 80,
+    echo: { entry: 0.1, exit: 0.5, center: 0.3, half: 0.2 },
+    progress: 0.3,
+  };
+  const cashed = fling(run);
+  assert.equal(cashed.event.type, "cash");
+  assert.equal(cashed.run.mastery.echo, 1);
+});
+
+test("a cleared Tonight is remembered, and a week does not reach Orrery", () => {
+  const today = "2026-11-10";
+  let save = loadSave(memory(), today);
+  const run = {
+    ...createRun(3, "daily", "score"),
+    mode: "daily",
+    score: 900,
+    bestCombo: 4,
+    perfects: 8,
+    echoCleared: 2,
+    relicsBanked: 2,
+    riftPerfects: 2,
+    veilPerfects: 3,
+    flings: 30,
+    overReason: "clear",
+    phase: "over",
+  };
+  save = settleRun(save, run, today).save;
+  assert.equal(save.nights.length, 1);
+  assert.equal(save.nights[0].date, today);
+  const again = settleRun(save, { ...run, score: 100 }, today).save;
+  assert.equal(again.nights.length, 1);
+  const loaded = loadSave({ getItem: () => JSON.stringify(again), setItem() {} }, today);
+  assert.equal(loaded.nights[0].medal, again.nights[0].medal);
+  assert.notEqual(rankFor({ mastery: { steady: 80, wild: 70, echo: 40, veil: 70, rift: 70, relic: 50 }, nightsCleared: 4 }), "Orrery");
+  assert.equal(orbitsUntilEcho(1, 0, null) >= 1, true);
+  assert.equal(rememberNight([], { date: today, medal: "bronze", stars: 1, goal: "rift" })[0].medal, "bronze");
+});
+
+function zoneSafe(run) {
+  return Math.abs(run.progress - coreProgress(run)) <= run.perfectHalf * 0.5 && run.progress >= run.entryP;
+}
