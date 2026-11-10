@@ -34,10 +34,12 @@ export const COURSE = TUNING.course;
 export const TRAILS = [
   { id: "ember", name: "Ember", hint: "Yours from the start", test: () => true },
   { id: "pearl", name: "Pearl", hint: "Best 1,200", test: (s) => s.best >= 1200 },
-  { id: "comet", name: "Comet", hint: "Eight relics and three nights", test: (s) => s.relics >= 8 && s.nightsCleared >= 3 },
+  { id: "comet", name: "Comet", hint: "Sixteen relics and three nights", test: (s) => s.relics >= 16 && s.nightsCleared >= 3 },
   { id: "brass", name: "Brass", hint: "Four rift perfects and three nights", test: (s) => s.riftPerfects >= 4 && s.nightsCleared >= 3 },
   { id: "aurora", name: "Aurora", hint: "A 3-day streak", test: (s) => s.bestStreak >= 3 || s.streak >= 3 },
   { id: "tideglass", name: "Tideglass", hint: "A second night", test: (s) => s.nightsCleared >= 2 || s.bestStreak >= 2 || s.streak >= 2 },
+  { id: "ion", name: "Ion", hint: "Ten nights in a row", test: (s) => s.bestStreak >= 10 || s.streak >= 10 },
+  { id: "halo", name: "Halo", hint: "Fifteen of every orbit", test: (s) => ["steady", "wild", "echo", "veil", "rift", "relic"].every((key) => (s.mastery?.[key] || 0) >= 15) },
 ];
 
 export const TRAIL_LOOK = {
@@ -47,6 +49,8 @@ export const TRAIL_LOOK = {
   brass: { core: "#ffe7a3", glow: "#e0b03a" },
   aurora: { core: "#e9fff6", glow: "#3ee0b0" },
   tideglass: { core: "#e7fff8", glow: "#5ee0c5" },
+  ion: { core: "#f4f7ff", glow: "#9eb6ff" },
+  halo: { core: "#fff8e4", glow: "#ffe08a" },
 };
 
 export const MOONS = [
@@ -54,11 +58,13 @@ export const MOONS = [
   { id: "glass", name: "Glass", hint: "Eight perfects in one run", test: (s) => s.bestPerfects >= 8 },
   { id: "tide", name: "Tide", hint: "Earn a nightly star", test: (s) => s.nightsCleared >= 1 },
   { id: "wick", name: "Wick", hint: "Bank an echo, then perfect later", test: (s) => s.echoMastered },
-  { id: "crown", name: "Crown", hint: "Six relics across two nights", test: (s) => s.relics >= 6 && s.nightsCleared >= 2 },
+  { id: "crown", name: "Crown", hint: "Twenty-four relics", test: (s) => s.relics >= 24 && s.nightsCleared >= 4 },
   { id: "iris", name: "Iris", hint: "A 3-day streak", test: (s) => s.bestStreak >= 3 },
   { id: "hollow", name: "Hollow", hint: "Three rift perfects, two nights", test: (s) => s.riftPerfects >= 3 && s.nightsCleared >= 2 },
-  { id: "dusk", name: "Dusk", hint: "Come back on a fourth day", test: (s) => (s.days || []).length >= 4 },
-  { id: "choir", name: "Choir", hint: "Clear three different nightly goals", test: (s) => (s.goalKinds || []).length >= 3 },
+  { id: "dusk", name: "Dusk", hint: "Twelve different days", test: (s) => (s.days || []).length >= 12 },
+  { id: "choir", name: "Choir", hint: "All seven seals", test: (s) => (s.goalKinds || []).length >= 7 },
+  { id: "lyre", name: "Lyre", hint: "Fourteen nights", test: (s) => s.nightsCleared >= 14 },
+  { id: "solstice", name: "Solstice", hint: "Every seal, and ten nights", test: (s) => (s.goalKinds || []).length >= 7 && s.nightsCleared >= 10 },
 ];
 
 export const MOON_LOOK = {
@@ -71,14 +77,18 @@ export const MOON_LOOK = {
   hollow: { core: "#ececf6", glow: "#9aa4c7", shade: "#3a4158" },
   dusk: { core: "#ffd0c8", glow: "#ff6b6b", shade: "#a33b4a" },
   choir: { core: "#ffffff", glow: "#ffffff", shade: "#b9a6e8", rainbow: true },
+  lyre: { core: "#ffe7c2", glow: "#ffb15a", shade: "#a85a28" },
+  solstice: { core: "#fff6d4", glow: "#ffe08a", shade: "#c47a28" },
 };
 
 export const THEMES = [
   { id: "dusk", name: "Dusk", hint: "The opening sky", test: () => true },
   { id: "harbor", name: "Harbor", hint: "Two nightly stars", test: (s) => s.nightsCleared >= 2 },
   { id: "ember", name: "Ember", hint: "A combo of 8", test: (s) => s.bestCombo >= 8 },
-  { id: "aurora", name: "Aurora", hint: "A 5-day streak", test: (s) => s.bestStreak >= 5 },
-  { id: "ink", name: "Ink", hint: "Seven different nights", test: (s) => (s.days || []).length >= 7 },
+  { id: "aurora", name: "Aurora", hint: "A 9-day streak", test: (s) => s.bestStreak >= 9 },
+  { id: "ink", name: "Ink", hint: "Fourteen different days", test: (s) => (s.days || []).length >= 14 },
+  { id: "deep", name: "Deep", hint: "Three weeks of sky", test: (s) => (s.days || []).length >= 21 },
+  { id: "gilt", name: "Gilt", hint: "A flawless Tonight", test: (s) => !!s.flawless },
 ];
 
 export const THEME_LOOK = {
@@ -87,6 +97,8 @@ export const THEME_LOOK = {
   ember: { sky0: "#6a2c18", sky1: "#24100c", sky2: "#0c0705", star: "#ffe6cc", ring: "#c47848", brass: "#ffc14d" },
   aurora: { sky0: "#14584e", sky1: "#0c1c28", sky2: "#070c12", star: "#e9fff8", ring: "#3d9a84", brass: "#d6ffe8" },
   ink: { sky0: "#32343c", sky1: "#14151a", sky2: "#07080a", star: "#f4f4f6", ring: "#9aa0ae", brass: "#f0e2c0" },
+  deep: { sky0: "#1a2048", sky1: "#0a0c18", sky2: "#04060c", star: "#e8eeff", ring: "#6a78b4", brass: "#d7def8" },
+  gilt: { sky0: "#6a4818", sky1: "#24180c", sky2: "#100c06", star: "#fff4d2", ring: "#e0b03a", brass: "#ffe7a3" },
 };
 
 export const KIND_COPY = {
@@ -146,6 +158,8 @@ export function defaultSave() {
     runs: 0,
     quietUnlocked: false,
     days: [],
+    nights: [],
+    flawless: false,
     goalKinds: [],
     streak: 0,
     lastStreakDate: null,
@@ -217,9 +231,16 @@ export function goalSlots(seed, goalId) {
 export function kindFor(seed, index, goalId = null) {
   if (index <= 0) return "steady";
   if (goalId && GOAL_QUOTA[goalId] && goalSlots(seed, goalId).has(index)) return goalId;
-  if (index % 6 === 5) return "echo";
-  const pool = index < 2 ? ["wild", "echo", "veil", "rift"] : KIND_POOL;
+  if (index % 6 === 5 && goalId !== "echo") return "echo";
+  const pool = (index < 2 ? ["wild", "echo", "veil", "rift"] : KIND_POOL).filter((kind) => kind !== goalId);
   return pool[Math.floor(unit(seed, index, 2.31) * pool.length) % pool.length];
+}
+
+export function orbitsUntilEcho(seed, index, goalId = null) {
+  for (let step = 1; step <= 8; step++) {
+    if (kindFor(seed, index + step, goalId) === "echo") return step;
+  }
+  return 8;
 }
 
 export function waitSeconds(seed, index) {
@@ -304,6 +325,10 @@ export function goldWindowSeconds(run) {
   return (run.exitP - run.entryP) / Math.max(0.35, run.omega);
 }
 
+export function perfectWindowSeconds(run) {
+  return (2 * (run.perfectHalf || 0)) / Math.max(0.35, run.omega);
+}
+
 function placeEcho(entryP, lock, arcHalf) {
   const gap = 0.24;
   const room = entryP - lock - gap - 0.08;
@@ -343,7 +368,9 @@ function setupWindow(run, opts = {}) {
   if ((run.flings || 0) > 90 && run.omega >= TUNING.maxOmega - 0.08) {
     ratio = Math.max(0.3, ratio - ((run.flings || 0) - 90) * 0.0011);
   }
-  const perfectHalf = arcHalf * ratio;
+  let perfectHalf = arcHalf * ratio;
+  const floorHalf = (0.035 * Math.max(0.4, run.omega)) / 2;
+  if (perfectHalf < floorHalf) perfectHalf = Math.min(floorHalf, arcHalf * 0.78);
   const maxTravel = Math.max(0.55, TAU - arcHalf * 2 - 0.55);
   let wait = opts.short ? 0.48 + unit(run.seed, run.flings, 0.77) * 0.2 : waitSeconds(run.seed, run.flings);
   if (kind === "echo") wait = Math.max(wait, Math.min(0.72, maxTravel / Math.max(0.4, run.omega)));
@@ -651,6 +678,33 @@ export function goalStars(run, goalId) {
   return tiers.reduce((n, tier) => n + (value >= tier ? 1 : 0), 0);
 }
 
+const MEDAL_RANK = { none: 0, bronze: 1, silver: 2, gold: 3, flawless: 4 };
+
+export function resultGlyph(entry) {
+  if (entry && typeof entry === "object") {
+    if (entry.result === "perfect") return "★";
+    if (entry.result === "cash") return "◌";
+    return "●";
+  }
+  return "·";
+}
+
+export function shareLines(history) {
+  const glyphs = (history || []).map(resultGlyph);
+  const lines = [];
+  for (let i = 0; i < glyphs.length; i += 10) lines.push(glyphs.slice(i, i + 10).join(""));
+  return lines;
+}
+
+export function rememberNight(nights, entry) {
+  const list = Array.isArray(nights) ? nights.filter((night) => night.date !== entry.date) : [];
+  const prev = (nights || []).find((night) => night.date === entry.date);
+  const medal = prev && (MEDAL_RANK[prev.medal] || 0) > (MEDAL_RANK[entry.medal] || 0) ? prev.medal : entry.medal;
+  const stars = Math.max(prev?.stars || 0, entry.stars || 0);
+  list.push({ date: entry.date, medal, stars, goal: entry.goal || prev?.goal || "" });
+  return list.slice(-42);
+}
+
 export function medalFor(run, goalId = "score") {
   if (!run || run.overReason !== "clear" || run.flings < COURSE) return null;
   if (run.perfects >= COURSE) return "flawless";
@@ -663,10 +717,10 @@ export function medalFor(run, goalId = "score") {
 export function rankFor(save) {
   const mastery = save?.mastery || {};
   const total = Object.values(mastery).reduce((sum, n) => sum + (n || 0), 0) + (save?.nightsCleared || 0) * 2;
-  if (total >= 420) return "Orrery";
-  if (total >= 220) return "Corona";
-  if (total >= 90) return "Lantern";
-  if (total >= 30) return "Wick";
+  if (total >= 1800) return "Orrery";
+  if (total >= 900) return "Corona";
+  if (total >= 320) return "Lantern";
+  if (total >= 80) return "Wick";
   return "Spark";
 }
 
@@ -741,6 +795,14 @@ function applyMissions(save, run, today) {
       daily: { ...daily, nightCounted: true },
       nightsCleared: (next.nightsCleared || 0) + 1,
       goalKinds: [...kinds],
+    };
+  }
+  if (run.mode === "daily") {
+    const medal = medalFor(run, board.nightly.id) || "none";
+    next = {
+      ...next,
+      nights: rememberNight(next.nights, { date: today, medal, stars, goal: board.nightly.id }),
+      flawless: next.flawless || medal === "flawless",
     };
   }
   return next;
@@ -849,7 +911,15 @@ export function sanitizeSave(raw) {
   if (!moons.includes("cinder")) moons = ["cinder", ...moons];
   let themes = asList(raw.themes, themeIds);
   if (!themes.includes("dusk")) themes = ["dusk", ...themes];
-  const days = Array.isArray(raw.days) ? raw.days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(-21) : [];
+  const days = Array.isArray(raw.days) ? raw.days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(-42) : [];
+  const nights = Array.isArray(raw.nights)
+    ? raw.nights.filter((night) => night && /^\d{4}-\d{2}-\d{2}$/.test(night.date)).slice(-42).map((night) => ({
+      date: night.date,
+      medal: MEDAL_RANK[night.medal] != null ? night.medal : "none",
+      stars: Math.max(0, Math.min(3, finite(night.stars, 0))),
+      goal: String(night.goal || ""),
+    }))
+    : [];
   const goalKinds = Array.isArray(raw.goalKinds) ? raw.goalKinds.filter((id) => NIGHTLY.some((g) => g.id === id)) : [];
   return {
     ...base,
@@ -874,6 +944,8 @@ export function sanitizeSave(raw) {
     runs: Math.max(0, finite(raw.runs, 0)),
     quietUnlocked: !!raw.quietUnlocked,
     days,
+    nights,
+    flawless: !!raw.flawless,
     goalKinds,
     streak: Math.max(0, finite(raw.streak, 0)),
     lastStreakDate: /^\d{4}-\d{2}-\d{2}$/.test(raw.lastStreakDate || "") ? raw.lastStreakDate : null,

@@ -21,11 +21,14 @@ import {
   coreProgress,
   goalStars,
   medalFor,
+  orbitsUntilEcho,
   missionPulse,
   missionsFor,
   missText,
   multiplierFor,
   rankFor,
+  resultGlyph,
+  shareLines,
   selectMoon,
   selectTheme,
   selectTrail,
@@ -58,6 +61,8 @@ const coachEl = document.querySelector("#coach");
 const kindEl = document.querySelector("#kind-name");
 const chainEl = document.querySelector("#chain");
 const missionEl = document.querySelector("#mission-line");
+const echoEl = document.querySelector("#echo-when");
+let missionFlash = null;
 const reasonEl = document.querySelector("#reason");
 const nearEl = document.querySelector("#near");
 const finalEl = document.querySelector("#final");
@@ -177,7 +182,51 @@ function renderHome() {
   const moon = MOONS.find((m) => m.id === save.moon);
   statsEl.textContent = `${rankFor(save)} · ${moon ? moon.name : "Cinder"} · best ${format(save.best)}`;
   quietBtn.hidden = !save.quietUnlocked;
+  renderNights();
   renderShelf();
+}
+
+function renderNights() {
+  const sky = document.querySelector("#night-sky");
+  const nights = save.nights || [];
+  sky.replaceChildren();
+  if (!nights.length) {
+    sky.dataset.empty = "1";
+    sky.textContent = "Nights you clear gather here";
+    return;
+  }
+  sky.dataset.empty = "0";
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 96;
+  canvas.className = "constellation";
+  paintConstellation(canvas.getContext("2d"), nights, canvas.width, canvas.height);
+  sky.append(canvas);
+}
+
+function paintConstellation(g, nights, w, h) {
+  const shown = nights.slice(-28);
+  g.clearRect(0, 0, w, h);
+  const pts = shown.map((night, i) => {
+    const t = shown.length === 1 ? 0.5 : i / (shown.length - 1);
+    return {
+      x: 18 + t * (w - 36),
+      y: h * 0.52 + Math.sin(i * 1.35 + 0.4) * h * 0.28,
+      night,
+    };
+  });
+  g.strokeStyle = "rgba(255, 226, 170, 0.35)";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  pts.forEach((point, i) => (i ? g.lineTo(point.x, point.y) : g.moveTo(point.x, point.y)));
+  if (pts.length > 1) g.stroke();
+  for (const point of pts) {
+    const color = { flawless: "#fffaf0", gold: "#ffd27a", silver: "#d5e6f8", bronze: "#e0a06a", none: "#6d6484" }[point.night.medal] || "#6d6484";
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(point.x, point.y, point.night.medal === "gold" || point.night.medal === "flawless" ? 5 : 3.2, 0, TAU);
+    g.fill();
+  }
 }
 
 function paintPreview(canvas, id, look) {
@@ -215,6 +264,26 @@ function paintPreview(canvas, id, look) {
     g.beginPath();
     g.arc(0, 0, r * 0.72, 0, TAU);
     g.stroke();
+  } else if (id === "lyre") {
+    g.strokeStyle = look.core;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(0, r * 0.1, r * 0.72, Math.PI * 0.15, Math.PI * 0.85, true);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(-r * 0.2, -r * 0.2);
+    g.lineTo(r * 0.2, -r * 0.55);
+    g.lineTo(r * 0.55, -r * 0.05);
+    g.stroke();
+  } else if (id === "solstice") {
+    g.beginPath();
+    g.arc(0, 0, r * 0.55, 0, TAU);
+    g.fill();
+    g.strokeStyle = look.glow;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.stroke();
   } else if (id === "comet") {
     g.beginPath();
     g.ellipse(0, 0, r * 0.7, r, 0.6, 0, TAU);
@@ -227,7 +296,61 @@ function paintPreview(canvas, id, look) {
   g.restore();
 }
 
-function swatch(list, items, equipped, owned, onPick) {
+function paintTrailPreview(canvas, id, look) {
+  const g = canvas.getContext("2d");
+  const w = canvas.width;
+  g.clearRect(0, 0, w, w);
+  g.strokeStyle = look.glow || look.core;
+  g.fillStyle = look.core || "#fff";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(w * 0.18, w * 0.72);
+  g.quadraticCurveTo(w * 0.4, w * 0.2, w * 0.82, w * 0.38);
+  if (id === "comet" || id === "ion") g.stroke();
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const x = w * (0.18 + t * 0.64);
+    const y = w * (0.72 + t * (0.38 - 0.72) + Math.sin(t * Math.PI) * -0.22);
+    g.globalAlpha = 0.45 + t * 0.55;
+    g.beginPath();
+    if (id === "brass") g.fillRect(x - 1.5, y - 6, 3, 12);
+    else if (id === "halo") g.arc(w / 2 + Math.cos(i) * w * 0.22, w / 2 + Math.sin(i) * w * 0.22, 3.5, 0, TAU);
+    else g.arc(x, y, id === "pearl" ? 5 : 3.2, 0, TAU);
+    if (id !== "brass") g.fill();
+  }
+}
+
+function paintSkyPreview(canvas, look) {
+  const g = canvas.getContext("2d");
+  const w = canvas.width;
+  g.clearRect(0, 0, w, w);
+  const sky = g.createLinearGradient(0, 0, 0, w);
+  sky.addColorStop(0, look.sky0 || "#4a2c72");
+  sky.addColorStop(0.55, look.sky1 || look.sky0 || "#1a102c");
+  sky.addColorStop(1, look.sky2 || "#09060f");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, w, w);
+  g.fillStyle = look.star || "#fff4e4";
+  const stars = [[0.18, 0.22, 1.3], [0.72, 0.16, 0.8], [0.42, 0.34, 1.1], [0.84, 0.4, 0.7], [0.28, 0.48, 0.8], [0.6, 0.28, 1.4]];
+  for (const [x, y, rad] of stars) {
+    g.globalAlpha = 0.75;
+    g.beginPath();
+    g.arc(x * w, y * w, rad, 0, TAU);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  g.fillStyle = look.brass || "#e7c27a";
+  g.beginPath();
+  g.arc(w * 0.5, w * 0.7, w * 0.1, 0, TAU);
+  g.fill();
+  g.strokeStyle = look.ring || look.brass || "#e7c27a";
+  g.lineWidth = 1.6;
+  g.beginPath();
+  g.arc(w * 0.5, w * 0.7, w * 0.2, 0, TAU);
+  g.stroke();
+}
+
+function swatch(list, items, equipped, owned, onPick, kind = "moon") {
   list.replaceChildren();
   for (const item of items) {
     const open = owned(item.id);
@@ -237,16 +360,14 @@ function swatch(list, items, equipped, owned, onPick) {
     btn.setAttribute("aria-pressed", equipped === item.id ? "true" : "false");
     btn.setAttribute("aria-disabled", open ? "false" : "true");
     const look = item.look;
-    const dot = document.createElement(MOON_LOOK[item.id] ? "canvas" : "span");
+    const dot = document.createElement("canvas");
     dot.className = "dot";
-    if (MOON_LOOK[item.id]) {
-      dot.width = 64;
-      dot.height = 64;
-      paintPreview(dot, item.id, look);
-    } else {
-      dot.style.background = `radial-gradient(circle at 35% 32%, #fff, ${look.core} 42%, ${look.shade || look.glow})`;
-    }
-    dot.style.setProperty("--glow", look.glow);
+    dot.width = 64;
+    dot.height = 64;
+    if (kind === "trail") paintTrailPreview(dot, item.id, look);
+    else if (kind === "sky") paintSkyPreview(dot, look);
+    else paintPreview(dot, item.id, look);
+    dot.style.setProperty("--glow", look.glow || look.brass || "transparent");
     const label = document.createElement("span");
     label.textContent = item.name;
     if (!open) {
@@ -268,21 +389,59 @@ function renderShelf() {
     save = selectMoon(save, id);
     persist();
     renderHome();
-  });
-  swatch(document.querySelector("#trail-list"), TRAILS.map((t) => ({ ...t, look: { ...TRAIL_LOOK[t.id], shade: "#2a1608" } })), save.trail, (id) => (save.unlocked || []).includes(id), (id) => {
+  }, "moon");
+  swatch(document.querySelector("#trail-list"), TRAILS.map((t) => ({ ...t, look: TRAIL_LOOK[t.id] })), save.trail, (id) => (save.unlocked || []).includes(id), (id) => {
     save = selectTrail(save, id);
     persist();
     renderHome();
-  });
-  swatch(document.querySelector("#theme-list"), THEMES.map((t) => {
-    const look = THEME_LOOK[t.id];
-    return { ...t, look: { core: look.sky0, glow: look.brass, shade: look.sky2 } };
-  }), save.theme, (id) => (save.themes || []).includes(id), (id) => {
+  }, "trail");
+  swatch(document.querySelector("#theme-list"), THEMES.map((t) => ({ ...t, look: THEME_LOOK[t.id] })), save.theme, (id) => (save.themes || []).includes(id), (id) => {
     save = selectTheme(save, id);
     persist();
     applySettings();
     renderHome();
-  });
+  }, "sky");
+  renderMastery();
+  renderCalendar();
+}
+
+function renderMastery() {
+  const box = document.querySelector("#mastery-bars");
+  const mastery = save.mastery || {};
+  const max = Math.max(8, ...Object.values(mastery));
+  box.replaceChildren();
+  for (const key of ["steady", "wild", "echo", "veil", "rift", "relic"]) {
+    const row = document.createElement("div");
+    row.className = "bar";
+    const name = document.createElement("span");
+    name.textContent = key;
+    const track = document.createElement("i");
+    const fill = document.createElement("b");
+    fill.style.width = `${Math.round(((mastery[key] || 0) / max) * 100)}%`;
+    track.append(fill);
+    const count = document.createElement("em");
+    count.textContent = String(mastery[key] || 0);
+    row.append(name, track, count);
+    box.append(row);
+  }
+}
+
+function renderCalendar() {
+  const box = document.querySelector("#night-calendar");
+  const nights = save.nights || [];
+  box.replaceChildren();
+  if (!nights.length) {
+    box.textContent = "Clear a Tonight to pin the first star.";
+    return;
+  }
+  for (const night of nights.slice(-21)) {
+    const cell = document.createElement("i");
+    cell.className = night.medal || "none";
+    cell.title = `${night.date} · ${night.medal}`;
+    cell.setAttribute("aria-label", `${night.date} ${night.medal}`);
+    cell.textContent = { flawless: "✦", gold: "★", silver: "✶", bronze: "·", none: "·" }[night.medal] || "·";
+    box.append(cell);
+  }
 }
 
 function syncChrome() {
@@ -383,7 +542,9 @@ function finish(event) {
   persist();
   reasonEl.textContent = missText(event);
   nearEl.hidden = true;
+  const lostPot = run.potLost || 0;
   if (run.overReason === "clear") metaEl.textContent = `Tonight ${COURSE}/${COURSE} · best ${format(run.score)}`;
+  else metaEl.textContent = lostPot ? `Banked ${format(run.score)} · lost ${format(lostPot)}` : `Banked ${format(run.score)}`;
   finalEl.textContent = format(run.score);
   const record = run.mode === "quiet" ? save.bestQuiet : run.mode === "daily" ? save.bestNight : save.bestFree;
   const bestLine = settled.isBest ? "New best" : `Best ${format(record || save.best)}`;
@@ -421,7 +582,7 @@ function finish(event) {
     const shown = medal === "flawless" ? 3 : stars;
     medalEl.textContent = `${medal} · ${"★".repeat(shown)}${"☆".repeat(Math.max(0, 3 - shown))}`;
     shareRow.hidden = false;
-    shareRow.textContent = (run.history || []).map(nightGlyph).join("");
+    shareRow.textContent = shareLines(run.history).join("\n");
     shareBtn.hidden = false;
   } else {
     medalEl.hidden = true;
@@ -464,20 +625,15 @@ function showReveal() {
   document.querySelector("#reveal-name").textContent = item.name;
   const sw = document.querySelector("#reveal-swatch");
   const look = item.kind === "moon" ? MOON_LOOK[item.id] : item.kind === "trail" ? TRAIL_LOOK[item.id] : THEME_LOOK[item.id] || MOON_LOOK.cinder;
-  if (item.kind === "moon") {
-    sw.replaceChildren();
-    const canvas = document.createElement("canvas");
-    canvas.width = 72;
-    canvas.height = 72;
-    paintPreview(canvas, item.id, look);
-    sw.append(canvas);
-    sw.style.background = "transparent";
-  } else {
-    sw.replaceChildren();
-    const core = look.core || look.sky0 || "#fff";
-    const shade = look.shade || look.sky2 || "#333";
-    sw.style.background = `radial-gradient(circle at 35% 32%, #fff, ${core} 45%, ${shade})`;
-  }
+  sw.replaceChildren();
+  const canvas = document.createElement("canvas");
+  canvas.width = 72;
+  canvas.height = 72;
+  if (item.kind === "trail") paintTrailPreview(canvas, item.id, look);
+  else if (item.kind === "sky") paintSkyPreview(canvas, look);
+  else paintPreview(canvas, item.id, look || MOON_LOOK.cinder);
+  sw.append(canvas);
+  sw.style.background = "transparent";
   document.querySelector("#reveal-hint").textContent = item.kind === "mode" ? "The arc stays open until the hour closes." : "Yours now.";
 }
 
@@ -500,12 +656,7 @@ function milestoneName(combo) {
 }
 
 function nightGlyph(entry) {
-  if (entry && typeof entry === "object") {
-    if (entry.result === "perfect") return "★";
-    if (entry.result === "cash") return "◌";
-    return "●";
-  }
-  return { steady: "●", wild: "〜", echo: "◌", veil: "◑", rift: "↺", relic: "✶" }[entry] || "·";
+  return resultGlyph(entry);
 }
 
 function onPress() {
@@ -545,12 +696,14 @@ function onPress() {
   const color = (TRAIL_LOOK[save.trail] || TRAIL_LOOK.ember).glow;
   burst(lastMoon.x, lastMoon.y, event.relicHit ? "#ffe7a3" : color, event.milestone ? 28 : perfect ? 18 : 10, event.milestone ? 160 : 110);
   ripple(lastMoon.x, lastMoon.y, "#fff6d4");
-  floats.push({ text: `+${format(event.scoreGain)}${event.mult > 1 ? ` ×${event.mult}` : ""}`, x: lastMoon.x, y: lastMoon.y, age: 0 });
+  const pop = clampPop(lastMoon.x, lastMoon.y);
+  floats.push({ text: `+${format(event.scoreGain)}${event.mult > 1 ? ` ×${event.mult}` : ""}`, x: pop.x, y: pop.y, age: 0 });
   if (perfect) {
     hitPause = reduced() ? 0.02 : 0.05;
     moonSquash = 1.35;
     collapse = { half: oldHalf, age: 0, life: 0.16, geo: oldGeo };
   }
+  if (word === "Nova") novaSweep = 1;
   if (event.milestone && !reduced()) shake = 5;
   ackMissions(run);
   scoreEl.classList.remove("bump");
@@ -578,11 +731,7 @@ function ackMissions(current) {
     },
   };
   persist();
-  const toast = document.querySelector("#toast");
-  toast.hidden = false;
-  toast.textContent = `Done · ${hits[0].label}`;
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { toast.hidden = true; }, 1100);
+  missionFlash = { text: `✓ Done · ${hits[0].label}`, until: performance.now() + 1000 };
   audio.play("milestone");
 }
 
@@ -605,16 +754,20 @@ function paintHud() {
   kindEl.textContent = `${KIND_COPY[run.kind].name}${run.relic && run.kind !== "relic" ? " · relic" : ""}`;
   coachEl.textContent = coachLine();
   chainEl.textContent = `x${mult} · ${run.combo} chain${run.relicsBanked ? ` · ${run.relicsBanked} relic` : ""}`;
-  const span = TUNING.startArc - TUNING.minArc;
-  const open = Math.max(0, Math.min(1, (run.arcHalf - TUNING.minArc) / span));
-  document.querySelector("#arc-fill").style.width = `${Math.round(open * 100)}%`;
-  missionEl.textContent = missionLine(save, today, run.mode);
+  const away = orbitsUntilEcho(run.seed, run.flings, run.goalId);
+  echoEl.textContent = run.kind === "echo" ? "Echo now" : `echo in ${away}`;
+  const flashing = missionFlash && performance.now() < missionFlash.until;
+  missionEl.textContent = flashing ? missionFlash.text : missionLine(save, today, run.mode);
+  missionEl.classList.toggle("done", !!flashing);
 }
 
 function coachLine() {
   if (!run || run.phase !== "playing") return "";
   const z = zone(run);
-  if (z === "echo") return "Silver — tap to cash";
+  if (z === "echo") {
+    const mult = multiplierFor(run.combo);
+    return `bank ${format(run.pot || 0)} · ×${mult} → ×1`;
+  }
   if (z === "perfect" && run.relic) return "Relic core";
   if (z === "perfect") return "White core";
   if (run.kind === "veil" && z === "good" && !coreLit(run)) return "Dim gold — or wait for the light";
@@ -676,8 +829,7 @@ motionBtn.addEventListener("click", () => {
 document.querySelector("#btn-help").addEventListener("click", () => (helpOpen ? closeHelp() : openHelp()));
 document.querySelector("#btn-resume").addEventListener("click", closeHelp);
 document.querySelector("#btn-share").addEventListener("click", async () => {
-  const row = (run?.history || []).map(nightGlyph).join("");
-  const text = `Perigee ${today}\n${row}\n${document.querySelector("#medal").textContent} · ${format(run?.score || 0)}`;
+  const text = `Perigee ${today}\n${shareLines(run?.history).join("\n")}\n${document.querySelector("#medal").textContent} · ${format(run?.score || 0)}`;
   try {
     if (navigator.share) await navigator.share({ text });
     else if (navigator.clipboard) await navigator.clipboard.writeText(text);
@@ -782,6 +934,16 @@ let sizedDpr = 0;
 let quality = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2);
 const frameBudget = [];
 let turnPulse = 0;
+let novaSweep = 0;
+
+function clampPop(x, y) {
+  const width = window.innerWidth || 390;
+  const height = window.innerHeight || 844;
+  return {
+    x: Math.max(36, Math.min(width - 36, x)),
+    y: Math.max(48, Math.min(height * 0.62, y)),
+  };
+}
 function resize() {
   const dpr = quality;
   const w = window.innerWidth;
@@ -798,14 +960,14 @@ function resize() {
 
 function noteFrame(ms) {
   if (!(ms > 0) || ms > 250) return;
-  frameBudget.push(ms);
+  frameBudget.push(ms > 20 ? 1 : 0);
   if (frameBudget.length < 40) return;
-  const avg = frameBudget.reduce((sum, value) => sum + value, 0) / frameBudget.length;
+  const slow = frameBudget.reduce((sum, value) => sum + value, 0) / frameBudget.length;
   frameBudget.length = 0;
   const device = window.devicePixelRatio || 1;
   let next = quality;
-  if (avg > 20) next = Math.max(1.25, quality - 0.25);
-  else if (avg < 11) next = Math.min(Math.min(device, 2.5), quality + 0.25);
+  if (slow > 0.05) next = Math.max(1, quality - 0.25);
+  else if (slow === 0) next = Math.min(Math.min(device, 2.5), quality + 0.25);
   if (Math.abs(next - quality) > 0.01) {
     quality = Math.round(next * 100) / 100;
     sizedDpr = -1;
@@ -961,7 +1123,8 @@ function drawMoon(x, y, radius, look, time, id) {
     ctx.stroke();
   } else if (id === "tide") {
     const scratch = paintTide(radius, body);
-    ctx.drawImage(scratch, -scratch.width / 2, -scratch.height / 2);
+    const css = radius * 2 + 8;
+    ctx.drawImage(scratch, -css / 2, -css / 2, css, css);
   } else if (id === "crown") {
     ctx.fillStyle = look.glow;
     starShape(0, 0, radius * 1.35);
@@ -975,6 +1138,7 @@ function drawMoon(x, y, radius, look, time, id) {
     ctx.fill();
   }
   ctx.restore();
+  if (id === "tide") return;
   ctx.fillStyle = "rgba(40, 24, 48, 0.22)";
   ctx.beginPath();
   ctx.arc(x + radius * 0.28, y + radius * 0.08, radius * 0.32, 0, TAU);
@@ -986,15 +1150,17 @@ function drawMoon(x, y, radius, look, time, id) {
 }
 
 function paintTide(radius, body) {
-  const size = Math.ceil(radius * 2 + 8);
+  const q = Math.max(1, quality || 1);
+  const css = Math.ceil(radius * 2 + 8);
+  const size = Math.max(1, Math.ceil(css * q));
   if (tideScratch.width !== size) {
     tideScratch.width = size;
     tideScratch.height = size;
   }
   const g = tideScratch.getContext("2d");
-  g.clearRect(0, 0, size, size);
+  g.setTransform(q, 0, 0, q, size / 2, size / 2);
+  g.clearRect(-css, -css, css * 2, css * 2);
   g.save();
-  g.translate(size / 2, size / 2);
   g.fillStyle = body;
   g.beginPath();
   g.arc(0, 0, radius, 0, TAU);
@@ -1010,15 +1176,17 @@ function paintTide(radius, body) {
 const ringCache = { key: "", canvas: null };
 
 function drawRing(cx, cy, r, look) {
-  const key = `${Math.round(r)}|${look.ring}|${look.brass}`;
+  const q = Math.max(1, quality || 1);
+  const key = `${Math.round(r * q)}|${q}|${look.ring}|${look.brass}`;
+  const pad = 18;
+  const cssSize = r * 2 + pad * 2;
   if (ringCache.key !== key) {
-    const pad = 18;
-    const size = Math.ceil(r * 2 + pad * 2);
+    const size = Math.max(1, Math.ceil(cssSize * q));
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const g = canvas.getContext("2d");
-    g.translate(size / 2, size / 2);
+    g.setTransform(q, 0, 0, q, size / 2, size / 2);
     g.strokeStyle = look.ring;
     g.globalAlpha = 0.9;
     g.lineWidth = 2;
@@ -1045,7 +1213,33 @@ function drawRing(cx, cy, r, look) {
     ringCache.canvas = canvas;
   }
   const canvas = ringCache.canvas;
-  ctx.drawImage(canvas, cx - canvas.width / 2, cy - canvas.height / 2);
+  ctx.drawImage(canvas, cx - r - pad, cy - r - pad, cssSize, cssSize);
+}
+
+function drawCourseStars(cx, cy, r, history) {
+  const shown = history || [];
+  if (!shown.length) return;
+  const pts = shown.map((entry, i) => {
+    const a = -Math.PI * 0.9 + (i / Math.max(1, shown.length - 1)) * Math.PI * 1.55;
+    const rad = r * (0.46 + ((i * 5) % 4) * 0.035);
+    return { x: cx + Math.cos(a) * rad, y: cy + Math.sin(a) * rad * 0.78, entry };
+  });
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 232, 186, 0.45)";
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  pts.forEach((point, i) => (i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)));
+  ctx.stroke();
+  for (const point of pts) {
+    const perfect = point.entry && point.entry.result === "perfect";
+    const cash = point.entry && point.entry.result === "cash";
+    ctx.fillStyle = perfect ? "#fff6d0" : cash ? "#d7e6f5" : "#e7b56a";
+    ctx.globalAlpha = perfect ? 1 : 0.8;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, perfect ? 3.4 : 2.2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawScene(w, h, time) {
@@ -1156,25 +1350,40 @@ function drawScene(w, h, time) {
       ctx.fill();
     }
   }
+  if (novaSweep > 0 && !reduced()) {
+    const head = (1 - novaSweep) * TAU - Math.PI / 2;
+    ctx.save();
+    ctx.strokeStyle = "#fff6d4";
+    ctx.shadowColor = "#fff4c8";
+    ctx.shadowBlur = 22;
+    ctx.globalAlpha = novaSweep * 0.7;
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 10, head - 0.8, head);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (rift) {
     const dir = run.dir || 1;
     const entry = dir < 0 ? center + half : center - half;
     const ex = cx + Math.cos(entry) * r;
     const ey = cy + Math.sin(entry) * r;
-    const ux = Math.cos(entry + dir * 1.2);
-    const uy = Math.sin(entry + dir * 1.2);
-    const px = -uy;
-    const py = ux;
-    const scale = 28 + (turnPulse || 0) * 14;
-    ctx.strokeStyle = "#ffe7a8";
-    ctx.lineWidth = 3;
+    const tx = dir * -Math.sin(entry);
+    const ty = dir * Math.cos(entry);
+    const len = 22 + (turnPulse || 0) * 10;
+    const wide = 9 + (turnPulse || 0) * 3;
+    ctx.fillStyle = "#ffe7a8";
     ctx.beginPath();
-    ctx.moveTo(ex - ux * scale, ey - uy * scale);
-    ctx.lineTo(ex, ey);
-    ctx.lineTo(ex - ux * scale * 0.65 + px * scale * 0.55, ey - uy * scale * 0.65 + py * scale * 0.55);
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - ux * scale * 0.65 - px * scale * 0.55, ey - uy * scale * 0.65 - py * scale * 0.55);
-    ctx.stroke();
+    ctx.moveTo(ex + tx * len, ey + ty * len);
+    ctx.lineTo(ex - ty * wide, ey + tx * wide);
+    ctx.lineTo(ex + ty * wide, ey - tx * wide);
+    ctx.closePath();
+    ctx.fill();
   }
   for (const end of [center - half, center + half]) {
     ctx.fillStyle = ink.arc;
@@ -1185,6 +1394,7 @@ function drawScene(w, h, time) {
 
   const hue = (THEME_HUE[save.theme] || 28) + (playing ? Math.min(18, (run.perfects || 0) * 0.4) : 0);
   drawPlanet(cx, cy, Math.min(54, r * 0.28), hue);
+  if (playing && run.overReason === "clear") drawCourseStars(cx, cy, r, run.history);
 
   if (!reduced()) {
     ctx.fillStyle = trail.glow;
@@ -1249,9 +1459,10 @@ function drawScene(w, h, time) {
   ctx.font = "700 18px Palatino, Georgia, serif";
   ctx.textAlign = "center";
   for (const item of floats) {
+    const pop = clampPop(item.x, item.y - 18 - item.age * 36);
     ctx.globalAlpha = Math.max(0, 1 - item.age / 0.7);
     ctx.fillStyle = "#fff6d4";
-    ctx.fillText(item.text, item.x, item.y - 18 - item.age * 36);
+    ctx.fillText(item.text, pop.x, pop.y);
   }
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -1331,6 +1542,7 @@ function frame(ts) {
   ripples = ripples.filter((w) => w.age < w.life);
   if (shake > 0) shake *= reduced() ? 0 : 0.86;
   if (turnPulse > 0) turnPulse = Math.max(0, turnPulse - dt * 2.2);
+  if (novaSweep > 0) novaSweep = Math.max(0, novaSweep - dt * 0.55);
   noteFrame((ts - (frame._prev || ts)));
   frame._prev = ts;
 

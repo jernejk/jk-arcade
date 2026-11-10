@@ -13,6 +13,7 @@ import {
   nextDate,
   playRun,
   sampleSkill,
+  rankFor,
   simulateWeek,
   step,
   zone,
@@ -129,7 +130,10 @@ test("seven nights rotate the goal and hand something new each day", () => {
   assert.ok(week.days[0].gained.length > 0, `day 1 gained nothing: ${week.days[0].gained}`);
   assert.equal(week.save.quietUnlocked, true);
   assert.equal(week.save.days.length, 7);
-  assert.ok(week.save.themes.includes("ink"));
+  assert.equal(week.save.themes.includes("ink"), false);
+  assert.equal(week.save.themes.includes("deep"), false);
+  assert.equal(week.save.moons.includes("lyre"), false);
+  assert.notEqual(rankFor(week.save), "Orrery");
   assert.equal(missionsFor(nextDate("2026-11-10")).nightly.id === missionsFor("2026-11-10").nightly.id, false);
 });
 

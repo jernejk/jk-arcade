@@ -2,16 +2,16 @@
 
 Fling a moon through a shrinking gold arc. Perfect flings hold the arc open. Miss, and it drifts into the dark.
 
-A tap before the gold ends the run at once. Letting the moon slip past ends it too, and that miss is not called "so close". A careful run lasts a couple of minutes; strong play, once speed has capped, keeps getting a tighter core and more wild swings, and tends to end between two and three minutes. The arc shrinks when you play safe and holds when you hit the white core.
+A tap before the gold ends the run at once. Letting the moon slip past ends it too, and that miss is not called "so close". A careful run lasts a couple of minutes. Strong play, once speed has capped, keeps getting a tighter gold while the white core stays at least about 35ms wide, and tends to end between two and three minutes. The arc shrinks when you play safe and holds when you hit the white core.
 
 ## Inside a run
 
-The moon never jumps. The next gold is placed a seeded distance ahead of wherever the moon already is, so a fixed beat dies within a few seconds. The opening orbit is steady and already moving; the second orbit is a twist. A perfect gives back the arc that orbit just took, and the white core stays at least about 50ms wide. Speed, a reverse, a sliding relic, and an off-centre core are what make later orbits harder.
+The moon never jumps. The next gold is placed a seeded distance ahead of wherever the moon already is, so a fixed beat dies within a few seconds. The opening orbit is steady and already moving; the second orbit is a twist. A perfect gives back the arc that orbit just took, and the white core stays at least about 35ms wide. The gold, not the core, keeps tightening after the speed cap. Speed, a reverse, a sliding relic, and an off-centre core are what make later orbits harder.
 
 The first orbit is steady. After that the ring changes:
 
 - **Wild** surges and slows. Ride it into the core.
-- **Echo** offers silver first, at least about every six orbits. Perfects sit in a pot marked "at risk". Tapping silver banks that pot and breaks the chain. Waiting for the gold keeps the chain and leaves the pot at risk. Dying spends the unbanked pot; the result says how much was lost.
+- **Echo** offers silver first, about every six orbits. The ledger counts down to it. Perfects sit in a pot marked "at risk". While silver is live, the coach shows the cost of banking, such as bank 400 · ×5 → ×1. Waiting for the gold keeps the chain. Dying spends the unbanked pot, and the header stops saying the pot is still at risk.
 - **Veil** leaves the gold dim until the core ignites. The core sits off-centre. Take the dim gold or wait.
 - **Rift** reverses the moon. A chevron shows the new direction, and a perfect opens the arc a little wider.
 - **Relic** slides the core while you are in the gold. Hitting the star banks a relic. Taking the gold without it is safe.
@@ -20,7 +20,7 @@ The gold always stays inside one lap, ahead of the moon. Three, six, twelve, and
 
 ## Across days
 
-Tonight is a seeded course of thirty orbits. The goal rotates through seven seals, and the course plants enough of that kind that a gold medal is reachable. One star lights the seal and counts the night. Three stars is gold. A perfect course is flawless. The share row is the night you played (★ perfect, ● good, ◌ cashed), not just which kinds appeared. A score without a star does not keep the streak. Rank is the sum of per-kind mastery and is saved with the rest of the shelf. Moons, trails, and skies unlock from deeds, including nights cleared. Records are kept for free play, tonight, and quiet hour. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
+Tonight is a seeded course of thirty orbits. The goal rotates through seven seals. A goal night plants that kind a fixed number of times and does not fill the rest of the course with it. One star lights the seal and counts the night. Three stars is gold. A perfect course is flawless. The share row is the night you played, in three lines of ten (★ perfect, ● good, ◌ cashed). Cleared nights stay on the title as a constellation and on the Shelf as a calendar. Rank is per-kind mastery, shown as bars, and Orrery sits past the first week. Later moons, trails, and skies wait on long streaks, every seal, and a flawless course. Saves live in `localStorage` under `perigee-v2` (a v1 save still loads).
 
 ## How to play
 

@@ -358,17 +358,30 @@ test("saves round-trip and reject garbage", () => {
   assert.equal(coerceSave({ best: -4, motion: "nope", trail: "nope", unlocked: ["nope"] }, "2026-11-10").trail, "ember");
 });
 
-test("every trail id is selectable once unlocked", () => {
+test("a trail can be worn once it is unlocked, and late trails wait", () => {
   assert.equal(TRAILS[0].id, "ember");
   const rich = withUnlocks({
     ...coerceSave(null, "2026-11-10"),
     best: 2000,
     lifetimeFlings: 80,
-    relics: 8,
+    relics: 16,
     riftPerfects: 4,
     nightsCleared: 3,
     streak: 3,
     lastStreakDate: "2026-11-10",
   });
-  for (const trail of TRAILS) assert.equal(isUnlocked(rich, trail.id), true);
+  for (const id of ["ember", "pearl", "comet", "brass", "aurora", "tideglass"]) {
+    assert.equal(isUnlocked(rich, id), true, id);
+    assert.equal(selectTrail(rich, id).trail, id);
+  }
+  assert.equal(isUnlocked(rich, "ion"), false);
+  assert.equal(isUnlocked(rich, "halo"), false);
+  const late = withUnlocks({
+    ...rich,
+    streak: 10,
+    bestStreak: 10,
+    mastery: { steady: 15, wild: 15, echo: 15, veil: 15, rift: 15, relic: 15 },
+  });
+  assert.equal(selectTrail(late, "ion").trail, "ion");
+  assert.equal(selectTrail(late, "halo").trail, "halo");
 });
