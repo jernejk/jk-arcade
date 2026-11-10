@@ -1,5 +1,14 @@
 [
   {
+    "id": "perigee",
+    "title": "Perigee",
+    "pitch": "Fling a moon through a shrinking gold arc. Perfect flings hold it open. A new orbit every night.",
+    "controls": "Tap inside the gold arc. Space flings, R restarts, M mutes.",
+    "url": "perigee/",
+    "shot": "shots/perigee.webp",
+    "accent": "#ffc14d"
+  },
+  {
     "id": "nap-patch",
     "title": "Nap Patch",
     "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A new quilt every day.",

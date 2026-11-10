@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#140c22">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Fling a moon through a shrinking gold arc. Perfect flings hold it open.">
+<title>Perigee</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script>
+try {
+  const s = JSON.parse(localStorage.getItem("perigee-v1") || "{}");
+  if (s.motion === "reduce" || s.motion === "full") document.documentElement.dataset.motion = s.motion;
+  if (s.mute) document.documentElement.dataset.muted = "1";
+} catch {}
+</script>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div id="app">
+  <header class="top">
+    <div id="title-head">
+      <p class="eyebrow">A one-thumb night</p>
+      <h1>Perigee</h1>
+      <p class="pitch">Fling a moon through the gold arc.</p>
+    </div>
+    <div id="play-head" hidden>
+      <p class="score" id="score">0</p>
+      <p class="meta" id="meta">Best 0</p>
+    </div>
+    <div class="icons">
+      <button type="button" class="icon-btn" id="btn-mute" aria-pressed="false" aria-label="Mute sound">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" id="icon-sound">
+          <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M15.5 9a4 4 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="icon-wave"/>
+          <path d="M16 9.2l5 5.2M21 9.2l-5 5.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="icon-slash" hidden/>
+        </svg>
+      </button>
+      <button type="button" class="icon-btn" id="btn-help" aria-label="How to play">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.4a2.6 2.6 0 1 1 3.5 2.4c-.7.4-1 1-1 1.7V14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="orbit-slot">
+    <p id="callout" class="callout"></p>
+    <p id="chip" class="chip-float" hidden></p>
+  </div>
+
+  <footer class="dock">
+    <div id="title-dock">
+      <p class="howto">Tap while the moon sits in the gold. The bright core is a perfect fling — those keep the arc from collapsing. Miss it, and the moon drifts off.</p>
+      <button type="button" class="btn" id="btn-play">Play</button>
+      <button type="button" class="btn secondary" id="btn-daily">Tonight's orbit</button>
+      <p class="stats" id="stats"></p>
+      <div class="trails" id="trails" role="listbox" aria-label="Moon trails"></div>
+      <p class="next-trail" id="next-trail"></p>
+      <button type="button" class="text-btn" id="btn-motion">Motion: device</button>
+    </div>
+
+    <div id="play-dock" hidden>
+      <p class="coach" id="coach">Wait for the gold</p>
+    </div>
+
+    <div id="over-dock" hidden>
+      <p class="reason" id="reason">Slipped past</p>
+      <p class="near" id="near" hidden>So close</p>
+      <p class="final" id="final">0</p>
+      <p class="detail" id="detail"></p>
+      <p class="unlock" id="unlock" hidden></p>
+      <button type="button" class="btn" id="btn-again">Fling again</button>
+      <button type="button" class="text-btn" id="btn-home">Back</button>
+    </div>
+  </footer>
+</div>
+
+<section id="help" class="help" hidden>
+  <div class="help-card">
+    <h2>How to play</h2>
+    <ol>
+      <li>The moon races around the ring.</li>
+      <li>Tap anywhere while it is inside the gold arc.</li>
+      <li>The bright core is a <em>perigee</em> — a perfect fling. Perfects hold the arc open. Ordinary flings let it shrink.</li>
+      <li>Tap too soon, too late, or let the moon slip past, and the run is over.</li>
+      <li>Wild orbits change speed. Watch the moon, not a rhythm.</li>
+    </ol>
+    <p>Tonight's orbit is the same all day. Score 250 or more to keep a streak. Trails unlock as you improve. Mute also stops vibration.</p>
+    <button type="button" class="btn" id="btn-resume">Close</button>
+  </div>
+</section>
+
+<p id="live" class="sr" role="status" aria-live="polite"></p>
+<script type="module" src="main.js"></script>
+</body>
+</html>
