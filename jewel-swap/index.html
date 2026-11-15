@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-theme="midnight">
+  <head>
+    <meta charset="utf-8" />
+<meta name="robots" content="noindex, nofollow">
+    <title>Jewel Swap</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#171528" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Jewel Swap" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <!-- iOS reads none of the manifest icons; this link is the home-screen tile. -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <script type="module" crossorigin src="./assets/index-DYiuu1Jk.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DrR_EpMN.css">
+  </head>
+  <body>
+    <header>
+      <button id="home-open" class="icon-btn" aria-label="Home" title="Home">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7" /><path d="M6 9.5V20h12V9.5" /><path d="M10 20v-5h4v5" /></svg>
+      </button>
+      <div class="titles">
+        <span id="title">Jewel Swap</span>
+        <span id="subtitle"></span>
+      </div>
+      <span id="stats"></span>
+    </header>
+    <div id="progress" aria-hidden="true"><i id="progress-fill"></i></div>
+    <div id="stage"><canvas id="canvas" aria-label="Puzzle board"></canvas></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <footer>
+      <button id="undo" class="tool" title="Undo the last move">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>
+        <span>Undo</span>
+      </button>
+      <button id="hint" class="tool" title="Show a strong move">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" /></svg>
+        <span>Hint</span>
+      </button>
+      <button id="flow" title="Send home every jewel that can go">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9c2.5-2 4.5-2 7 0s4.5 2 7 0" /><path d="M5 15c2.5-2 4.5-2 7 0s4.5 2 7 0" /></svg>
+        <span>Flow</span> <b id="flow-count"></b>
+      </button>
+      <button id="restart" class="tool" title="Start this picture again">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9" /><path d="M4 4v5h5" /></svg>
+        <span>Restart</span>
+      </button>
+    </footer>
+    <div id="home" class="screen" role="dialog" aria-modal="true" aria-label="Home"></div>
+    <div id="gallery" class="screen" role="dialog" aria-modal="true" aria-label="Picture gallery"></div>
+    <div id="cabinet" class="screen" role="dialog" aria-modal="true" aria-label="Jewel box"></div>
+    <div id="overlay" role="dialog" aria-modal="true" aria-labelledby="win-title">
+      <div id="card">
+        <canvas id="win-picture" aria-hidden="true"></canvas>
+        <h2 id="win-title">Complete</h2>
+        <div id="win-stars" aria-hidden="true"></div>
+        <p id="win-sub"></p>
+        <p id="win-unlock"></p>
+        <div class="row">
+          <button id="win-next" class="primary">Next</button>
+          <button id="win-again">Replay</button>
+          <button id="win-home">Home</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

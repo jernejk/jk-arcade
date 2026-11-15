@@ -6,13 +6,13 @@ Small browser games I built with AI coding tools. Free, no accounts, and most of
 
 | Game | Play |
 |---|---|
-| Perigee — fling a moon through a shrinking gold arc | [perigee/](https://jernejk.github.io/jk-arcade/perigee/) |
-| Piece by Pixel — rebuild pixel-art postcards one piece at a time | [Gull Harbor, Master tier](https://jernejk.github.io/jk-arcade/piece-by-pixel/#gull-harbor@master) |
-| Tumbleverse — topple toy worlds, break bridges, play with tiny planets | [tumbleverse/](https://jernejk.github.io/jk-arcade/tumbleverse/) |
-| Loose Ends — unwind arrow cords from rotating porcelain shapes | [loose-ends/](https://jernejk.github.io/jk-arcade/loose-ends/) |
-| Prism Pop Painter — fill pixel art with jewel bubbles | [prism-pop-painter/](https://jernejk.github.io/jk-arcade/prism-pop-painter/#play) |
-| Block Loop Shooter — drain a bead loop with limited-ammo shooters | [block-loop-shooter/](https://jernejk.github.io/jk-arcade/block-loop-shooter/) |
 | Nap Patch — tuck sleepy bush critters into a patchwork quilt, one per patch, row and column | [nap-patch/](https://jernejk.github.io/jk-arcade/nap-patch/) |
+| Piece by Pixel — rebuild pixel-art postcards one piece at a time | [Gull Harbor, Master tier](https://jernejk.github.io/jk-arcade/piece-by-pixel/#gull-harbor@master) |
+| Tumbleverse — smash endless generated towers, castles and tiny planets | [tumbleverse/](https://jernejk.github.io/jk-arcade/tumbleverse/) |
+| Loose Ends — untangle porcelain shapes wrapped in arrow cords | [loose-ends/](https://jernejk.github.io/jk-arcade/loose-ends/) |
+| Jewel Swap — lift a few jewels and let the rest flow home in a chain reaction | [jewel-swap/](https://jernejk.github.io/jk-arcade/jewel-swap/) |
+| Shiftworks — draft a machine a shift and out-earn a climbing quota | [shiftworks/](https://jernejk.github.io/jk-arcade/shiftworks/) |
+| Block Loop Shooter — drain a bead loop with limited-ammo shooters | [block-loop-shooter/](https://jernejk.github.io/jk-arcade/block-loop-shooter/) |
 
 This repo holds the built games only; source code isn't published yet. Every folder is a static site, so you can also run one locally with `npx serve <folder>`.
 
