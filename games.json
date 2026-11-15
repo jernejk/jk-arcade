@@ -1,18 +1,9 @@
 [
   {
-    "id": "perigee",
-    "title": "Perigee",
-    "pitch": "Fling a moon through a shrinking gold arc. Cash the silver or wait for the core. A new night every day.",
-    "controls": "Tap the gold. Silver cashes out. Space flings, R restarts, M mutes.",
-    "url": "perigee/",
-    "shot": "shots/perigee.webp",
-    "accent": "#ffc14d"
-  },
-  {
     "id": "nap-patch",
     "title": "Nap Patch",
-    "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A new quilt every day.",
-    "controls": "Tap or click to cross out, again to tuck in a critter; drag to cross out lots. Arrows move, Space, X, Enter, Z undo, H hint.",
+    "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A daily quilt, plus an endless Quilt Trail of freshly stitched puzzles with five quilt patterns and sewn-on buttons.",
+    "controls": "Tap to cross out, tap again to tuck in a critter, or long-press to tuck in one go; drag to cross out lots. Arrows move, Space, X, Enter, Z undo, H hint.",
     "url": "nap-patch/",
     "shot": "shots/nap-patch.webp"
   },
@@ -28,26 +19,34 @@
   {
     "id": "tumbleverse",
     "title": "Tumbleverse",
-    "pitch": "Topple toy worlds, break bridges, build contraptions and play with tiny planets.",
-    "controls": "Mouse aim/click fire, right-drag orbit; touch drag aim/release; two fingers orbit/zoom.",
+    "pitch": "Smash endless generated towers, castles and tiny planets. Unlimited ammo, gravity powers, ranks to climb and a daily demolition.",
+    "controls": "Tap or click to fire, hold to keep firing; side buttons for powers and Next; two fingers or right-drag to orbit.",
     "url": "tumbleverse/",
     "shot": "shots/tumbleverse.webp"
   },
   {
     "id": "loose-ends",
     "title": "Loose Ends",
-    "pitch": "Unwind lacquered arrow cords from rotating porcelain shapes.",
-    "controls": "Tap clear cord; drag rotate; pinch/scroll zoom; hold preview; hint/undo.",
+    "pitch": "Untangle porcelain shapes wrapped edge to edge in arrow cords. Endless levels, a daily puzzle, and boards of 200 cords.",
+    "controls": "Tap a cord to pull it; drag to turn; pinch or scroll to zoom, two fingers to slide; hold to preview. Undo, hint and zoom buttons.",
     "url": "loose-ends/",
     "shot": "shots/loose-ends.webp"
   },
   {
-    "id": "prism-pop-painter",
-    "title": "Prism Pop Painter",
-    "pitch": "Fill pixel art with glossy jewel bubbles, manage a colour reserve and unlock each section in order.",
-    "controls": "Tap a jewel colour, then tap matching numbered cells.",
-    "url": "prism-pop-painter/#play",
-    "shot": "shots/prism-pop-painter.webp"
+    "id": "jewel-swap",
+    "title": "Jewel Swap",
+    "pitch": "Lift a handful of jewels, then let the rest flow home in a chain reaction. A new picture every day, an endless Journey, and jewel cuts to earn.",
+    "controls": "Tap a group of jewels, then the tray or a matching socket; Flow sends home everything that can go. F flow, H hint, R restart, Ctrl+Z undo.",
+    "url": "jewel-swap/",
+    "shot": "shots/jewel-swap.webp"
+  },
+  {
+    "id": "shiftworks",
+    "title": "Shiftworks",
+    "pitch": "Draft one machine a shift, drop it beside a winding conveyor and out-earn a quota that keeps climbing. A new factory floor every run, a daily shift and five grades to climb.",
+    "controls": "Tap a card, tap a glowing cell, start the shift. Tap a machine to inspect or upgrade it; 1×, 2× or 4× speed.",
+    "url": "shiftworks/",
+    "shot": "shots/shiftworks.webp"
   },
   {
     "id": "block-loop-shooter",
@@ -56,13 +55,5 @@
     "controls": "Drag shooters to slots; 1–5 place, R restart, M mute, S speed, Esc levels.",
     "url": "block-loop-shooter/",
     "shot": "shots/block-loop-shooter.webp"
-  },
-  {
-    "id": "curator-of-impossibilities",
-    "title": "The Curator of Impossibilities",
-    "pitch": "A ten-minute interactive story: unseal a cosmic museum's archive and decide what mercy means. Three endings.",
-    "controls": "Tap a choice to continue; progress saves on the device.",
-    "url": "https://curator-of-impossibilities.surge.sh/",
-    "shot": "shots/curator-of-impossibilities.webp"
   }
 ]

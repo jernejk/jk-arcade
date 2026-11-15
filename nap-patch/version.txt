@@ -1,4 +1,5 @@
-Nap Patch build 2026-11-07T17:43:38Z
-source 8e5649c
-app.22c7f51312.js
-app.075413e981.css
+Nap Patch build 2026-11-14T22:02:55Z
+source 1034fd1
+app.c96683d239.js
+app.91b5a805c8.css
+v2.93c465e77e.css
