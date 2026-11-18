@@ -102,12 +102,17 @@ function say(text) {
   ui.live.textContent = text;
 }
 
-function persist() {
+function browserStorage() {
   try {
-    writeSave(localStorage, state.save);
+    return localStorage;
   } catch {
-    /* a full quota must not stop the frame */
+    return null;
   }
+}
+
+function persist() {
+  const storage = browserStorage();
+  if (!storage || !writeSave(storage, state.save)) say("Progress could not be saved.");
 }
 
 function show(screen) {
@@ -1033,13 +1038,14 @@ function goTitle() {
   state.siege = null;
   state.paused = false;
   freshVista();
+  history.replaceState(null, "", location.pathname + location.search);
   show("title");
   paintTitle();
-  history.replaceState(null, "", location.pathname + location.search);
 }
 
 function boot() {
-  state.save = loadSave(localStorage);
+  const storage = browserStorage();
+  state.save = storage ? loadSave(storage) : defaultSave();
   syncPrefs();
   freshVista();
   paintTitle();

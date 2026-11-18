@@ -55,13 +55,19 @@ async function openPage(browser, server, viewport, query) {
   return { page, errors };
 }
 
+function launchOptions() {
+  const executablePath = process.env.GROKSTONE_CHROME;
+  return {
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    ...(executablePath ? { executablePath } : {}),
+  };
+}
+
 test("phone and desktop play a keep without page errors", async () => {
   const server = await startServer();
-  const browser = await chromium.launch({
-    executablePath: "/usr/bin/google-chrome",
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  let browser;
   try {
+    browser = await chromium.launch(launchOptions());
     for (const viewport of [
       { width: 360, height: 640 },
       { width: 1280, height: 800 },
@@ -119,7 +125,7 @@ test("phone and desktop play a keep without page errors", async () => {
     assert.deepEqual(desktop.errors, []);
     await desktop.page.close();
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
   }
 });
