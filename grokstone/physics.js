@@ -440,8 +440,8 @@ function onShotHit(siege, shot, other, speed) {
       if (weapon.yank && siege.bodies.has(g.id)) yank(siege, siege.bodies.get(g.id), shot.grok.owner === "player" ? siege.layout.playerCannon : siege.layout.enemyCannon);
     }
     siege.fx.push({ kind: cloth ? "clink" : "impact", x: other.position.x, y: other.position.y, speed, weapon: weapon.id, material: g.material });
-    if (weapon.explode) explode(siege, shot.position.x, shot.position.y, weapon.explodeRadius, weapon.explode);
   }
+  if (weapon.explode) explode(siege, shot.position.x, shot.position.y, weapon.explodeRadius, weapon.explode);
   shot.grok.hits += 1;
   const pierce = weapon.pierce && shot.grok.hits <= 2 && speed > 6 && g.role === "block" && !siege.bodies.has(g.id);
   if (weapon.explode || weapon.yank || !pierce) {
@@ -575,27 +575,32 @@ export function isSettled(siege) {
 }
 
 export function forceSettle(siege) {
-  const { Body, Sleeping } = matter();
+  const { Body } = matter();
   for (const shot of siege.shots.slice()) retireShot(siege, shot);
   const moving = [...siege.bodies.values(), ...siege.debris];
   for (const body of moving) {
     if (body.isStatic) continue;
     Body.setVelocity(body, { x: 0, y: 0 });
     Body.setAngularVelocity(body, 0);
-    Sleeping.set(body, true);
   }
 }
 
 export function sideIntegrity(siege, side) {
-  let hp = 0;
   let max = 0;
+  const layoutBlocks = siege.layout && siege.layout.blocks;
+  if (layoutBlocks) {
+    for (const block of layoutBlocks) {
+      if (block.side === side) max += block.maxHp;
+    }
+  }
+  let hp = 0;
   for (const body of siege.bodies.values()) {
-    if (body.grok.side !== side) continue;
+    if (!body.grok || body.grok.side !== side || body.grok.role !== "block") continue;
     hp += Math.max(0, body.grok.hp);
-    max += body.grok.maxHp;
+    if (!layoutBlocks) max += body.grok.maxHp;
   }
   if (!max) return 0;
-  return hp / max;
+  return Math.max(0, Math.min(1, hp / max));
 }
 
 export function bannerBody(siege, side) {

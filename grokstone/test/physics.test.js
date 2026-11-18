@@ -16,11 +16,13 @@ import {
 } from "../logic.js";
 import {
   bannerStatus,
+  consumeFx,
   createSiege,
   destroySiege,
   fireProjectile,
   forceSettle,
   isSettled,
+  sideIntegrity,
   stepSiege,
   strikeBlock,
 } from "../physics.js";
@@ -111,5 +113,28 @@ test("a careful roundshot wins the first keep", () => {
     assert.equal(bannerStatus(siege, "player"), "up");
   }
   assert.equal(won, true);
+  destroySiege(siege);
+});
+
+test("breaking a full stone lowers the keep, and a keg still bursts on rubble", () => {
+  const layout = layoutByNumber(1, defaultSave());
+  const siege = createSiege(layout);
+  assert.equal(sideIntegrity(siege, "enemy"), 1);
+  const foot = siege.bodies.get("e0x0");
+  foot.grok.hp = foot.grok.maxHp / 2;
+  const cracked = sideIntegrity(siege, "enemy");
+  strikeBlock(siege, "e0x0", 9999);
+  assert.ok(sideIntegrity(siege, "enemy") < cracked);
+  const debris = siege.debris[0];
+  assert.ok(debris);
+  consumeFx(siege);
+  const keg = weaponById("keg");
+  fireProjectile(siege, "player", keg, { vx: 10, vy: 0 }, { x: debris.position.x - 30, y: debris.position.y });
+  let exploded = false;
+  for (let i = 0; i < 40 && !exploded; i++) {
+    stepSiege(siege);
+    exploded = consumeFx(siege).some((fx) => fx.kind === "explode");
+  }
+  assert.equal(exploded, true);
   destroySiege(siege);
 });

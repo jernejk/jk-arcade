@@ -360,8 +360,12 @@ export function loadSave(storage) {
 }
 
 export function writeSave(storage, save) {
-  storage.setItem(SAVE_KEY, JSON.stringify(save));
-  return save;
+  try {
+    storage.setItem(SAVE_KEY, JSON.stringify(save));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function playerSpec(save) {
@@ -649,7 +653,7 @@ function parFor(spec) {
 export function buildLayout({ mode, number = 1, save, seed, date }) {
   const safeSave = save || defaultSave();
   const rngSeed = mode === "daily" ? dailySeed(date || localDateString()) : (seed >>> 0);
-  const rng = mulberry32((rngSeed || hashString(String(number))) ^ 0x9e3779b9);
+  const layoutSeed = (rngSeed || hashString(String(number))) >>> 0;
   let enemy;
   let wind;
   let name;
@@ -704,8 +708,8 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     levelNumber = 0;
   }
 
-  const player = placeCastle(playerSpec(safeSave), "player", rng);
-  const foeCastle = placeCastle(enemy, "enemy", rng);
+  const player = placeCastle(playerSpec(safeSave), "player", mulberry32((layoutSeed ^ 0x9e3779b9) >>> 0));
+  const foeCastle = placeCastle(enemy, "enemy", mulberry32((layoutSeed ^ 0x85ebca6b) >>> 0));
   const blocks = withNeighbors([...player.blocks, ...foeCastle.blocks]);
   const weapons = mode === "campaign" ? safeSave.weapons.slice() : WEAPONS.map((w) => w.id);
 
@@ -984,7 +988,9 @@ export function shareText(layout, outcome) {
 
 export function hashFor(layout) {
   if (!layout) return "";
-  if (layout.mode === "daily") return "#daily";
+  if (layout.mode === "daily") {
+    return layout.date && /^\d{4}-\d{2}-\d{2}$/.test(layout.date) ? `#daily=${layout.date}` : "#daily";
+  }
   if (layout.mode === "seed") return `#s=${(layout.seed >>> 0).toString(36)}`;
   if (layout.mode === "campaign" && layout.number) return `#l=${layout.number}`;
   return "";
@@ -993,7 +999,9 @@ export function hashFor(layout) {
 export function parseHash(hash) {
   const h = String(hash || "").replace(/^#/, "").trim();
   if (!h) return { mode: "campaign" };
-  if (h === "daily" || h.startsWith("daily")) return { mode: "daily" };
+  if (h === "daily") return { mode: "daily" };
+  const dated = /^daily=(\d{4}-\d{2}-\d{2})$/.exec(h);
+  if (dated) return { mode: "daily", date: dated[1] };
   let m = /^s=([0-9a-z]+)$/i.exec(h);
   if (m) {
     const seed = Number.parseInt(m[1], 36);

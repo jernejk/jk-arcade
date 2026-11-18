@@ -89,6 +89,8 @@ const state = {
 
 let view = { scale: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, bottom: 0 };
 let last = 0;
+let simAcc = 0;
+const STEP_MS = 1000 / 60;
 
 function reduced() {
   if (state.save.settings.motion === "reduce") return true;
@@ -101,7 +103,11 @@ function say(text) {
 }
 
 function persist() {
-  writeSave(localStorage, state.save);
+  try {
+    writeSave(localStorage, state.save);
+  } catch {
+    /* a full quota must not stop the frame */
+  }
 }
 
 function show(screen) {
@@ -371,12 +377,12 @@ function paintTitle() {
   const layout = layoutByNumber(Math.min(next, Math.max(state.save.unlocked, 1)), state.save);
   const begun = state.save.stats.wins + state.save.stats.losses > 0 || state.save.unlocked > 1;
   const hash = parseHash(location.hash);
+  const today = localDateString();
   const button = document.querySelector("#continue");
-  if (hash.mode === "daily") button.textContent = "Open today's keep";
+  if (hash.mode === "daily") button.textContent = hash.date && hash.date !== today ? `Open ${hash.date}` : "Open today's keep";
   else if (hash.mode === "seed") button.textContent = "Open the shared keep";
   else button.textContent = begun ? `Continue · ${layout.name}` : "Begin the siege";
   const daily = state.save.daily;
-  const today = localDateString();
   document.querySelector("#daily").textContent = daily && daily.date === today && daily.won ? `Today's keep · ${daily.shots} shots` : "Today's keep";
 }
 
@@ -389,8 +395,10 @@ function toggleMute() {
 function resize() {
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.min(2, devicePixelRatio || 1);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  const nextW = Math.max(1, Math.round(rect.width * dpr));
+  const nextH = Math.max(1, Math.round(rect.height * dpr));
+  if (canvas.width !== nextW) canvas.width = nextW;
+  if (canvas.height !== nextH) canvas.height = nextH;
   const battle = state.screen === "battle" || state.screen === "pause";
   const top = battle ? ui.hud.getBoundingClientRect().height : 0;
   const bottom = state.screen === "battle" ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
@@ -806,29 +814,40 @@ function bodiesToDraw() {
   return list;
 }
 
+function stepSimulation() {
+  if (state.slow > 0) {
+    state.siege.timeScale = reduced() ? 1 : 0.55;
+    state.slow -= 1;
+  } else state.siege.timeScale = 1;
+  stepSiege(state.siege);
+  handleFx(consumeFx(state.siege));
+  if (isSettled(state.siege) || state.siege.frame > 340) {
+    if (state.siege.frame > 340) forceSettle(state.siege);
+    simAcc = 0;
+    finishSim();
+  }
+}
+
 function frame(now) {
-  const dt = Math.min(32, now - (last || now));
+  const dt = last ? Math.min(48, now - last) : STEP_MS;
   last = now;
   state.time = now;
   if (state.calloutUntil && now > state.calloutUntil) ui.callout.hidden = true;
   if (state.screen === "battle" && !state.paused && state.siege) {
-    if (state.phase === "enemy" && now >= state.enemyAt && state.enemyPlan) {
+    if (state.phase === "enemy" && now >= state.enemyAt && state.enemyPlan && !state.enemyPlan.fired) {
       const plan = state.enemyPlan;
       state.enemyPlan = { ...plan, fired: true };
+      simAcc = 0;
       fire("enemy", plan.angle, plan.power, weaponById(plan.weaponId));
     } else if (state.phase === "sim") {
-      if (state.slow > 0) {
-        state.siege.timeScale = reduced() ? 1 : 0.55;
-        state.slow -= 1;
-      } else state.siege.timeScale = 1;
-      stepSiege(state.siege);
-      handleFx(consumeFx(state.siege));
-      if (isSettled(state.siege) || state.siege.frame > 340) {
-        if (state.siege.frame > 340) forceSettle(state.siege);
-        finishSim();
+      simAcc = Math.min(STEP_MS * 5, simAcc + dt);
+      let guard = 0;
+      while (state.phase === "sim" && simAcc >= STEP_MS && guard++ < 5) {
+        simAcc -= STEP_MS;
+        stepSimulation();
       }
-    }
-  }
+    } else simAcc = 0;
+  } else simAcc = 0;
   state.shake *= 0.86;
   state.recoil *= 0.8;
   state.flash *= 0.86;
@@ -862,7 +881,7 @@ function bind() {
   document.querySelector("#continue").addEventListener("click", () => {
     const hash = parseHash(location.hash);
     const save = state.save;
-    if (hash.mode === "daily") startBattle(dailyLayout(save, localDateString()));
+    if (hash.mode === "daily") startBattle(dailyLayout(save, hash.date || localDateString()));
     else if (hash.mode === "seed") startBattle(seedLayout(save, hash.seed));
     else startBattle(layoutByNumber(hash.number || nextLevelNumber(save), save));
     audio.blip();
@@ -965,7 +984,11 @@ function bind() {
     else if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") state.angle += 0.045;
     else if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") state.power += 0.04;
     else if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") state.power -= 0.04;
-    else if (event.key === " " || event.key === "Enter") firePlayer();
+    else if (event.key === " " || event.key === "Enter") {
+      const focused = event.target && event.target.closest && event.target.closest("button, a, input, textarea, select");
+      if (focused) return;
+      firePlayer();
+    }
     else if (event.key >= "1" && event.key <= "4") {
       const weapon = WEAPONS[Number(event.key) - 1];
       if (weapon && state.layout.weapons.includes(weapon.id)) {

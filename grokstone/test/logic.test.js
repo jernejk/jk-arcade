@@ -126,8 +126,11 @@ test("saves survive junk and round-trip", () => {
 
 test("share links reopen the same keep", () => {
   const daily = dailyLayout(defaultSave(), "2026-11-18");
-  assert.equal(hashFor(daily), "#daily");
+  assert.equal(hashFor(daily), "#daily=2026-11-18");
   assert.equal(parseHash("#daily").mode, "daily");
+  assert.equal(parseHash("#daily").date, undefined);
+  assert.equal(parseHash(hashFor(daily)).date, "2026-11-18");
+  assert.equal(dailyLayout(defaultSave(), parseHash(hashFor(daily)).date).seed, daily.seed);
   const seeded = seedLayout(defaultSave(), 123456);
   assert.equal(parseHash(hashFor(seeded)).seed, seeded.seed);
   assert.equal(parseHash("#l=4").number, 4);
@@ -136,6 +139,25 @@ test("share links reopen the same keep", () => {
   assert.match(text, /Grokstone/);
   assert.match(text, /2026-11-18/);
   assert.match(text, /3 shots/);
+});
+
+test("a full quota does not throw, and upgrades do not move the rival keep", () => {
+  const storage = {
+    getItem() { return null; },
+    setItem() { throw new Error("quota"); },
+  };
+  assert.equal(writeSave(storage, defaultSave()), false);
+  const plain = dailyLayout(defaultSave(), "2026-11-18");
+  const upgraded = defaultSave();
+  upgraded.upgrades.buttress = true;
+  upgraded.upgrades.thick = true;
+  const shifted = dailyLayout(upgraded, "2026-11-18");
+  const face = (layout) => layout.blocks.filter((block) => block.side === "enemy").map((block) => [block.id, block.x, block.y, block.material, block.variant]);
+  assert.deepEqual(face(plain), face(shifted));
+  assert.notEqual(
+    plain.blocks.filter((block) => block.side === "player").length,
+    shifted.blocks.filter((block) => block.side === "player").length,
+  );
 });
 
 test("roundshot is the crew you start with", () => {
