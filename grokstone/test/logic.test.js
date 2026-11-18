@@ -12,6 +12,7 @@ import {
   hashFor,
   hookYields,
   layoutByNumber,
+  missingStar,
   loadSave,
   localDateString,
   parseHash,
@@ -153,15 +154,33 @@ test("High Merlon's gold stone is heavy until it cracks", () => {
   assert.ok(hooks + 1 <= layout.par);
 });
 
-test("a roundshot cannot finish Brackencrown inside par, and a boulder can", () => {
+test("a roundshot cannot finish Brackencrown inside par, and the hook cannot pluck it", () => {
   const layout = layoutByNumber(8, defaultSave());
   const key = layout.blocks.find((b) => b.side === "enemy" && b.material === "keystone");
-  const ball = weaponById("roundshot");
-  const rock = weaponById("boulder");
-  const ballMax = ball.damage + ball.speed[1] * ball.speedDamage;
-  const rockMax = rock.damage + rock.speed[1] * rock.speedDamage;
-  assert.ok(Math.ceil(key.maxHp / ballMax) > layout.par);
-  assert.ok(Math.ceil(key.maxHp / rockMax) <= layout.par);
+  const livedBoulder = 144;
+  const livedBall = 120;
+  assert.equal(key.sealed, true);
+  assert.equal(hookYields({ ...key, hp: 1 }), false);
+  assert.ok(4 * livedBoulder < key.maxHp);
+  assert.ok(5 * livedBoulder >= key.maxHp);
+  assert.ok(Math.ceil(key.maxHp / livedBall) > layout.par);
+});
+
+test("the bonded keeps ask for different shots", () => {
+  const feetOf = (layout) => {
+    const host = layout.blocks.find((b) => b.id === "elintel" && b.side === "enemy");
+    return host.neighbors.below.map((id) => layout.blocks.find((b) => b.id === id));
+  };
+  const foot = feetOf(layoutByNumber(1, defaultSave()));
+  const barn = feetOf(layoutByNumber(3, defaultSave()));
+  const butt = feetOf(layoutByNumber(6, defaultSave()));
+  assert.ok(foot.some((b) => b.material === "keystone"));
+  assert.ok(foot.some((b) => b.material === "stone"));
+  assert.ok(barn.every((b) => b.material === "timber" && b.arch));
+  const gold = butt.find((b) => b.material === "keystone");
+  assert.equal(gold.sealed, true);
+  assert.equal(missingStar(layoutByNumber(1, defaultSave()), 2, true), "The third star wanted the gold foot.");
+  assert.equal(missingStar(layoutByNumber(1, defaultSave()), 3, true), "");
 });
 
 test("a daily keep does not rest on one timber or one keg", () => {

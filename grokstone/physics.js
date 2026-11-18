@@ -102,6 +102,7 @@ function addBlock(siege, block) {
     rooted: block.rooted,
     pin: block.pin === true,
     heavy: block.heavy === true,
+    sealed: block.sealed === true,
     arch: block.arch,
     loose: false,
     variant: block.variant,
@@ -189,6 +190,7 @@ function liveStructural(siege) {
       rooted: g.rooted && !g.loose,
       pin: g.pin === true && !g.loose,
       heavy: g.heavy === true,
+      sealed: g.sealed === true,
       arch: g.arch,
       loose: false,
       neighbors: g.neighbors,
@@ -339,28 +341,36 @@ function killBlock(siege, id) {
   return info;
 }
 
+const SHARD_CUTS = [
+  { w: 0.72, h: 0.22 },
+  { w: 0.18, h: 0.78 },
+  { w: 0.4, h: 0.36 },
+  { w: 0.26, h: 0.16 },
+];
+
 function spawnDebris(siege, info) {
   const { Bodies, Body, Composite } = matter();
-  const pieces = info.material === "banner" ? 1 : 2;
+  const pieces = info.material === "banner" ? 2 : 4;
   for (let i = 0; i < pieces; i++) {
-    if (siege.debris.length > 40) {
+    if (siege.debris.length > 70) {
       const old = siege.debris.shift();
       if (old) Composite.remove(siege.engine.world, old);
     }
-    const w = Math.max(6, info.w * (i === 0 ? 0.46 : 0.34));
-    const h = Math.max(5, info.h * (i === 0 ? 0.42 : 0.3));
-    const body = Bodies.rectangle(info.x + (i - 0.5) * 4, info.y + i, w, h, {
+    const cut = SHARD_CUTS[i % SHARD_CUTS.length];
+    const w = Math.max(5, info.w * cut.w);
+    const h = Math.max(4, info.h * cut.h);
+    const body = Bodies.rectangle(info.x + (i - 1.5) * 5, info.y + (i % 2) * 3, w, h, {
       friction: 0.6,
-      frictionAir: 0.02,
-      restitution: 0.04,
+      frictionAir: 0.018,
+      restitution: 0.05,
       density: 0.0016,
-      chamfer: { radius: 1 },
-      angle: info.angle + (i - 0.5) * 0.4,
+      chamfer: { radius: i % 2 === 0 ? 0.4 : 2 },
+      angle: info.angle + (i - 1.5) * 0.55,
     });
-    body.grok = { role: "debris", id: `deb-${siege.frame}-${i}-${info.id}`, material: info.material, side: info.side, w, h, age: 0, variant: i };
+    body.grok = { role: "debris", id: `deb-${siege.frame}-${i}-${info.id}`, material: info.material, side: info.side, w, h, age: 0, variant: i, shard: i % 4 };
     Composite.add(siege.engine.world, body);
-    Body.setVelocity(body, { x: (i - 0.5) * 2.2, y: -1.4 - i });
-    Body.setAngularVelocity(body, (i - 0.5) * 0.18);
+    Body.setVelocity(body, { x: (i - 1.5) * 2.4, y: -1.6 - (i % 3) * 0.8 });
+    Body.setAngularVelocity(body, (i - 1.5) * 0.22);
     siege.debris.push(body);
   }
 }

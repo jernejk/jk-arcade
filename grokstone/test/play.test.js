@@ -140,3 +140,66 @@ test("phone and desktop play a keep without page errors", async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+async function liveDuel(browser, server, level, weapon, limit) {
+  const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  await page.addInitScript(() => {
+    localStorage.setItem("grokstone-v1", JSON.stringify({
+      v: 1, unlocked: 8, rubble: 40,
+      weapons: ["roundshot", "keg", "harpoon", "boulder"],
+      upgrades: {}, cleared: {}, best: {}, daily: null, seeds: {},
+      lastWeapon: "roundshot",
+      stats: { wins: 4, losses: 0, shots: 12 },
+      settings: { muted: true, motion: "reduce" },
+      seenEgg: false, dailyBonusDate: null,
+    }));
+  });
+  const port = server.address().port;
+  await page.goto(`http://127.0.0.1:${port}/?test=1#l=${level}`, { waitUntil: "networkidle" });
+  await page.locator("#continue").click();
+  await page.waitForFunction(() => window.__grokstone.phase === "aim");
+  await page.evaluate((id) => window.__grokstone.use(id), weapon);
+  for (let i = 0; i < limit; i++) {
+    if (await page.evaluate(() => window.__grokstone.screen === "result")) break;
+    await page.waitForFunction(() => window.__grokstone.phase === "aim" && window.__grokstone.screen === "battle", null, { timeout: 12000 });
+    await page.evaluate(() => window.__grokstone.fireSolution());
+    await page.waitForFunction(() => {
+      const game = window.__grokstone;
+      return (game.phase === "aim" && game.screen === "battle") || game.screen === "result";
+    }, null, { timeout: 12000 });
+  }
+  const status = await page.evaluate(() => window.__grokstone.status());
+  await page.close();
+  return { status, errors };
+}
+
+test("live duels give each crew its own keep", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const wins = [
+      [1, "roundshot", 3],
+      [3, "harpoon", 3],
+      [6, "boulder", 3],
+      [7, "harpoon", 3],
+      [8, "boulder", 3],
+    ];
+    for (const [level, weapon, stars] of wins) {
+      const { status, errors } = await liveDuel(browser, server, level, weapon, 8);
+      assert.deepEqual(errors, [], `${level} ${weapon}`);
+      assert.equal(status.won, true, `${level} ${weapon} ${status.detail}`);
+      assert.equal(status.stars, stars, `${level} ${weapon} ${status.detail}`);
+    }
+    for (const [level, weapon] of [[3, "roundshot"], [6, "roundshot"], [8, "harpoon"]]) {
+      const { status, errors } = await liveDuel(browser, server, level, weapon, 8);
+      assert.deepEqual(errors, [], `${level} ${weapon}`);
+      assert.equal(status.won && status.stars === 3, false, `${level} ${weapon} ${status.detail}`);
+    }
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

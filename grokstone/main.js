@@ -25,6 +25,7 @@ import {
   shareText,
   shotVelocity,
   cleverClear,
+  missingStar,
   starsFor,
   weaponById,
   windLabel,
@@ -292,6 +293,11 @@ function finishSim() {
     state.phase = "hold";
     state.holdUntil = performance.now() + (reduced() ? 280 : 1200);
     state.holdWon = enemy !== "up" && !both;
+    if (state.holdWon && state.siege) {
+      for (const body of state.siege.bodies.values()) {
+        if (body.grok.side === "enemy" && !body.isStatic) puff(body.position.x, body.position.y, "#efe6d4");
+      }
+    }
     state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? "Your standard is down." : "");
     return;
   }
@@ -324,8 +330,9 @@ function endBattle(won, note) {
   document.querySelector("#share-text").value = `${text}\n${url}`;
   document.querySelector("#result-kicker").textContent = state.layout.name;
   document.querySelector("#result-title").textContent = won ? "The banner falls" : "Your standard is down";
+  const gap = missingStar(state.layout, stars, won);
   document.querySelector("#result-detail").textContent = won
-    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && outcome.rubble ? ` · +${state.rubble} rubble` : ""}`
+    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && outcome.rubble ? ` · +${state.rubble} rubble` : ""}${gap ? `. ${gap}` : ""}`
     : (note || "The rival keep is still standing.");
   document.querySelector("#result-stars").textContent = won ? "★".repeat(stars) + "☆".repeat(3 - stars) : "☆☆☆";
   document.querySelector("#yard").hidden = !won;
@@ -454,11 +461,11 @@ function puff(x, y, chip) {
       y: y + (Math.random() - 0.35) * spread * 0.7,
       vx: (Math.random() - 0.5) * 1.15,
       vy: -0.2 - Math.random() * 0.85,
-      life: 54 + Math.random() * 28,
-      max: 82,
+      life: 340 + Math.random() * 80,
+      max: 420,
       r: 10 + Math.random() * 18,
       color: i % 3 === 0 ? "rgba(232, 214, 186, 0.38)" : "rgba(168, 148, 124, 0.32)",
-      g: 0.008,
+      g: 0.002,
     });
   }
   const chipN = reduced() ? 3 : 16;
@@ -634,10 +641,45 @@ function blockColors(material, variant = 1) {
   return colors.map((hex) => shiftHex(hex, shift));
 }
 
+const SHARD_POLY = [
+  [[-0.5, -0.15], [0.55, -0.4], [0.2, 0.45], [-0.45, 0.2]],
+  [[-0.15, -0.55], [0.4, -0.1], [0.1, 0.55], [-0.45, 0.15]],
+  [[-0.5, -0.35], [0.48, -0.05], [0.15, 0.4], [-0.2, 0.15]],
+  [[-0.35, -0.5], [0.3, -0.45], [0.45, 0.2], [-0.1, 0.5]],
+];
+
+function drawShard(b) {
+  const poly = SHARD_POLY[(b.shard || 0) % SHARD_POLY.length];
+  const [hi, mid, lo] = blockColors(b.material, b.variant || 0);
+  ctx.beginPath();
+  poly.forEach(([px, py], i) => {
+    const x = px * b.w;
+    const y = py * b.h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(-b.w / 2, -b.h / 2, b.w / 2, b.h / 2);
+  grad.addColorStop(0, hi);
+  grad.addColorStop(1, lo);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(70, 46, 32, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = mid;
+  ctx.fillRect(-b.w * 0.1, -1, b.w * 0.35, 1.4);
+}
+
 function drawBlock(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
   ctx.rotate(b.angle || 0);
+  if (b.shard != null) {
+    drawShard(b);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = "rgba(30, 16, 12, 0.28)";
   ctx.beginPath();
   ctx.ellipse(1, b.h / 2 + 1, b.w * 0.42, 2.4, 0, 0, Math.PI * 2);
@@ -866,6 +908,7 @@ function bodiesToDraw() {
       maxHp: 1,
       variant: body.grok.variant,
       side: body.grok.side,
+      shard: body.grok.shard,
       flash: 0,
     });
   }
@@ -1140,7 +1183,32 @@ function boot() {
         state.angle = aim.angle;
         state.power = aim.power;
         firePlayer();
-        return aim && aim.hit;
+        return aim && aim.targetId;
+      },
+      use(id) {
+        const button = document.querySelector(`[data-weapon="${id}"]`);
+        if (button && !button.disabled) button.click();
+      },
+      status() {
+        const blocks = [];
+        if (state.siege) {
+          for (const body of state.siege.bodies.values()) {
+            const g = body.grok;
+            if (!g || g.role !== "block") continue;
+            blocks.push({ id: g.id, hp: Math.round(g.hp), maxHp: g.maxHp, material: g.material, side: g.side, up: body.isStatic && !g.loose });
+          }
+        }
+        return {
+          screen: state.screen,
+          phase: state.phase,
+          shots: state.shots,
+          won: !!(state.result && state.result.won),
+          stars: state.result ? state.result.stars : 0,
+          clever: !!(state.result && state.result.clever),
+          detail: document.querySelector("#result-detail") ? document.querySelector("#result-detail").textContent : "",
+          dust: state.particles.filter((p) => p.dust && p.life > 0).length,
+          blocks,
+        };
       },
     };
   }

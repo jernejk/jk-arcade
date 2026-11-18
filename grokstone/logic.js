@@ -121,7 +121,7 @@ export const UPGRADES = Object.freeze([
   { id: "powder", kind: "keep", cost: 12, name: "Powder horn", blurb: "Ida's roundshot lands harder." },
   { id: "iron", kind: "keep", cost: 12, name: "Iron standard", blurb: "The capstone under your banner is banded. It takes two clean hits." },
   { id: "thick", kind: "keep", cost: 14, name: "Thicker ashlar", blurb: "Every course in your keep is cut deeper." },
-  { id: "harpoon", kind: "weapon", weapon: "harpoon", cost: 16, name: "Hire Sable Quinn", blurb: "A hookline for plucking the one stone that matters." },
+  { id: "harpoon", kind: "weapon", weapon: "harpoon", cost: 12, name: "Hire Sable Quinn", blurb: "A hookline for plucking the one stone that matters." },
   { id: "boulder", kind: "weapon", weapon: "boulder", cost: 18, name: "Hire Bram Holt", blurb: "A boulder for doors, feet, and bad ideas." },
 ]);
 
@@ -131,11 +131,12 @@ export const LEVELS = Object.freeze([
     id: "foot",
     name: "The Foot",
     foe: "Pebble Stack",
-    blurb: "The cloth sits on two stones. Lose one and it stays. Lose both and the course comes down.",
+    blurb: "One foot is gold. Break that, and the plain stone beside it.",
     par: 3,
     wind: 0,
-    enemy: { pattern: "bond", cols: 4, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1 },
-    ai: { skill: 0.18, weapon: "roundshot" },
+    starShot: "the gold foot",
+    enemy: { pattern: "bond", cols: 4, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1, crown: "gold" },
+    ai: { skill: 0.55, weapon: "roundshot" },
   },
   {
     number: 2,
@@ -145,6 +146,7 @@ export const LEVELS = Object.freeze([
     blurb: "The door is in the middle of the wall. The gold stone is why the crown is still up.",
     par: 3,
     wind: 0.22,
+    starShot: "the gold stone",
     enemy: { pattern: "arch", cols: 5, rows: 8, timberEvery: 0, kegs: 0, merlons: true, hp: 1, keystone: 1.15 },
     ai: { skill: 0.32, weapon: "roundshot" },
   },
@@ -153,11 +155,12 @@ export const LEVELS = Object.freeze([
     id: "barn",
     name: "Banded Barn",
     foe: "Banded Barn",
-    blurb: "The timber band is a decoy. The banner has two feet, and both of them have to go.",
+    blurb: "Both feet are timber bands. Sable plucks them. Ida is still counting when the reply lands.",
     par: 3,
     wind: -0.18,
-    enemy: { pattern: "bond", cols: 4, rows: 8, timberEvery: 3, kegs: 0, merlons: true, hp: 1 },
-    ai: { skill: 0.38, weapon: "roundshot" },
+    starShot: "Sable's hook on the timber",
+    enemy: { pattern: "bond", cols: 4, rows: 8, timberEvery: 0, kegs: 0, merlons: true, hp: 1, crown: "timber" },
+    ai: { skill: 0.82, weapon: "roundshot" },
   },
   {
     number: 4,
@@ -167,6 +170,7 @@ export const LEVELS = Object.freeze([
     blurb: "Two casks are the feet under the cloth. A pot opens them. An iron ball does not.",
     par: 3,
     wind: 0.12,
+    starShot: "Puck's pot on the casks",
     enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 2, merlons: true, hp: 1 },
     ai: { skill: 0.4, weapon: "roundshot" },
   },
@@ -178,6 +182,7 @@ export const LEVELS = Object.freeze([
     blurb: "The timber between the towers is the bridge. The cloth is only watching.",
     par: 2,
     wind: 0.28,
+    starShot: "the timber span",
     enemy: { pattern: "bridge", cols: 5, rows: 8, timberEvery: 0, kegs: 0, merlons: true, hp: 1 },
     ai: { skill: 0.45, weapon: "roundshot" },
   },
@@ -186,11 +191,12 @@ export const LEVELS = Object.freeze([
     id: "buttress",
     name: "Low Buttress",
     foe: "Low Buttress",
-    blurb: "The thick foot is still a decoy. The cloth is resting on two stones, not on that foot.",
+    blurb: "The near foot is a heavy gold stone. Bram breaks it. A ball will not, not in time.",
     par: 4,
     wind: -0.12,
-    enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1, foundation: 1.15, buttress: true },
-    ai: { skill: 0.52, weapon: "roundshot" },
+    starShot: "Bram's boulder on the gold foot",
+    enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1, foundation: 1.15, buttress: true, crown: "buttress" },
+    ai: { skill: 0.84, weapon: "roundshot" },
   },
   {
     number: 7,
@@ -200,6 +206,7 @@ export const LEVELS = Object.freeze([
     blurb: "The gold stone is heavy. Crack it, and Sable can lift it out.",
     par: 4,
     wind: 0.35,
+    starShot: "Sable's hook on the cracked gold stone",
     enemy: { pattern: "arch", cols: 5, rows: 9, timberEvery: 0, kegs: 0, merlons: true, hp: 1, keystone: 3.5, heavyKey: true },
     ai: { skill: 0.62, weapon: "roundshot" },
   },
@@ -211,7 +218,8 @@ export const LEVELS = Object.freeze([
     blurb: "The crown is a boulder problem. Ida will still be counting when Bram is done.",
     par: 5,
     wind: -0.26,
-    enemy: { pattern: "arch", cols: 5, rows: 10, timberEvery: 0, kegs: 2, merlons: true, hp: 1.15, foundation: 1.35, keystone: 3.8, heavyKey: true },
+    starShot: "Bram's boulder on the gold stone",
+    enemy: { pattern: "arch", cols: 5, rows: 10, timberEvery: 0, kegs: 2, merlons: true, hp: 1.15, foundation: 1.35, keystone: 3.5, heavyKey: true, sealedKey: true },
     ai: { skill: 0.66, weapon: "roundshot" },
   },
 ]);
@@ -423,6 +431,7 @@ function makeBlock(partial) {
     rooted: partial.rooted === true,
     pin: partial.pin === true,
     heavy: partial.heavy === true,
+    sealed: partial.sealed === true,
     arch: partial.arch === true,
     loose: false,
     variant: partial.variant | 0,
@@ -461,6 +470,7 @@ function placeCastle(spec, side, rng) {
       rooted: material === "foundation",
       pin: flags.pin === true,
       heavy: flags.heavy === true,
+      sealed: flags.sealed === true,
       arch: flags.arch === true,
       variant: Math.floor(rng() * 4),
     }));
@@ -486,6 +496,7 @@ function placeCastle(spec, side, rng) {
         flags.arch = true;
         flags.pin = true;
         flags.heavy = spec.heavyKey === true;
+        flags.sealed = spec.sealedKey === true;
       } else if (spec.timberEvery && r % spec.timberEvery === 0 && r > 0 && r < rows - 1 && pattern !== "arch") {
         material = "timber";
       } else if (spec.merlons && r === rows - 1 && pattern !== "arch" && c !== near) {
@@ -569,7 +580,7 @@ function placeCastle(spec, side, rng) {
     }));
   }
   if (pattern === "arch") buildArchCrown(blocks, side);
-  if (pattern === "bond") capBondStandard(blocks, side, near);
+  if (pattern === "bond") capBondStandard(blocks, side, near, spec);
 
   return { blocks, left, width, face: mid };
 }
@@ -619,17 +630,39 @@ function buildArchCrown(blocks, side) {
   }));
 }
 
-function capBondStandard(blocks, side, near) {
+function capBondStandard(blocks, side, near, spec) {
   const outward = side === "enemy" ? -1 : 1;
   const face = blocks
     .filter((b) => b.side === side && b.col === near && b.material !== "merlon" && b.material !== "banner" && b.material !== "keg")
     .sort((a, b) => b.row - a.row)[0];
   if (!face) return;
-  const fragile = side === "enemy";
-  if (fragile) {
-    face.maxHp = Math.min(face.maxHp, 110);
-    face.hp = face.maxHp;
+  const crown = spec.crown || "stones";
+  const enemy = side === "enemy";
+  let faceHp = enemy ? 110 : (spec.playerFeet || HP.stone);
+  let footHp = enemy ? 110 : (spec.playerFeet || HP.stone);
+  let footArch = false;
+  let footHeavy = false;
+  let footSealed = false;
+  if (enemy && crown === "gold") {
+    face.material = "keystone";
+    faceHp = 100;
+  } else if (enemy && crown === "timber") {
+    face.material = "timber";
+    face.arch = true;
+    faceHp = 210;
+    footHp = 210;
+    footArch = true;
+  } else if (enemy && crown === "buttress") {
+    face.material = "keystone";
+    face.heavy = true;
+    face.sealed = true;
+    face.pin = true;
+    faceHp = 250;
+    footHp = 200;
+    footHeavy = false;
   }
+  face.maxHp = faceHp;
+  face.hp = faceHp;
   const foot = makeBlock({
     id: `${side[0]}footb`,
     side,
@@ -639,9 +672,12 @@ function capBondStandard(blocks, side, near) {
     y: face.y,
     w: 26,
     h: BLOCK_H,
-    material: "stone",
-    maxHp: fragile ? 110 : HP.stone,
+    material: footArch ? "timber" : "stone",
+    maxHp: footHp,
     pin: true,
+    arch: footArch,
+    heavy: footHeavy,
+    sealed: footSealed,
   });
   const lintel = makeBlock({
     id: `${side[0]}lintel`,
@@ -788,9 +824,15 @@ export function collapseIds(blocks) {
 }
 
 export function hookYields(block) {
-  if (!block || !block.heavy) return true;
+  if (!block || block.sealed) return false;
+  if (!block.heavy) return true;
   const max = block.maxHp || block.hp || 1;
   return block.hp / max <= 0.84;
+}
+
+export function missingStar(layout, stars, won) {
+  if (!won || !layout || stars >= 3 || !layout.starShot) return "";
+  return `The third star wanted ${layout.starShot}.`;
 }
 
 export function supportPath(blocks, banner) {
@@ -932,6 +974,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
   let par;
   let id;
   let ai;
+  let starShot = "";
   let levelNumber = number;
 
   if (mode === "campaign" && number <= LEVELS.length) {
@@ -942,6 +985,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     foe = level.foe;
     blurb = level.blurb;
     par = level.par;
+    starShot = level.starShot || "";
     id = level.id;
     ai = { ...level.ai };
     levelNumber = level.number;
@@ -969,6 +1013,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     if (mode === "daily") {
       id = `daily-${date}`;
       name = "Today's keep";
+      starShot = spec.bridge ? "the timber span" : spec.arch ? "the gold stone" : spec.kegs ? "the casks" : "both feet under the cloth";
       blurb = `${foe} stood up overnight. Every crew is lent to you. Fewest shots is the mark.`;
     } else {
       id = `seed-${(rngSeed >>> 0).toString(36)}`;
@@ -978,7 +1023,9 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     levelNumber = 0;
   }
 
-  const player = placeCastle(playerSpec(safeSave), "player", mulberry32((layoutSeed ^ 0x9e3779b9) >>> 0));
+  const pspec = playerSpec(safeSave);
+  if (levelNumber === 8) pspec.playerFeet = 340;
+  const player = placeCastle(pspec, "player", mulberry32((layoutSeed ^ 0x9e3779b9) >>> 0));
   const foeCastle = placeCastle(enemy, "enemy", mulberry32((layoutSeed ^ 0x85ebca6b) >>> 0));
   const blocks = withNeighbors([...player.blocks, ...foeCastle.blocks]);
   seatBannerKegs(blocks, enemy);
@@ -994,6 +1041,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     foe,
     blurb,
     par,
+    starShot,
     wind,
     seed: rngSeed >>> 0,
     date: date || null,
