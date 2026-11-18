@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   LEVELS,
+  aimToward,
   buy,
   cleverClear,
   collapseIds,
@@ -335,6 +336,49 @@ test("a full quota does not throw, and upgrades do not move the rival keep", () 
     plain.blocks.filter((block) => block.side === "player").length,
     shifted.blocks.filter((block) => block.side === "player").length,
   );
+});
+
+test("a drag on a foot outlines that foot, not the beam", () => {
+  for (const [number, weaponId] of [[3, "harpoon"], [6, "boulder"]]) {
+    const layout = layoutByNumber(number, defaultSave());
+    const weapon = weaponById(weaponId);
+    const foot = layout.blocks.find((b) => b.id === "efootb");
+    const aim = aimToward(layout.playerCannon, { x: foot.x, y: foot.y }, weapon, layout.blocks, layout.wind, "player");
+    assert.equal(aim.hit.id, foot.id, `${layout.name} outlined ${aim.hit && aim.hit.id}`);
+    assert.notEqual(aim.hit.id, "elintel");
+  }
+});
+
+test("Bram is affordable before Low Buttress if you hired Sable and Puck", () => {
+  let save = defaultSave();
+  const pay = (number) => {
+    save = recordResult(save, layoutByNumber(number, save), { won: true, shots: 3, rubble: 7, clever: true });
+  };
+  pay(1);
+  pay(2);
+  let hired = buy(save, "harpoon");
+  assert.equal(hired.ok, true);
+  save = hired.save;
+  pay(3);
+  hired = buy(save, "keg");
+  assert.equal(hired.ok, true);
+  save = hired.save;
+  pay(4);
+  pay(5);
+  assert.ok(save.rubble >= 15, `rubble ${save.rubble}`);
+  hired = buy(save, "boulder");
+  assert.equal(hired.ok, true);
+});
+
+test("the second siege and today's keep lend one extra crew", () => {
+  const trail = layoutByNumber(9, defaultSave());
+  assert.match(trail.name, /Second siege/);
+  assert.equal(trail.weapons.length, 2);
+  assert.equal(trail.weapons[0], "roundshot");
+  const daily = dailyLayout(defaultSave(), "2026-11-18");
+  assert.equal(daily.weapons.length, 2);
+  assert.equal(daily.weapons[0], "roundshot");
+  assert.notEqual(daily.weapons[1], "roundshot");
 });
 
 test("roundshot is the crew you start with", () => {

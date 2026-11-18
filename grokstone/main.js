@@ -545,7 +545,11 @@ function handleFx(events) {
       callout("Cloth won't do it. Drop the stone.");
     } else if (fx.kind === "yank") {
       burst(fx.x, fx.y, 8, "#d7c4a4", 2, 24);
-      callout(fx.heavy ? "The gold stone stays." : fx.cracked ? "The crack gives." : "The hook has it.");
+      callout(fx.heavy
+        ? (fx.material === "keystone" ? "The gold stone stays." : "The beam holds.")
+        : fx.cracked ? "The crack gives."
+          : fx.material === "timber" ? "The hook has the timber."
+            : "The hook has it.");
     } else if (fx.kind === "fire") {
       state.flash = 1;
     }
@@ -671,6 +675,21 @@ function drawShard(b) {
   ctx.fillRect(-b.w * 0.1, -1, b.w * 0.35, 1.4);
 }
 
+function stoneSilhouette(x, y, w, h, variant) {
+  const cut = 3 + (variant % 3) * 2;
+  const which = variant % 4;
+  ctx.beginPath();
+  ctx.moveTo(x + (which === 0 ? cut : 2), y);
+  ctx.lineTo(x + w - (which === 1 ? cut : 2), y);
+  if (which === 1) ctx.lineTo(x + w, y + cut);
+  else ctx.lineTo(x + w, y + 2);
+  ctx.lineTo(x + w - (which === 2 ? cut : 0), y + h);
+  ctx.lineTo(x + (which === 3 ? cut : 2), y + h);
+  if (which === 3) ctx.lineTo(x, y + h - cut);
+  else ctx.lineTo(x, y + h - 2);
+  ctx.closePath();
+}
+
 function drawBlock(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
@@ -689,7 +708,7 @@ function drawBlock(b) {
   grad.addColorStop(0, hi);
   grad.addColorStop(0.55, mid);
   grad.addColorStop(1, lo);
-  roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 3);
+  stoneSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0);
   ctx.fillStyle = grad;
   ctx.fill();
   ctx.strokeStyle = "rgba(60, 36, 24, 0.35)";
@@ -726,16 +745,29 @@ function drawBlock(b) {
     ctx.fillText(mark, 0, 3);
   }
   const ratio = b.maxHp ? b.hp / b.maxHp : 1;
-  if (ratio < 0.88) {
-    ctx.strokeStyle = "rgba(50, 28, 18, 0.65)";
-    ctx.lineWidth = 1.1;
+  if (ratio < 0.98) {
+    ctx.fillStyle = "rgba(74, 52, 36, 0.85)";
     ctx.beginPath();
-    ctx.moveTo(-b.w * 0.22, -b.h * 0.1);
-    ctx.lineTo(2, 1);
-    ctx.lineTo(b.w * 0.18, b.h * 0.22);
-    if (ratio < 0.4) {
-      ctx.moveTo(b.w * 0.1, -b.h * 0.2);
-      ctx.lineTo(-2, b.h * 0.05);
+    const notch = (b.variant % 4);
+    if (notch === 0) { ctx.moveTo(b.w / 2, -b.h / 2); ctx.lineTo(b.w / 2 - 7, -b.h / 2); ctx.lineTo(b.w / 2, -b.h / 2 + 6); }
+    else if (notch === 1) { ctx.moveTo(-b.w / 2, b.h / 2); ctx.lineTo(-b.w / 2 + 8, b.h / 2); ctx.lineTo(-b.w / 2, b.h / 2 - 5); }
+    else if (notch === 2) { ctx.moveTo(b.w / 2, b.h / 2); ctx.lineTo(b.w / 2 - 6, b.h / 2); ctx.lineTo(b.w / 2, b.h / 2 - 7); }
+    else { ctx.moveTo(-b.w / 2, -b.h / 2); ctx.lineTo(-b.w / 2 + 6, -b.h / 2); ctx.lineTo(-b.w / 2, -b.h / 2 + 7); }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(42, 24, 16, 0.9)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-b.w * 0.28, -b.h * 0.05);
+    ctx.lineTo(b.w * 0.05, b.h * 0.08);
+    ctx.lineTo(b.w * 0.22, b.h * 0.28);
+    if (ratio < 0.7) {
+      ctx.moveTo(b.w * 0.12, -b.h * 0.22);
+      ctx.lineTo(-b.w * 0.08, b.h * 0.02);
+    }
+    if (ratio < 0.45) {
+      ctx.moveTo(-b.w * 0.05, -b.h * 0.3);
+      ctx.lineTo(b.w * 0.02, b.h * 0.18);
     }
     ctx.stroke();
   }
@@ -1188,6 +1220,36 @@ function boot() {
       use(id) {
         const button = document.querySelector(`[data-weapon="${id}"]`);
         if (button && !button.disabled) button.click();
+      },
+      outline() {
+        const pred = predicted();
+        return pred && pred.hit && pred.hit.type === "block" ? pred.hit.id : null;
+      },
+      clientFor(id) {
+        const block = aimBlocks().find((b) => b.id === id) || (id === "cannon" ? state.layout.playerCannon : null);
+        if (!block) return null;
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: rect.left + view.ox + block.x * view.scale,
+          y: rect.top + view.oy + block.y * view.scale,
+        };
+      },
+      feet() {
+        const lintel = aimBlocks().find((b) => b.id === "elintel");
+        const live = new Set(aimBlocks().map((b) => b.id));
+        return ((lintel && lintel.neighbors && lintel.neighbors.below) || []).filter((id) => live.has(id));
+      },
+      aimAt(id) {
+        const block = aimBlocks().find((b) => b.id === id);
+        if (!block) return null;
+        const aim = aimToward(state.layout.playerCannon, { x: block.x, y: block.y }, currentWeapon(), aimBlocks(), state.layout.wind, "player");
+        if (!aim) return null;
+        state.angle = clampAngle(aim.angle);
+        state.power = aim.power;
+        return aim.hit && aim.hit.type === "block" ? aim.hit.id : null;
+      },
+      fireAimed() {
+        firePlayer();
       },
       status() {
         const blocks = [];

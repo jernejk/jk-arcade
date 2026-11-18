@@ -122,7 +122,7 @@ export const UPGRADES = Object.freeze([
   { id: "iron", kind: "keep", cost: 12, name: "Iron standard", blurb: "The capstone under your banner is banded. It takes two clean hits." },
   { id: "thick", kind: "keep", cost: 14, name: "Thicker ashlar", blurb: "Every course in your keep is cut deeper." },
   { id: "harpoon", kind: "weapon", weapon: "harpoon", cost: 12, name: "Hire Sable Quinn", blurb: "A hookline for plucking the one stone that matters." },
-  { id: "boulder", kind: "weapon", weapon: "boulder", cost: 18, name: "Hire Bram Holt", blurb: "A boulder for doors, feet, and bad ideas." },
+  { id: "boulder", kind: "weapon", weapon: "boulder", cost: 15, name: "Hire Bram Holt", blurb: "A boulder for doors, feet, and bad ideas." },
 ]);
 
 export const LEVELS = Object.freeze([
@@ -160,7 +160,7 @@ export const LEVELS = Object.freeze([
     wind: -0.18,
     starShot: "Sable's hook on the timber",
     enemy: { pattern: "bond", cols: 4, rows: 8, timberEvery: 0, kegs: 0, merlons: true, hp: 1, crown: "timber" },
-    ai: { skill: 0.82, weapon: "roundshot" },
+    ai: { skill: 0.58, weapon: "roundshot" },
   },
   {
     number: 4,
@@ -196,7 +196,7 @@ export const LEVELS = Object.freeze([
     wind: -0.12,
     starShot: "Bram's boulder on the gold foot",
     enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1, foundation: 1.15, buttress: true, crown: "buttress" },
-    ai: { skill: 0.84, weapon: "roundshot" },
+    ai: { skill: 0.6, weapon: "roundshot" },
   },
   {
     number: 7,
@@ -640,26 +640,27 @@ function capBondStandard(blocks, side, near, spec) {
   const enemy = side === "enemy";
   let faceHp = enemy ? 110 : (spec.playerFeet || HP.stone);
   let footHp = enemy ? 110 : (spec.playerFeet || HP.stone);
+  let footMat = "stone";
   let footArch = false;
   let footHeavy = false;
   let footSealed = false;
   if (enemy && crown === "gold") {
-    face.material = "keystone";
-    faceHp = 100;
+    footMat = "keystone";
+    footHp = 100;
+    faceHp = 110;
   } else if (enemy && crown === "timber") {
     face.material = "timber";
     face.arch = true;
     faceHp = 210;
+    footMat = "timber";
     footHp = 210;
     footArch = true;
   } else if (enemy && crown === "buttress") {
-    face.material = "keystone";
-    face.heavy = true;
-    face.sealed = true;
-    face.pin = true;
-    faceHp = 250;
-    footHp = 200;
-    footHeavy = false;
+    footMat = "keystone";
+    footHeavy = true;
+    footSealed = true;
+    footHp = 250;
+    faceHp = 200;
   }
   face.maxHp = faceHp;
   face.hp = faceHp;
@@ -672,7 +673,7 @@ function capBondStandard(blocks, side, near, spec) {
     y: face.y,
     w: 26,
     h: BLOCK_H,
-    material: footArch ? "timber" : "stone",
+    material: footMat,
     maxHp: footHp,
     pin: true,
     arch: footArch,
@@ -996,9 +997,9 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     spec.rows = Math.min(12, spec.rows + Math.floor((trail - 1) / 2));
     enemy = { ...spec, bannerScale: 1 };
     wind = spec.wind;
-    name = `Trail ${trail}`;
+    name = `Second siege · ${spec.foe}`;
     foe = spec.foe;
-    blurb = "The trail keeps raising keeps. The wind is part of the masonry.";
+    blurb = "The eight are down. This keep is remixed, and only Ida plus one crew came back out.";
     par = parFor(spec);
     id = `trail-${trail}`;
     ai = { skill: Math.min(0.9, spec.skill), weapon: spec.weapon };
@@ -1014,7 +1015,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
       id = `daily-${date}`;
       name = "Today's keep";
       starShot = spec.bridge ? "the timber span" : spec.arch ? "the gold stone" : spec.kegs ? "the casks" : "both feet under the cloth";
-      blurb = `${foe} stood up overnight. Every crew is lent to you. Fewest shots is the mark.`;
+      blurb = `${foe} stood up overnight. Ida and one other crew are lent. Fewest shots is the mark.`;
     } else {
       id = `seed-${(rngSeed >>> 0).toString(36)}`;
       name = "Shared keep";
@@ -1031,7 +1032,11 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
   seatBannerKegs(blocks, enemy);
   if (mode !== "campaign") braceDailyStandard(blocks);
   thickenPlayerStandard(blocks);
-  const weapons = mode === "campaign" ? safeSave.weapons.slice() : WEAPONS.map((w) => w.id);
+  const lentCrew = ["keg", "harpoon", "boulder"][(layoutSeed >>> 0) % 3];
+  let weapons;
+  if (mode === "campaign" && levelNumber <= LEVELS.length) weapons = safeSave.weapons.slice();
+  else if (mode === "campaign" || mode === "daily") weapons = ["roundshot", lentCrew];
+  else weapons = WEAPONS.map((w) => w.id);
 
   return {
     mode,
@@ -1201,12 +1206,36 @@ export function enemyAim(layout, shotIndex) {
   };
 }
 
+function pointerBlock(point, blocks) {
+  let inside = null;
+  let insideArea = Infinity;
+  let near = null;
+  let nearD = Infinity;
+  for (const block of blocks) {
+    if (!block || block.hp <= 0 || block.material === "banner") continue;
+    const dx = Math.abs(point.x - block.x) - block.w / 2;
+    const dy = Math.abs(point.y - block.y) - block.h / 2;
+    const outside = Math.hypot(Math.max(0, dx), Math.max(0, dy));
+    const area = block.w * block.h;
+    if (dx <= 0 && dy <= 0 && area < insideArea) {
+      inside = block;
+      insideArea = area;
+    } else if (outside <= 12 && outside < nearD) {
+      near = block;
+      nearD = outside;
+    }
+  }
+  return inside || near;
+}
+
 export function aimToward(cannon, point, weapon, blocks, wind, side) {
-  const angles = angleRange(side, 18);
+  const wanted = pointerBlock(point, blocks.filter((b) => b.side && b.side !== side));
+  const angles = angleRange(side, wanted ? 32 : 18);
+  const steps = wanted ? 12 : 8;
   let best = null;
   for (const angle of angles) {
-    for (let i = 0; i < 8; i++) {
-      const power = 0.28 + i * 0.1;
+    for (let i = 0; i < steps; i++) {
+      const power = 0.28 + i * (0.72 / (steps - 1));
       const vel = shotVelocity(weapon, angle, power);
       const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 80, weapon.air);
       const hit = firstHit(pts, blocks, weapon.radius);
@@ -1221,7 +1250,18 @@ export function aimToward(cannon, point, weapon, blocks, wind, side) {
         const dHit = (hit.x - point.x) ** 2 + (hit.y - point.y) ** 2;
         if (dHit < bestD) bestD = dHit;
       }
-      if (!best || bestD < best.distance) best = { angle, power, distance: bestD, hit };
+      let rank = bestD;
+      if (wanted && hit && hit.id === wanted.id) rank -= 10000;
+      else if (wanted && hit && hit.type === "block") {
+        const struck = blocks.find((b) => b.id === hit.id);
+        if (struck && struck.heavy && struck.w >= 48 && wanted.id !== struck.id) rank += 4000;
+      }
+      if (hit && wanted && hit.id === wanted.id) {
+        const beams = blocks.filter((b) => b.heavy && b.w >= 48 && b.id !== wanted.id);
+        const skim = pts.slice(0, hit.index).some((q) => beams.some((b) => Math.abs(q.x - b.x) < b.w / 2 + 8 && Math.abs(q.y - b.y) < b.h / 2 + 8));
+        if (skim) rank += 6000;
+      }
+      if (!best || rank < best.rank) best = { angle, power, distance: bestD, rank, hit };
     }
   }
   return best;

@@ -175,6 +175,66 @@ async function liveDuel(browser, server, level, weapon, limit) {
   return { status, errors };
 }
 
+test("a dragged aim outlines the foot, and that duel can take the star", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    for (const [level, weapon, foot] of [[3, "harpoon", "efootb"], [6, "boulder", "efootb"]]) {
+      const page = await browser.newPage({ viewport: { width: 960, height: 600 } });
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(String(error)));
+      await page.addInitScript(() => {
+        localStorage.setItem("grokstone-v1", JSON.stringify({
+          v: 1, unlocked: 8, rubble: 40,
+          weapons: ["roundshot", "keg", "harpoon", "boulder"],
+          upgrades: {}, cleared: {}, best: {}, daily: null, seeds: {},
+          lastWeapon: "roundshot",
+          stats: { wins: 4, losses: 0, shots: 12 },
+          settings: { muted: true, motion: "reduce" },
+          seenEgg: false, dailyBonusDate: null,
+        }));
+      });
+      const port = server.address().port;
+      await page.goto(`http://127.0.0.1:${port}/?test=1#l=${level}`, { waitUntil: "networkidle" });
+      await page.locator("#continue").click();
+      await page.waitForFunction(() => window.__grokstone.phase === "aim");
+      await page.evaluate((id) => window.__grokstone.use(id), weapon);
+      const from = await page.evaluate(() => window.__grokstone.clientFor("cannon"));
+      const to = await page.evaluate((id) => window.__grokstone.clientFor(id), foot);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      const outlined = await page.evaluate(() => window.__grokstone.outline());
+      assert.equal(outlined, foot, `level ${level} outlined ${outlined}`);
+      await page.mouse.up();
+      for (let i = 0; i < 6; i++) {
+        if (await page.evaluate(() => window.__grokstone.screen === "result")) break;
+        await page.waitForFunction(() => window.__grokstone.phase === "aim" && window.__grokstone.screen === "battle", null, { timeout: 12000 });
+        const hit = await page.evaluate(() => {
+          const feet = window.__grokstone.feet();
+          const prefer = feet.includes("efootb") ? "efootb" : feet[0];
+          return prefer ? window.__grokstone.aimAt(prefer) : null;
+        });
+        if (hit === "elintel") assert.fail(`level ${level} aimed the beam`);
+        await page.evaluate(() => window.__grokstone.fireAimed());
+        await page.waitForFunction(() => {
+          const game = window.__grokstone;
+          return (game.phase === "aim" && game.screen === "battle") || game.screen === "result";
+        }, null, { timeout: 12000 });
+      }
+      const status = await page.evaluate(() => window.__grokstone.status());
+      assert.deepEqual(errors, []);
+      assert.equal(status.won, true, status.detail);
+      assert.equal(status.stars, 3, status.detail);
+      await page.close();
+    }
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("live duels give each crew its own keep", async () => {
   const server = await startServer();
   let browser;

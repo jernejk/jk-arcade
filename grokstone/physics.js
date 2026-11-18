@@ -426,7 +426,7 @@ function explode(siege, x, y, radius, damage) {
 function yank(siege, body, toward) {
   const { Body, Sleeping } = matter();
   if (body.grok.heavy && !hookYields(body.grok)) {
-    siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, heavy: true });
+    siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, heavy: true, material: body.grok.material });
     return;
   }
   const cracked = body.grok.heavy === true;
@@ -442,7 +442,7 @@ function yank(siege, body, toward) {
   const d = Math.max(1, hypot(dx, dy));
   Body.setVelocity(body, { x: (dx / d) * 7.5, y: (dy / d) * 7.5 - 1.5 });
   Body.setAngularVelocity(body, 0.12);
-  siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, cracked });
+  siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, cracked, material: body.grok.material });
   siege.dirty = true;
 }
 
