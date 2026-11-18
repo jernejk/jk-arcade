@@ -237,7 +237,14 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 @media (min-width: 800px) {
   .sheet:not(#result) { left: auto; width: min(440px, calc(100% - 32px)); right: 24px; }
-  #result.sheet { left: 24px; right: auto; }
+  #result.sheet {
+    left: 50%;
+    right: auto;
+    top: 72px;
+    bottom: auto;
+    transform: translateX(-50%);
+    width: min(380px, calc(100% - 48px));
+  }
   #hud { padding-left: 18px; padding-right: 18px; }
   #tray { padding-left: 18px; padding-right: 18px; }
 }

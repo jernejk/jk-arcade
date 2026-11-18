@@ -24,6 +24,7 @@ import {
   seedLayout,
   shareText,
   shotVelocity,
+  cleverClear,
   starsFor,
   weaponById,
   windLabel,
@@ -309,8 +310,9 @@ function finishSim() {
 }
 
 function endBattle(won, note) {
-  const stars = starsFor(state.shots, state.layout.par, won);
-  const outcome = { won, shots: state.shots, rubble: state.rubble, stars };
+  const clever = won && cleverClear(state.layout.blocks, state.siege ? state.siege.broken : []);
+  const stars = starsFor(state.shots, state.layout.par, won, clever);
+  const outcome = { won, shots: state.shots, rubble: state.rubble, stars, clever };
   state.result = outcome;
   state.save = recordResult(state.save, state.layout, outcome, localDateString());
   persist();
@@ -524,18 +526,19 @@ function handleFx(events) {
       audio.boom();
       callout("The pantry answers.");
     } else if (fx.kind === "collapse") {
-      const clouds = reduced() ? 1 : Math.min(5, 1 + Math.floor((fx.n || 1) / 3));
-      for (let i = 0; i < clouds; i++) puff(fx.x + (i - (clouds - 1) / 2) * 22, fx.y - i * 6, "#cbbba4");
-      state.shake = Math.min(14, state.shake + Math.min(8, fx.n / 2));
-      if (!reduced()) state.slow = Math.max(state.slow, fx.n >= 10 ? 100 : 72);
-      audio.crumble();
-      callout("The courses slip.");
+      puff(fx.x, fx.y, "#cbbba4");
+      if (!fx.quiet) {
+        state.shake = Math.min(14, state.shake + Math.min(8, (fx.n || 1) / 2));
+        if (!reduced()) state.slow = Math.max(state.slow, fx.n >= 8 ? 100 : 72);
+        audio.crumble();
+        callout("The courses slip.");
+      }
     } else if (fx.kind === "clink") {
       audio.clink();
       callout("Cloth won't do it. Drop the stone.");
     } else if (fx.kind === "yank") {
       burst(fx.x, fx.y, 8, "#d7c4a4", 2, 24);
-      callout(fx.heavy ? "The gold stone stays." : "The hook has it.");
+      callout(fx.heavy ? "The gold stone stays." : fx.cracked ? "The crack gives." : "The hook has it.");
     } else if (fx.kind === "fire") {
       state.flash = 1;
     }
@@ -681,7 +684,7 @@ function drawBlock(b) {
     ctx.fillText(mark, 0, 3);
   }
   const ratio = b.maxHp ? b.hp / b.maxHp : 1;
-  if (ratio < 0.72) {
+  if (ratio < 0.88) {
     ctx.strokeStyle = "rgba(50, 28, 18, 0.65)";
     ctx.lineWidth = 1.1;
     ctx.beginPath();

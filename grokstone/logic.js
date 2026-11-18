@@ -72,7 +72,7 @@ export const WEAPONS = Object.freeze([
     mass: 0.45,
     restitution: 0.04,
     air: 0.012,
-    explode: 84,
+    explode: 210,
     explodeRadius: 76,
     yank: 0,
     pierce: 0,
@@ -131,7 +131,7 @@ export const LEVELS = Object.freeze([
     id: "foot",
     name: "The Foot",
     foe: "Pebble Stack",
-    blurb: "Each course has two feet. One foot is not the wall.",
+    blurb: "The cloth sits on two stones. Lose one and it stays. Lose both and the course comes down.",
     par: 3,
     wind: 0,
     enemy: { pattern: "bond", cols: 4, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1 },
@@ -142,7 +142,7 @@ export const LEVELS = Object.freeze([
     id: "arch",
     name: "Odd Arch",
     foe: "The Odd Door",
-    blurb: "The door is a hole. The gold stone is the only reason the crown still stands.",
+    blurb: "The door is in the middle of the wall. The gold stone is why the crown is still up.",
     par: 3,
     wind: 0.22,
     enemy: { pattern: "arch", cols: 5, rows: 8, timberEvery: 0, kegs: 0, merlons: true, hp: 1, keystone: 1.15 },
@@ -153,7 +153,7 @@ export const LEVELS = Object.freeze([
     id: "barn",
     name: "Banded Barn",
     foe: "Banded Barn",
-    blurb: "The timber band is only one of two feet. The stone under the cloth is the one that matters.",
+    blurb: "The timber band is a decoy. The banner has two feet, and both of them have to go.",
     par: 3,
     wind: -0.18,
     enemy: { pattern: "bond", cols: 4, rows: 8, timberEvery: 3, kegs: 0, merlons: true, hp: 1 },
@@ -164,7 +164,7 @@ export const LEVELS = Object.freeze([
     id: "pantry",
     name: "Pantry Fuse",
     foe: "Pantry Fuse",
-    blurb: "The casks are bedded in the courses. A pot reaches them. The banner is still standing on the face stone.",
+    blurb: "Two casks are the feet under the cloth. A pot opens them. An iron ball does not.",
     par: 3,
     wind: 0.12,
     enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 2, merlons: true, hp: 1 },
@@ -186,7 +186,7 @@ export const LEVELS = Object.freeze([
     id: "buttress",
     name: "Low Buttress",
     foe: "Low Buttress",
-    blurb: "The thick foot is a decoy. The banner is trusting the stone directly under the cloth.",
+    blurb: "The thick foot is still a decoy. The cloth is resting on two stones, not on that foot.",
     par: 4,
     wind: -0.12,
     enemy: { pattern: "bond", cols: 5, rows: 7, timberEvery: 0, kegs: 0, merlons: true, hp: 1, foundation: 1.15, buttress: true },
@@ -197,10 +197,10 @@ export const LEVELS = Object.freeze([
     id: "spire",
     name: "High Merlon",
     foe: "High Merlon",
-    blurb: "The gold stone is bedded deep. Ida can chew it. Sable can pluck it.",
+    blurb: "The gold stone is heavy. Crack it, and Sable can lift it out.",
     par: 4,
     wind: 0.35,
-    enemy: { pattern: "arch", cols: 5, rows: 9, timberEvery: 0, kegs: 0, merlons: true, hp: 1, keystone: 2.4 },
+    enemy: { pattern: "arch", cols: 5, rows: 9, timberEvery: 0, kegs: 0, merlons: true, hp: 1, keystone: 3.5, heavyKey: true },
     ai: { skill: 0.62, weapon: "roundshot" },
   },
   {
@@ -208,10 +208,10 @@ export const LEVELS = Object.freeze([
     id: "citadel",
     name: "Brackencrown",
     foe: "Brackencrown",
-    blurb: "A crowned arch, kegs in the haunches, and a crew that has learned your name.",
+    blurb: "The crown is a boulder problem. Ida will still be counting when Bram is done.",
     par: 5,
     wind: -0.26,
-    enemy: { pattern: "arch", cols: 5, rows: 10, timberEvery: 0, kegs: 2, merlons: true, hp: 1.15, foundation: 1.35, keystone: 2.3, heavyKey: true },
+    enemy: { pattern: "arch", cols: 5, rows: 10, timberEvery: 0, kegs: 2, merlons: true, hp: 1.15, foundation: 1.35, keystone: 3.8, heavyKey: true },
     ai: { skill: 0.66, weapon: "roundshot" },
   },
 ]);
@@ -470,26 +470,29 @@ function placeCastle(spec, side, rng) {
     const shift = rowShift(pattern, r);
     const count = shift ? Math.max(1, cols - 1) : cols;
     for (let c = 0; c < count; c++) {
-      if (pattern === "arch" && r >= 1 && r <= 2 && c === near) continue;
+      if (pattern === "arch" && c === mid && r >= 1 && r <= 2) continue;
+      if (pattern === "arch" && c !== mid && r >= 3) continue;
+      if (pattern === "arch" && c === mid && r > 3) continue;
       if (pattern === "bridge" && c === mid && r !== rows - 4) continue;
-      if (pattern === "bridge" && c < mid && r >= rows - 5) continue;
+      if (pattern === "bridge" && c < mid && r >= rows - 6) continue;
       let material = "stone";
       const flags = {};
       if (r === 0) material = "foundation";
       else if (pattern === "bridge" && c === mid) {
         material = "timber";
         flags.arch = true;
-      } else if (pattern === "arch" && r === 3 && c === near) {
+      } else if (pattern === "arch" && r === 3 && c === mid) {
         material = "keystone";
         flags.arch = true;
         flags.pin = true;
         flags.heavy = spec.heavyKey === true;
-      } else if (spec.timberEvery && r % spec.timberEvery === 0 && r > 0 && r < rows - 1) {
+      } else if (spec.timberEvery && r % spec.timberEvery === 0 && r > 0 && r < rows - 1 && pattern !== "arch") {
         material = "timber";
-      } else if (spec.merlons && r === rows - 1 && c !== near) {
+      } else if (spec.merlons && r === rows - 1 && pattern !== "arch" && c !== near) {
+        material = "merlon";
+      } else if (pattern === "arch" && r === 2 && c !== mid && spec.merlons) {
         material = "merlon";
       }
-      if (pattern === "arch" && spec.heavyKey && c === near && r > 3) flags.heavy = true;
       push(c, r, material, flags);
     }
   }
@@ -534,14 +537,12 @@ function placeCastle(spec, side, rng) {
       variant: 1,
     }));
   }
-  const bannerHost = span || blocks
-    .filter((b) => b.material !== "banner" && b.material !== "merlon" && b.material !== "keg")
-    .sort((a, b) => (pattern === "arch" ? (a.col === near ? -1 : 1) - (b.col === near ? -1 : 1) : 0) || b.row - a.row || Math.abs(a.col - mid) - Math.abs(b.col - mid))[0];
+  const bannerHost = span || null;
   const kegCount = spec.kegs | 0;
   if (kegCount > 0 && pattern !== "bond") {
     const seats = blocks
-      .filter((b) => b.material === "stone" && b.row >= 2 && b.row <= 4 && b.col !== near && Math.abs(b.col - near) <= 2)
-      .sort((a, b) => Math.abs(a.col - near) - Math.abs(b.col - near) || a.row - b.row);
+      .filter((b) => b.material === "stone" && b.row === 1 && b.col !== mid)
+      .sort((a, b) => Math.abs(a.col - mid) - Math.abs(b.col - mid) || a.col - b.col);
     for (let i = 0; i < kegCount && i < seats.length; i++) {
       const block = seats[i];
       block.material = "keg";
@@ -550,16 +551,15 @@ function placeCastle(spec, side, rng) {
     }
   }
 
-  if (bannerHost) {
-    const lift = 2;
+  if (span && bannerHost) {
     blocks.push(makeBlock({
       id: `${side[0]}banner`,
       side,
       col: bannerHost.col,
       row: bannerHost.row + 1,
-      x: span ? bannerHost.x + 12 : bannerHost.x,
-      y: bannerHost.y - bannerHost.h / 2 - lift - 17,
-      w: span ? 8 : 16,
+      x: bannerHost.x + 12,
+      y: bannerHost.y - bannerHost.h / 2 - 2 - 17,
+      w: 8,
       h: 34,
       material: "banner",
       maxHp: HP.banner,
@@ -568,8 +568,106 @@ function placeCastle(spec, side, rng) {
       variant: 0,
     }));
   }
+  if (pattern === "arch") buildArchCrown(blocks, side);
+  if (pattern === "bond") capBondStandard(blocks, side, near);
 
   return { blocks, left, width, face: mid };
+}
+
+function buildArchCrown(blocks, side) {
+  const key = blocks.find((b) => b.side === side && b.material === "keystone");
+  if (!key) return;
+  const y1 = key.y - key.h / 2 - 2 - 7;
+  const haunch = (name, dx) => makeBlock({
+    id: `${side[0]}${name}`,
+    side,
+    col: key.col,
+    row: key.row + 1,
+    x: key.x + dx,
+    y: y1,
+    w: 14,
+    h: 14,
+    material: "stone",
+    maxHp: 420,
+  });
+  const left = haunch("haunchL", -8);
+  const right = haunch("haunchR", 8);
+  const lintel = makeBlock({
+    id: `${side[0]}lintel`,
+    side,
+    col: key.col,
+    row: key.row + 2,
+    x: key.x,
+    y: y1 - BLOCK_H / 2 - 2 - 9,
+    w: 52,
+    h: 18,
+    material: "stone",
+    maxHp: 900,
+    heavy: true,
+  });
+  blocks.push(left, right, lintel, makeBlock({
+    id: `${side[0]}banner`,
+    side,
+    col: key.col,
+    row: key.row + 3,
+    x: lintel.x,
+    y: lintel.y - lintel.h / 2 - 2 - 17,
+    w: 16,
+    h: 34,
+    material: "banner",
+    maxHp: HP.banner,
+  }));
+}
+
+function capBondStandard(blocks, side, near) {
+  const outward = side === "enemy" ? -1 : 1;
+  const face = blocks
+    .filter((b) => b.side === side && b.col === near && b.material !== "merlon" && b.material !== "banner" && b.material !== "keg")
+    .sort((a, b) => b.row - a.row)[0];
+  if (!face) return;
+  const fragile = side === "enemy";
+  if (fragile) {
+    face.maxHp = Math.min(face.maxHp, 110);
+    face.hp = face.maxHp;
+  }
+  const foot = makeBlock({
+    id: `${side[0]}footb`,
+    side,
+    col: near,
+    row: face.row,
+    x: face.x + outward * 40,
+    y: face.y,
+    w: 26,
+    h: BLOCK_H,
+    material: "stone",
+    maxHp: fragile ? 110 : HP.stone,
+    pin: true,
+  });
+  const lintel = makeBlock({
+    id: `${side[0]}lintel`,
+    side,
+    col: near,
+    row: face.row + 1,
+    x: (face.x + foot.x) / 2,
+    y: face.y - face.h / 2 - 2 - 9,
+    w: 70,
+    h: 18,
+    material: "stone",
+    maxHp: 640,
+    heavy: true,
+  });
+  blocks.push(foot, lintel, makeBlock({
+    id: `${side[0]}banner`,
+    side,
+    col: near,
+    row: face.row + 2,
+    x: lintel.x,
+    y: lintel.y - lintel.h / 2 - 2 - 17,
+    w: 16,
+    h: 34,
+    material: "banner",
+    maxHp: HP.banner,
+  }));
 }
 
 function attachNeighbors(blocks) {
@@ -656,8 +754,61 @@ export function stableIds(blocks) {
 }
 
 export function collapseIds(blocks) {
-  const stable = stableIds(blocks);
-  return blocks.filter((b) => b.hp > 0 && !b.loose && !stable.has(b.id)).map((b) => b.id);
+  let current = blocks;
+  const falling = new Set();
+  for (let pass = 0; pass < 6; pass++) {
+    const stable = stableIds(current);
+    let added = false;
+    for (const block of current) {
+      if (block.hp > 0 && !block.loose && !stable.has(block.id) && !falling.has(block.id)) {
+        falling.add(block.id);
+        added = true;
+      }
+    }
+    const doomed = [];
+    for (const banner of current) {
+      if (banner.material !== "banner" || !falling.has(banner.id)) continue;
+      const host = current.find((b) => (banner.neighbors?.below || []).includes(b.id));
+      if (!host) continue;
+      const rows = new Set([host.row]);
+      for (const id of host.neighbors?.below || []) {
+        const foot = current.find((b) => b.id === id);
+        if (foot) rows.add(foot.row);
+      }
+      for (const other of current) {
+        if (other.side !== banner.side || other.hp <= 0 || other.loose || other.material === "banner") continue;
+        if (rows.has(other.row)) doomed.push(other.id);
+      }
+    }
+    if (!doomed.length) break;
+    for (const id of doomed) falling.add(id);
+    current = current.map((b) => (doomed.includes(b.id) ? { ...b, hp: 0 } : b));
+  }
+  return [...falling];
+}
+
+export function hookYields(block) {
+  if (!block || !block.heavy) return true;
+  const max = block.maxHp || block.hp || 1;
+  return block.hp / max <= 0.84;
+}
+
+export function supportPath(blocks, banner) {
+  const path = new Set();
+  const walk = (id, depth) => {
+    if (!id || path.has(id) || depth > 8) return;
+    path.add(id);
+    const block = blocks.find((b) => b.id === id);
+    for (const below of block?.neighbors?.below || []) walk(below, depth + 1);
+  };
+  if (banner) walk(banner.id, 0);
+  return path;
+}
+
+export function cleverClear(blocks, broken) {
+  const banner = blocks.find((b) => b.side === "enemy" && b.material === "banner");
+  const path = supportPath(blocks, banner);
+  return (broken || []).some((b) => b.side === "enemy" && path.has(b.id) && (b.material === "keystone" || b.material === "keg" || (b.material === "timber" && b.arch)));
 }
 
 function cannonFor(placed, side) {
@@ -689,18 +840,53 @@ function thickenPlayerStandard(blocks) {
 function seatBannerKegs(blocks, spec) {
   if (!spec || patternOf(spec) !== "bond" || !(spec.kegs > 0)) return;
   const banner = blocks.find((b) => b.side === "enemy" && b.material === "banner");
-  const host = banner && blocks.find((b) => banner.neighbors.below.includes(b.id));
-  const critical = new Set(host && host.neighbors ? host.neighbors.below : []);
-  if (host) critical.add(host.id);
-  const seats = blocks
-    .filter((b) => b.side === "enemy" && b.material === "stone" && !critical.has(b.id) && b.row >= 2 && b.row <= 4 && b.col > 0)
-    .sort((a, b) => a.row - b.row || a.col - b.col);
-  for (let i = 0; i < spec.kegs && i < seats.length; i++) {
-    const block = seats[i];
+  const host = banner && blocks.find((b) => (banner.neighbors.below || []).includes(b.id));
+  const feet = (host && host.neighbors && host.neighbors.below) || [];
+  for (const id of feet.slice(0, spec.kegs)) {
+    const block = blocks.find((b) => b.id === id);
+    if (!block || block.material === "foundation" || block.material === "banner") continue;
     block.material = "keg";
-    block.maxHp = Math.round(88 * (spec.hp || 1));
+    block.maxHp = Math.round(190 * (spec.hp || 1));
     block.hp = block.maxHp;
   }
+}
+
+function loneTrick(blocks) {
+  const banner = blocks.find((b) => b.side === "enemy" && b.material === "banner");
+  if (!banner) return null;
+  for (const block of blocks) {
+    if (block.side !== "enemy") continue;
+    if (block.material !== "timber" && block.material !== "keg") continue;
+    const fallen = collapseIds(blocks.map((b) => (b.id === block.id ? { ...b, hp: 0 } : b)));
+    if (fallen.includes(banner.id)) return block;
+  }
+  return null;
+}
+
+function braceDailyStandard(blocks) {
+  const next = blocks;
+  for (let guard = 0; guard < 3 && loneTrick(next); guard++) {
+    const banner = next.find((b) => b.side === "enemy" && b.material === "banner");
+    const host = next.find((b) => (banner.neighbors.below || []).includes(b.id));
+    banner.w = Math.max(banner.w, 40);
+    banner.x -= 16;
+    next.push(makeBlock({
+      id: `eprop${guard}`,
+      side: "enemy",
+      col: host ? host.col : 0,
+      row: host ? host.row : 0,
+      x: banner.x - banner.w / 2 + 10,
+      y: host ? host.y : banner.y + 30,
+      w: 18,
+      h: host ? host.h : BLOCK_H,
+      material: "stone",
+      maxHp: 220,
+      pin: true,
+    }));
+    const refreshed = withNeighbors(next.splice(0, next.length));
+    next.push(...refreshed);
+  }
+  return next;
 }
 
 export function generateSpec(seed) {
@@ -796,6 +982,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
   const foeCastle = placeCastle(enemy, "enemy", mulberry32((layoutSeed ^ 0x85ebca6b) >>> 0));
   const blocks = withNeighbors([...player.blocks, ...foeCastle.blocks]);
   seatBannerKegs(blocks, enemy);
+  if (mode !== "campaign") braceDailyStandard(blocks);
   thickenPlayerStandard(blocks);
   const weapons = mode === "campaign" ? safeSave.weapons.slice() : WEAPONS.map((w) => w.id);
 
@@ -918,12 +1105,16 @@ export function sampleAims(cannon, weapon, blocks, wind, side, powder = false) {
           const under = banner && target.col === banner.col;
           const harm = damageOf(weapon, hit.speed, powder);
           score = 6 + harm * 0.12;
+          const host = banner && blocks.find((b) => (banner.neighbors?.below || []).includes(b.id));
+          const foot = host && host.neighbors && host.neighbors.below.includes(target.id);
           const holdsBanner = banner && banner.neighbors && banner.neighbors.below.includes(target.id);
           if (target.material === "banner") score = 1;
           else if (dropsBanner(blocks, target, harm)) score += 140;
           else if (target.material === "keystone" || target.arch) score += 72;
-          else if (holdsBanner) score += 52;
-          else if (target.material === "keg") score += 34;
+          else if (foot && target.material === "keg") score += 68;
+          else if (foot) score += 46;
+          else if (holdsBanner) score += 8;
+          else if (target.material === "keg") score += 20;
           else if (target.material === "foundation") score += 4;
           else if (target.material === "timber") score += 16;
           else if (under) score += 10;
@@ -988,9 +1179,9 @@ export function aimToward(cannon, point, weapon, blocks, wind, side) {
   return best;
 }
 
-export function starsFor(shots, par, won) {
+export function starsFor(shots, par, won, clever = false) {
   if (!won) return 0;
-  if (shots <= par) return 3;
+  if (shots <= par && clever) return 3;
   if (shots <= par + 2) return 2;
   return 1;
 }
@@ -1026,7 +1217,7 @@ export function recordResult(save, layout, outcome, today = null) {
     return next;
   }
   next.stats.wins += 1;
-  const stars = starsFor(outcome.shots, layout.par, true);
+  const stars = starsFor(outcome.shots, layout.par, true, outcome.clever === true);
   const prev = next.best[layout.id];
   if (!prev || stars > prev.stars || (stars === prev.stars && outcome.shots < prev.shots)) {
     next.best = { ...next.best, [layout.id]: { stars, shots: outcome.shots } };

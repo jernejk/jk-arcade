@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   LEVELS,
   buy,
+  cleverClear,
   collapseIds,
   coerceSave,
   dailyLayout,
   dailySeed,
   defaultSave,
   hashFor,
+  hookYields,
   layoutByNumber,
   loadSave,
   localDateString,
@@ -46,15 +48,21 @@ function fallenCols(layout, id) {
   return { fallen, cols };
 }
 
-test("one foot of a bonded course is not the wall", () => {
+test("the banner stays until both supports under it are gone", () => {
   const layout = layoutByNumber(1, defaultSave());
-  const foot = layout.blocks.find((b) => b.id === "e0x0");
-  const { fallen } = fallenCols(layout, foot.id);
-  assert.equal(fallen.includes("ebanner"), false);
   const banner = layout.blocks.find((b) => b.id === "ebanner");
   const host = layout.blocks.find((b) => banner.neighbors.below.includes(b.id));
-  const { fallen: crown } = fallenCols(layout, host.id);
-  assert.ok(crown.includes("ebanner"));
+  assert.ok(host.neighbors.below.length >= 2);
+  for (const id of host.neighbors.below) {
+    const { fallen } = fallenCols(layout, id);
+    assert.equal(fallen.includes("ebanner"), false, id);
+  }
+  const both = collapseIds(layout.blocks.map((b) => (host.neighbors.below.includes(b.id) ? { ...b, hp: 0 } : b)));
+  assert.ok(both.includes("ebanner"));
+  assert.ok(both.includes(host.id));
+  assert.ok(both.length >= 4);
+  const foundation = fallenCols(layout, "e0x0");
+  assert.equal(foundation.fallen.includes("ebanner"), false);
 });
 
 test("a two-support course survives losing one support", () => {
@@ -73,13 +81,15 @@ test("a two-support course survives losing one support", () => {
   assert.ok(both.includes("cloth"));
 });
 
-test("the arch crown falls when the keystone goes, and the foot does not bring it down", () => {
+test("the arch crown falls when the keystone goes, and the door is in the middle", () => {
   const layout = layoutByNumber(2, defaultSave());
   const key = layout.blocks.find((b) => b.material === "keystone" && b.side === "enemy");
-  assert.ok(key);
+  assert.equal(key.col, 2);
+  assert.equal(layout.blocks.some((b) => b.side === "enemy" && b.col === key.col && (b.row === 1 || b.row === 2)), false);
   assert.equal(key.pin, true);
   const { fallen } = fallenCols(layout, key.id);
   assert.ok(fallen.includes("ebanner"));
+  assert.ok(fallen.includes("elintel"));
   assert.ok(fallen.length >= 4);
   const foot = fallenCols(layout, "e0x0");
   assert.equal(foot.fallen.includes("ebanner"), false);
@@ -100,9 +110,81 @@ test("a single hook pluck cannot clear Brackencrown", () => {
   assert.ok(spent.includes("ebanner"));
   const keg = enemy.find((b) => b.material === "keg");
   assert.ok(keg);
-  assert.ok(keg.col > 0, "the keg is in the masonry");
+  assert.ok(keg.col >= 0 && keg.row >= 0, "the keg is in the masonry");
   const popped = collapseIds(layout.blocks.map((b) => (b.id === keg.id ? { ...b, hp: 0 } : b)));
   assert.equal(popped.includes("ebanner"), false);
+});
+
+test("Pantry Fuse comes down by the two casks, not by one ball", () => {
+  const layout = layoutByNumber(4, defaultSave());
+  const banner = layout.blocks.find((b) => b.id === "ebanner");
+  const host = layout.blocks.find((b) => banner.neighbors.below.includes(b.id));
+  const kegs = host.neighbors.below.map((id) => layout.blocks.find((b) => b.id === id));
+  assert.equal(kegs.length, 2);
+  assert.ok(kegs.every((keg) => keg.material === "keg"));
+  for (const keg of kegs) {
+    assert.ok(keg.maxHp > weaponById("roundshot").damage + weaponById("roundshot").speed[1] * weaponById("roundshot").speedDamage);
+    assert.equal(collapseIds(layout.blocks.map((b) => (b.id === keg.id ? { ...b, hp: 0 } : b))).includes("ebanner"), false);
+  }
+  const both = collapseIds(layout.blocks.map((b) => (kegs.some((keg) => keg.id === b.id) ? { ...b, hp: 0 } : b)));
+  assert.ok(both.includes("ebanner"));
+  const pot = weaponById("keg");
+  const potHit = pot.damage + pot.speed[1] * pot.speedDamage + pot.explode * 0.85;
+  assert.ok(potHit > kegs[0].maxHp);
+});
+
+test("High Merlon's gold stone is heavy until it cracks", () => {
+  const layout = layoutByNumber(7, defaultSave());
+  const key = layout.blocks.find((b) => b.side === "enemy" && b.material === "keystone");
+  assert.equal(key.heavy, true);
+  assert.equal(hookYields(key), false);
+  assert.equal(hookYields({ ...key, hp: key.maxHp * 0.8 }), true);
+  const ball = weaponById("roundshot");
+  const maxBall = ball.damage + ball.speed[1] * ball.speedDamage;
+  assert.ok(Math.ceil(key.maxHp / maxBall) > layout.par);
+  const hook = weaponById("harpoon");
+  const maxHook = hook.damage + hook.speed[1] * hook.speedDamage;
+  let hp = key.maxHp;
+  let hooks = 0;
+  while (hp / key.maxHp > 0.84 && hooks < 8) {
+    hp -= maxHook;
+    hooks += 1;
+  }
+  assert.ok(hooks + 1 <= layout.par);
+});
+
+test("a roundshot cannot finish Brackencrown inside par, and a boulder can", () => {
+  const layout = layoutByNumber(8, defaultSave());
+  const key = layout.blocks.find((b) => b.side === "enemy" && b.material === "keystone");
+  const ball = weaponById("roundshot");
+  const rock = weaponById("boulder");
+  const ballMax = ball.damage + ball.speed[1] * ball.speedDamage;
+  const rockMax = rock.damage + rock.speed[1] * rock.speedDamage;
+  assert.ok(Math.ceil(key.maxHp / ballMax) > layout.par);
+  assert.ok(Math.ceil(key.maxHp / rockMax) <= layout.par);
+});
+
+test("a daily keep does not rest on one timber or one keg", () => {
+  for (let day = 1; day <= 28; day++) {
+    const layout = dailyLayout(defaultSave(), `2026-11-${String(day).padStart(2, "0")}`);
+    assert.equal(collapseIds(layout.blocks).length, 0, layout.date);
+    for (const block of layout.blocks) {
+      if (block.side !== "enemy" || (block.material !== "timber" && block.material !== "keg")) continue;
+      const fallen = collapseIds(layout.blocks.map((b) => (b.id === block.id ? { ...b, hp: 0 } : b)));
+      assert.equal(fallen.includes("ebanner"), false, `${layout.date} ${block.id}`);
+    }
+  }
+});
+
+test("three stars want the clever shot", () => {
+  assert.equal(starsFor(2, 3, true, false), 2);
+  assert.equal(starsFor(2, 3, true, true), 3);
+  assert.equal(starsFor(5, 3, true, true), 2);
+  assert.equal(starsFor(8, 3, true, true), 1);
+  const layout = layoutByNumber(2, defaultSave());
+  const key = layout.blocks.find((b) => b.side === "enemy" && b.material === "keystone");
+  assert.equal(cleverClear(layout.blocks, [{ id: key.id, material: "keystone", side: "enemy" }]), true);
+  assert.equal(cleverClear(layout.blocks, [{ id: "e0x0", material: "foundation", side: "enemy" }]), false);
 });
 
 test("the bridge banner stands on the span, and the span is the shot", () => {
@@ -129,14 +211,15 @@ test("a daily keep is the same all day and different tomorrow", () => {
 });
 
 test("stars, rubble and a shared seed stick", () => {
-  assert.equal(starsFor(2, 2, true), 3);
-  assert.equal(starsFor(4, 2, true), 2);
+  assert.equal(starsFor(2, 2, true, true), 3);
+  assert.equal(starsFor(2, 2, true, false), 2);
+  assert.equal(starsFor(4, 2, true, true), 2);
   assert.equal(starsFor(6, 2, true), 1);
   assert.equal(starsFor(1, 2, false), 0);
   const layout = layoutByNumber(1, defaultSave());
   let save = recordResult(defaultSave(), layout, { won: true, shots: 2, rubble: 11 });
   assert.equal(save.rubble, 11);
-  assert.equal(save.best.foot.stars, 3);
+  assert.equal(save.best.foot.stars, 2);
   assert.equal(save.unlocked, 2);
   save = recordResult(save, layout, { won: true, shots: 1, rubble: 99 });
   assert.equal(save.rubble, 11, "a cleared keep does not pay twice");

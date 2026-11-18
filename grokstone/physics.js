@@ -1,6 +1,6 @@
 // Rigid-body siege. Matter is loaded by the page (vendor) or by tests (npm).
 
-import { WORLD, collapseIds, damageOf, integrate, neighborsOf } from "./logic.js";
+import { WORLD, collapseIds, damageOf, hookYields, integrate, neighborsOf } from "./logic.js";
 
 function matter() {
   const api = globalThis.Matter;
@@ -35,6 +35,7 @@ export function createSiege(layout) {
     timeScale: 1,
     boomDepth: 0,
     dirty: false,
+    broken: [],
     powder: layout.powder === true,
     sleeping: Sleeping,
     Body,
@@ -206,7 +207,20 @@ function releaseUnstable(siege) {
     if (releaseBody(siege, id)) released.push(id);
   }
   if (released.length) linkReleased(siege, new Set(released));
-  if (released.length >= 4) siege.fx.push({ kind: "collapse", n: released.length, x: avgX(siege, released), y: avgY(siege, released) });
+  const bannerFell = released.some((id) => siege.bodies.get(id)?.grok.material === "banner");
+  if (bannerFell || released.length >= 3) {
+    released.forEach((id, index) => {
+      const body = siege.bodies.get(id);
+      if (!body) return;
+      siege.fx.push({
+        kind: "collapse",
+        n: released.length,
+        x: body.position.x,
+        y: body.position.y,
+        quiet: index > 0,
+      });
+    });
+  }
   return released;
 }
 
@@ -315,6 +329,7 @@ function killBlock(siege, id) {
     angle: body.angle,
   };
   g.hp = 0;
+  siege.broken.push({ id: g.id, material: g.material, arch: g.arch === true, side: g.side });
   breakConstraintsOn(siege, body);
   Composite.remove(siege.engine.world, body);
   siege.bodies.delete(id);
@@ -364,7 +379,7 @@ function applyDamage(siege, id, amount) {
   killBlock(siege, id);
   if (material === "keg" && siege.boomDepth < 6) {
     siege.boomDepth += 1;
-    explode(siege, x, y, 74, 90);
+    explode(siege, x, y, 28, 70);
     siege.boomDepth -= 1;
   }
   return amount;
@@ -400,10 +415,12 @@ function explode(siege, x, y, radius, damage) {
 
 function yank(siege, body, toward) {
   const { Body, Sleeping } = matter();
-  if (body.grok.heavy) {
+  if (body.grok.heavy && !hookYields(body.grok)) {
     siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, heavy: true });
     return;
   }
+  const cracked = body.grok.heavy === true;
+  siege.broken.push({ id: body.grok.id, material: body.grok.material, arch: body.grok.arch === true, side: body.grok.side });
   body.grok.loose = true;
   body.grok.rooted = false;
   body.grok.pin = false;
@@ -415,7 +432,7 @@ function yank(siege, body, toward) {
   const d = Math.max(1, hypot(dx, dy));
   Body.setVelocity(body, { x: (dx / d) * 7.5, y: (dy / d) * 7.5 - 1.5 });
   Body.setAngularVelocity(body, 0.12);
-  siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y });
+  siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, cracked });
   siege.dirty = true;
 }
 

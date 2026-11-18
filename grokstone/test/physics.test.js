@@ -100,8 +100,8 @@ test("striking one foot leaves the banner up", () => {
   }
   assert.equal(bannerStatus(siege, "enemy"), "up");
   const banner = [...siege.bodies.values()].find((b) => b.grok.id === "ebanner");
-  const hostId = banner.grok.neighbors.below[0];
-  strikeBlock(siege, hostId, 500);
+  const host = siege.bodies.get(banner.grok.neighbors.below[0]);
+  for (const id of host.grok.neighbors.below) strikeBlock(siege, id, 500);
   for (let i = 0; i < 240; i++) {
     stepSiege(siege);
     finite(siege);
