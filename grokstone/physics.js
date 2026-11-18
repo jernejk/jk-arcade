@@ -186,6 +186,7 @@ function liveStructural(siege) {
       rooted: g.rooted && !g.loose,
       arch: g.arch,
       loose: false,
+      neighbors: g.neighbors,
       material: g.material,
     });
   }
@@ -200,7 +201,7 @@ function releaseUnstable(siege) {
   for (const id of falling) {
     if (releaseBody(siege, id)) released.push(id);
   }
-  // Free blocks fall on their own. Constraints made stacks go unstable.
+  if (released.length) linkReleased(siege, new Set(released));
   if (released.length >= 4) siege.fx.push({ kind: "collapse", n: released.length, x: avgX(siege, released), y: avgY(siege, released) });
   return released;
 }
@@ -231,10 +232,10 @@ function releaseBody(siege, id) {
   body.restitution = 0.06;
   body.friction = 0.62;
   const sway = nudge(id) - 0.5;
-  Body.setVelocity(body, { x: sway * 2.4, y: -0.6 - nudge(id + "y") * 0.8 });
-  Body.setAngularVelocity(body, sway * 0.16);
+  Body.setVelocity(body, { x: sway * 0.45, y: 0.15 });
+  Body.setAngularVelocity(body, sway * 0.04);
   Sleeping.set(body, false);
-  siege.fx.push({ kind: "spoil", material: body.grok.material, side: body.grok.side });
+  siege.fx.push({ kind: "spoil", id: body.grok.id, material: body.grok.material, side: body.grok.side });
   return true;
 }
 
@@ -257,8 +258,8 @@ function linkReleased(siege, ids) {
       const constraint = Constraint.create({
         bodyA: body,
         bodyB: other,
-        stiffness: 0.42,
-        damping: 0.28,
+        stiffness: 0.16,
+        damping: 0.5,
         length,
       });
       constraint.grok = true;
@@ -290,7 +291,7 @@ function stretchConstraints(siege) {
       continue;
     }
     const d = hypot(a.position.x - b.position.x, a.position.y - b.position.y);
-    if (d > constraint.length * 1.42) dropConstraint(siege, constraint);
+    if (d > constraint.length * 1.55) dropConstraint(siege, constraint);
   }
 }
 
@@ -596,8 +597,9 @@ export function sideIntegrity(siege, side) {
   let hp = 0;
   for (const body of siege.bodies.values()) {
     if (!body.grok || body.grok.side !== side || body.grok.role !== "block") continue;
-    hp += Math.max(0, body.grok.hp);
     if (!layoutBlocks) max += body.grok.maxHp;
+    if (!body.isStatic || body.grok.loose) continue;
+    hp += Math.max(0, body.grok.hp);
   }
   if (!max) return 0;
   return Math.max(0, Math.min(1, hp / max));

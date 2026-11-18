@@ -208,8 +208,26 @@ button:disabled { opacity: 0.45; cursor: default; }
   clip: rect(0 0 0 0);
 }
 
+#result.sheet {
+  max-height: min(42dvh, 320px);
+  left: 12px;
+  right: auto;
+  width: min(340px, calc(100% - 24px));
+}
+@media (max-width: 520px) {
+  #hud { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .who-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .who.you { grid-column: 1; grid-row: 2; }
+  .mid { grid-column: 2; grid-row: 1 / span 2; }
+  .who.foe { grid-column: 3; grid-row: 2; }
+  #pause { grid-column: 1; grid-row: 1; }
+  #mute { grid-column: 3; grid-row: 1; }
+  #level-name { font-size: 16px; white-space: normal; line-height: 1.15; }
+  #result.sheet { left: 8px; right: 8px; width: auto; max-height: 38dvh; }
+}
 @media (min-width: 800px) {
-  .sheet { left: auto; width: min(440px, calc(100% - 32px)); right: 24px; }
+  .sheet:not(#result) { left: auto; width: min(440px, calc(100% - 32px)); right: 24px; }
+  #result.sheet { left: 24px; right: auto; }
   #hud { padding-left: 18px; padding-right: 18px; }
   #tray { padding-left: 18px; padding-right: 18px; }
 }

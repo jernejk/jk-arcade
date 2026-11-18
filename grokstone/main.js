@@ -21,7 +21,6 @@ import {
   nextLevelNumber,
   parseHash,
   recordResult,
-  rubbleFor,
   seedLayout,
   shareText,
   shotVelocity,
@@ -159,6 +158,8 @@ function startBattle(layout) {
   state.phase = "aim";
   state.shots = 0;
   state.rubble = 0;
+  state.earned = 0;
+  state.paidSpoil = new Set();
   state.paused = false;
   state.angle = layout.wind > 0.15 ? -0.78 : -0.62;
   state.power = 0.68;
@@ -282,9 +283,14 @@ function firePlayer() {
 function finishSim() {
   const enemy = bannerStatus(state.siege, "enemy");
   const player = bannerStatus(state.siege, "player");
-  if (enemy !== "up" && player !== "up") return endBattle(false, "Both standards are in the dust.");
-  if (enemy !== "up") return endBattle(true);
-  if (player !== "up") return endBattle(false, "Your standard is down.");
+  if (enemy !== "up" || player !== "up") {
+    const both = enemy !== "up" && player !== "up";
+    state.phase = "hold";
+    state.holdUntil = performance.now() + (reduced() ? 280 : 1200);
+    state.holdWon = enemy !== "up" && !both;
+    state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? "Your standard is down." : "");
+    return;
+  }
   if (state.simFor === "player") {
     state.phase = "enemy";
     state.enemyAt = performance.now() + (reduced() ? 180 : 520);
@@ -303,7 +309,7 @@ function endBattle(won, note) {
   const stars = starsFor(state.shots, state.layout.par, won);
   const outcome = { won, shots: state.shots, rubble: state.rubble, stars };
   state.result = outcome;
-  state.save = recordResult(state.save, state.layout, outcome);
+  state.save = recordResult(state.save, state.layout, outcome, localDateString());
   persist();
   state.phase = "over";
   const text = shareText(state.layout, { ...outcome, stars });
@@ -431,6 +437,41 @@ function screenToWorld(clientX, clientY) {
   };
 }
 
+function puff(x, y, chip) {
+  const dustN = reduced() ? 3 : 10;
+  for (let i = 0; i < dustN; i++) {
+    state.particles.push({
+      dust: true,
+      x: x + (Math.random() - 0.5) * 10,
+      y: y + (Math.random() - 0.5) * 6,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: -0.25 - Math.random() * 0.55,
+      life: 46 + Math.random() * 16,
+      max: 62,
+      r: 7 + Math.random() * 12,
+      color: "rgba(214, 196, 170, 0.42)",
+      g: 0.015,
+    });
+  }
+  const chipN = reduced() ? 2 : 8;
+  for (let i = 0; i < chipN; i++) {
+    state.particles.push({
+      chip: true,
+      x, y,
+      vx: (Math.random() - 0.5) * 3.2,
+      vy: -1.2 - Math.random() * 2.2,
+      life: 34,
+      max: 34,
+      r: 1.4 + Math.random() * 1.8,
+      rot: Math.random() * 6,
+      vr: (Math.random() - 0.5) * 0.25,
+      color: chip,
+      g: 0.22,
+    });
+  }
+  if (state.particles.length > 180) state.particles.splice(0, state.particles.length - 180);
+}
+
 function burst(x, y, n, color, speed, life) {
   const count = reduced() ? Math.min(4, n) : n;
   for (let i = 0; i < count; i++) {
@@ -456,23 +497,29 @@ function handleFx(events) {
       state.shake = Math.min(10, state.shake + (fx.speed > 8 ? 3.5 : 1.6));
       audio.hit(fx.speed > 8);
     } else if (fx.kind === "spoil") {
-      if (fx.side === "enemy") state.rubble += rubbleFor(fx.material);
+      if (fx.side === "enemy" && fx.id && !state.paidSpoil.has(fx.id)) {
+        state.paidSpoil.add(fx.id);
+        if (fx.material !== "banner" && state.earned < 7) {
+          state.earned += 1;
+          state.rubble += 1;
+        }
+      }
     } else if (fx.kind === "break") {
-      burst(fx.x, fx.y, 16, fx.material === "timber" ? "#c4844a" : "#efe6d4", 3.1, 36);
-      state.rubble += fx.side === "enemy" ? rubbleFor(fx.material) : 0;
+      puff(fx.x, fx.y, fx.material === "timber" ? "#c4844a" : "#efe6d4");
       if (fx.material === "keystone") callout("The gold stone gives.");
       else if (fx.material === "timber") callout("Timber snaps.");
     } else if (fx.kind === "explode") {
       burst(fx.x, fx.y, 28, "#e7b15a", 4.2, 40);
       burst(fx.x, fx.y, 12, "#6e2c2a", 2.4, 46);
       state.shake = Math.min(12, state.shake + 7);
-      if (!reduced()) state.slow = 16;
+      puff(fx.x, fx.y, "#e7b15a");
+      if (!reduced()) state.slow = Math.max(state.slow, 48);
       audio.boom();
       callout("The pantry answers.");
     } else if (fx.kind === "collapse") {
-      burst(fx.x, fx.y, 20, "#cbbba4", 2.6, 40);
-      state.shake = Math.min(12, state.shake + 5);
-      if (!reduced()) state.slow = Math.max(state.slow, 22);
+      puff(fx.x, fx.y, "#cbbba4");
+      state.shake = Math.min(14, state.shake + Math.min(8, fx.n / 2));
+      if (!reduced()) state.slow = Math.max(state.slow, fx.n >= 10 ? 100 : 72);
       audio.crumble();
       callout("The courses slip.");
     } else if (fx.kind === "clink") {
@@ -753,11 +800,19 @@ function drawWorld(blocks, cannons, pred) {
   }
   if (pred && state.screen === "battle" && state.phase === "aim") drawTrajectory(pred);
   for (const p of state.particles) {
-    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.globalAlpha = Math.max(0, p.life / p.max) * (p.dust ? 0.55 : 1);
     ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fill();
+    if (p.chip) {
+      ctx.rotate(p.rot || 0);
+      ctx.fillRect(-p.r, -p.r * 0.6, p.r * 2, p.r * 1.2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.dust ? p.r * (1.15 - p.life / p.max) : p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
   ctx.globalAlpha = 1;
   if (state.flash > 0.05 && cannons) {
@@ -801,9 +856,10 @@ function bodiesToDraw() {
     });
   }
   for (const shot of state.siege.shots) {
+    const speed = Math.hypot(shot.velocity.x, shot.velocity.y) || 1;
     list.push({
-      x: shot.position.x,
-      y: shot.position.y,
+      x: shot.position.x - (shot.velocity.x / speed) * shot.circleRadius * 0.85,
+      y: shot.position.y - (shot.velocity.y / speed) * shot.circleRadius * 0.85,
       angle: 0,
       w: shot.circleRadius * 2,
       h: shot.circleRadius * 2,
@@ -844,6 +900,8 @@ function frame(now) {
       state.enemyPlan = { ...plan, fired: true };
       simAcc = 0;
       fire("enemy", plan.angle, plan.power, weaponById(plan.weaponId));
+    } else if (state.phase === "hold") {
+      if (now >= state.holdUntil) endBattle(state.holdWon, state.holdNote);
     } else if (state.phase === "sim") {
       simAcc = Math.min(STEP_MS * 5, simAcc + dt);
       let guard = 0;
@@ -861,6 +919,7 @@ function frame(now) {
     p.vy += p.g;
     p.x += p.vx;
     p.y += p.vy;
+    if (p.chip) p.rot = (p.rot || 0) + (p.vr || 0);
   }
   state.particles = state.particles.filter((p) => p.life > 0);
   resize();
@@ -970,8 +1029,9 @@ function bind() {
       event.preventDefault();
       return;
     }
-    if ((event.key === "r" || event.key === "R") && (state.screen === "result" || state.screen === "pause")) {
+    if ((event.key === "r" || event.key === "R") && (state.screen === "battle" || state.screen === "result" || state.screen === "pause")) {
       startBattle(rebuild());
+      event.preventDefault();
       return;
     }
     if (event.key === "Escape") {
@@ -998,6 +1058,8 @@ function bind() {
       const weapon = WEAPONS[Number(event.key) - 1];
       if (weapon && state.layout.weapons.includes(weapon.id)) {
         state.weaponId = weapon.id;
+        state.save.lastWeapon = weapon.id;
+        persist();
         paintWeapons();
       }
     } else return;

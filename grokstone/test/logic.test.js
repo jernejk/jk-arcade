@@ -39,24 +39,42 @@ test("every campaign keep stands until something is removed", () => {
   }
 });
 
-test("the banner column falls when its foot is removed", () => {
+function fallenCols(layout, id) {
+  const fallen = collapseIds(layout.blocks.map((b) => (b.id === id ? { ...b, hp: 0 } : b)));
+  const cols = new Set(fallen.map((fid) => layout.blocks.find((b) => b.id === fid)?.col).filter((c) => c != null));
+  return { fallen, cols };
+}
+
+test("the bonded foot brings down more than one column", () => {
   const layout = layoutByNumber(1, defaultSave());
   const banner = layout.blocks.find((b) => b.side === "enemy" && b.material === "banner");
-  const foot = layout.blocks.find((b) => b.id === "e0x0");
-  assert.equal(banner.col, 0);
-  const fallen = collapseIds(layout.blocks.map((b) => (b.id === foot.id ? { ...b, hp: 0 } : b)));
+  const feet = layout.blocks.filter((b) => b.side === "enemy" && b.material === "foundation");
+  const foot = feet.sort((a, b) => Math.abs(a.x - banner.x) - Math.abs(b.x - banner.x))[0];
+  const { fallen, cols } = fallenCols(layout, foot.id);
   assert.ok(fallen.includes(banner.id));
-  assert.ok(fallen.includes("e0x1"));
-  assert.equal(fallen.includes("e1x1"), false);
+  assert.ok(cols.size >= 3, `cols ${[...cols]}`);
+  const cap = layout.blocks.find((b) => b.side === "enemy" && b.material === "merlon");
+  const nick = collapseIds(layout.blocks.map((b) => (b.id === cap.id ? { ...b, hp: 0 } : b)));
+  assert.equal(nick.includes(banner.id), false);
 });
 
-test("the gold stone is the arch's weak point", () => {
+test("the arch crown falls together when the keystone goes", () => {
   const layout = layoutByNumber(2, defaultSave());
   const key = layout.blocks.find((b) => b.material === "keystone" && b.side === "enemy");
   assert.ok(key);
-  assert.equal(key.col, 0);
-  const fallen = collapseIds(layout.blocks.map((b) => (b.id === key.id ? { ...b, hp: 0 } : b)));
+  assert.equal(key.arch, true);
+  const { fallen, cols } = fallenCols(layout, key.id);
   assert.ok(fallen.includes("ebanner"));
+  assert.ok(cols.size >= 3, `cols ${[...cols]}`);
+  assert.ok(fallen.length >= 8);
+});
+
+test("the bridge banner stands on the span", () => {
+  const layout = layoutByNumber(5, defaultSave());
+  const span = layout.blocks.find((b) => b.side === "enemy" && b.arch && b.material === "timber");
+  const { fallen } = fallenCols(layout, span.id);
+  assert.ok(fallen.includes("ebanner"));
+  assert.ok(fallen.some((id) => id.startsWith("edeck")));
 });
 
 test("a daily keep is the same all day and different tomorrow", () => {
@@ -84,11 +102,17 @@ test("stars, rubble and a shared seed stick", () => {
   assert.equal(save.rubble, 11, "a cleared keep does not pay twice");
   assert.equal(save.best.foot.shots, 1);
   const daily = dailyLayout(save, "2026-11-18");
-  save = recordResult(save, daily, { won: true, shots: 4, rubble: 0 });
+  save = recordResult(save, daily, { won: true, shots: 4, rubble: 0 }, "2026-11-18");
   assert.equal(save.rubble, 19);
   assert.equal(save.daily.shots, 4);
-  save = recordResult(save, daily, { won: true, shots: 6, rubble: 0 });
+  const older = dailyLayout(defaultSave(), "2026-11-16");
+  save = recordResult(save, older, { won: true, shots: 1, rubble: 0 }, "2026-11-18");
+  assert.equal(save.daily.date, "2026-11-18");
   assert.equal(save.daily.shots, 4);
+  assert.equal(save.rubble, 19);
+  save = recordResult(save, daily, { won: true, shots: 6, rubble: 0 }, "2026-11-18");
+  assert.equal(save.daily.shots, 4);
+  assert.equal(save.rubble, 19);
   const seeded = seedLayout(defaultSave(), 0xabc);
   save = recordResult(save, seeded, { won: true, shots: 3, rubble: 50 });
   assert.equal(save.seeds[(seeded.seed >>> 0).toString(36)], 3);
@@ -139,6 +163,7 @@ test("share links reopen the same keep", () => {
   assert.match(text, /Grokstone/);
   assert.match(text, /2026-11-18/);
   assert.match(text, /3 shots/);
+  assert.match(shareText(daily, { won: true, shots: 1, stars: 3 }), /1 shot /);
 });
 
 test("a full quota does not throw, and upgrades do not move the rival keep", () => {

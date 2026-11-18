@@ -86,10 +86,13 @@ test("the preview arc matches Matter for a clear shot", () => {
   assert.ok(WORLD.groundTop > 500);
 });
 
-test("striking the near foot brings the banner down", () => {
+test("striking the bonded foot brings the banner down", () => {
   const layout = layoutByNumber(1, defaultSave());
   const siege = createSiege(layout);
-  strikeBlock(siege, "e0x0", 500);
+  const banner = [...siege.bodies.values()].find((b) => b.grok.material === "banner" && b.grok.side === "enemy");
+  const feet = [...siege.bodies.values()].filter((b) => b.grok.material === "foundation" && b.grok.side === "enemy");
+  const foot = feet.sort((a, b) => Math.abs(a.position.x - banner.position.x) - Math.abs(b.position.x - banner.position.x))[0];
+  strikeBlock(siege, foot.grok.id, 500);
   for (let i = 0; i < 240; i++) {
     stepSiege(siege);
     finite(siege);
@@ -116,14 +119,37 @@ test("a careful roundshot wins the first keep", () => {
   destroySiege(siege);
 });
 
+test("one roundshot does not clear Brackencrown", () => {
+  const layout = layoutByNumber(8, defaultSave());
+  const siege = createSiege(layout);
+  const key = [...siege.bodies.values()].find((b) => b.grok.material === "keystone");
+  strikeBlock(siege, key.grok.id, 130);
+  for (let i = 0; i < 40; i++) stepSiege(siege);
+  assert.equal(bannerStatus(siege, "enemy"), "up");
+  strikeBlock(siege, key.grok.id, 9999);
+  let nan = false;
+  for (let i = 0; i < 180; i++) {
+    stepSiege(siege);
+    for (const body of siege.bodies.values()) if (!Number.isFinite(body.position.y)) nan = true;
+    if (isSettled(siege) && i > 15) break;
+  }
+  const fallen = [...siege.bodies.values()].filter((b) => b.grok.side === "enemy" && !b.isStatic);
+  const cols = new Set(fallen.map((b) => b.grok.col));
+  assert.equal(nan, false);
+  assert.equal(bannerStatus(siege, "enemy"), "fallen");
+  assert.ok(cols.size >= 3);
+  assert.ok(fallen.length >= 10);
+  destroySiege(siege);
+});
+
 test("breaking a full stone lowers the keep, and a keg still bursts on rubble", () => {
   const layout = layoutByNumber(1, defaultSave());
   const siege = createSiege(layout);
   assert.equal(sideIntegrity(siege, "enemy"), 1);
-  const foot = siege.bodies.get("e0x0");
+  const foot = [...siege.bodies.values()].find((b) => b.grok.side === "enemy" && b.grok.material === "foundation");
   foot.grok.hp = foot.grok.maxHp / 2;
   const cracked = sideIntegrity(siege, "enemy");
-  strikeBlock(siege, "e0x0", 9999);
+  strikeBlock(siege, foot.grok.id, 9999);
   assert.ok(sideIntegrity(siege, "enemy") < cracked);
   const debris = siege.debris[0];
   assert.ok(debris);
