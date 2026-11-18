@@ -1,5 +1,13 @@
 [
   {
+    "id": "grokstone",
+    "title": "Grokstone",
+    "pitch": "Aim a cannon at a rival keep, crack the stone that holds the banner, and watch the courses come down before yours do. Eight sieges, a mason's yard, and a daily keep.",
+    "controls": "Drag to aim, release to fire; click a crew to switch. Arrows aim, Space fires, M mutes, R retries.",
+    "url": "grokstone/",
+    "shot": "shots/grokstone.webp"
+  },
+  {
     "id": "nap-patch",
     "title": "Nap Patch",
     "pitch": "Tuck sleepy bush critters into a patchwork quilt: one per patch, row and column, and no bumping. A daily quilt, plus an endless Quilt Trail of freshly stitched puzzles with five quilt patterns and sewn-on buttons.",

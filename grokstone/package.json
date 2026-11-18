@@ -1,0 +1,14 @@
+{
+  "name": "grokstone",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "matter-js": "0.20.0"
+  },
+  "devDependencies": {
+    "playwright-core": "1.49.1"
+  }
+}

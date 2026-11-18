@@ -6,6 +6,7 @@ Small browser games I built with AI coding tools. Free, no accounts, and most of
 
 | Game | Play |
 |---|---|
+| Grokstone — aim a cannon, crack the keep, and ride the collapse | [grokstone/](https://jernejk.github.io/jk-arcade/grokstone/) |
 | Nap Patch — tuck sleepy bush critters into a patchwork quilt, one per patch, row and column | [nap-patch/](https://jernejk.github.io/jk-arcade/nap-patch/) |
 | Piece by Pixel — rebuild pixel-art postcards one piece at a time | [Gull Harbor, Master tier](https://jernejk.github.io/jk-arcade/piece-by-pixel/#gull-harbor@master) |
 | Tumbleverse — smash endless generated towers, castles and tiny planets | [tumbleverse/](https://jernejk.github.io/jk-arcade/tumbleverse/) |
@@ -20,4 +21,4 @@ Each game saves progress in your browser, per site, so progress on this copy is 
 
 ## Licences
 
-No licence is granted for the games, art or code in this repo yet; ask before reusing anything. Third-party notices for bundled libraries and fonts are in [`licences/`](licences/), next to each game's own font notices (`fonts/OFL-Bungee.txt`, `tumbleverse/fonts/OFL.txt`, `nap-patch/assets/fonts/OFL-Nunito.txt`).
+No licence is granted for the games, art or code in this repo yet; ask before reusing anything. Third-party notices for bundled libraries and fonts are in [`licences/`](licences/), next to each game's own font notices (`fonts/OFL-Bungee.txt`, `tumbleverse/fonts/OFL.txt`, `nap-patch/assets/fonts/OFL-Nunito.txt`, `grokstone/fonts/OFL-Calistoga.txt`).

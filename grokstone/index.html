@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#241428">
+<meta name="description" content="Grokstone: aim a cannon, crack the stone that holds the rival keep, and get your own banner out of the way.">
+<title>Grokstone</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script>
+try {
+  const raw = JSON.parse(localStorage.getItem("grokstone-v1") || "{}");
+  const motion = raw.settings && raw.settings.motion;
+  if (motion === "reduce" || motion === "full") document.documentElement.dataset.motion = motion;
+} catch {}
+</script>
+</head>
+<body>
+<canvas id="view" aria-hidden="true"></canvas>
+<div id="ui">
+  <header id="hud" hidden>
+    <button id="pause" type="button" aria-label="Pause">II</button>
+    <div class="who you">
+      <span class="flag you" aria-hidden="true"></span>
+      <span class="who-name">Grokstone</span>
+      <span class="bar" aria-hidden="true"><i id="you-bar"></i></span>
+    </div>
+    <div class="mid">
+      <p id="level-name">The Foot</p>
+      <p id="shot-count">Shot 1</p>
+    </div>
+    <div class="who foe">
+      <span class="who-name" id="foe-name">Pebble Stack</span>
+      <span class="bar" aria-hidden="true"><i id="foe-bar"></i></span>
+    </div>
+    <button id="mute" type="button" aria-pressed="false" aria-label="Mute sound">♪</button>
+  </header>
+  <p id="callout" hidden></p>
+  <footer id="tray" hidden>
+    <div id="weapons" role="group" aria-label="Crews"></div>
+    <p id="hint">Drag to aim. Release to fire.</p>
+  </footer>
+
+  <section id="title" class="sheet">
+    <p class="eyebrow">A keep, a cannon, a bad neighbour</p>
+    <h1 id="logo">Grokstone</h1>
+    <p class="lede">Aim at the rival keep. The banner only falls when the stone under it does.</p>
+    <p id="egg" class="egg" hidden>Don't Panic.</p>
+    <div class="actions">
+      <button id="continue" class="primary" type="button">Begin the siege</button>
+      <button id="daily" type="button">Today's keep</button>
+      <button id="map" type="button">Siege map</button>
+      <button id="help" type="button">How the stone stands</button>
+    </div>
+    <div class="prefs">
+      <button id="title-mute" type="button" aria-pressed="false">Sound on</button>
+      <button id="motion" type="button">Motion auto</button>
+    </div>
+  </section>
+
+  <section id="help-sheet" class="sheet" hidden>
+    <h2>How the stone stands</h2>
+    <ul>
+      <li>Drag across the field and let go. The mark is the block you will hit.</li>
+      <li>You take a shot, then the rival answers.</li>
+      <li>A block stands on the block below it. Take that away and the courses above come down.</li>
+      <li>Gold stone, timber, and cinder kegs give up sooner than ashlar. The banner itself is only cloth.</li>
+      <li>Rubble from a fallen keep spends in the yard: thicker walls, and three more crews.</li>
+    </ul>
+    <button id="help-back" class="primary" type="button">Back</button>
+  </section>
+
+  <section id="map-sheet" class="sheet" hidden>
+    <h2>Siege map</h2>
+    <p class="quiet" id="map-rubble"></p>
+    <div id="map-list"></div>
+    <button id="map-back" type="button">Back</button>
+  </section>
+
+  <section id="result" class="sheet" hidden>
+    <p class="eyebrow" id="result-kicker">The standard</p>
+    <h2 id="result-title">The banner falls</h2>
+    <p id="result-detail"></p>
+    <p id="result-stars" class="stars"></p>
+    <label class="share-label">Share this result
+      <textarea id="share-text" readonly rows="3"></textarea>
+    </label>
+    <div class="actions">
+      <button id="share" class="primary" type="button">Copy</button>
+      <button id="yard" type="button">Mason's yard</button>
+      <button id="retry" type="button">Retry this keep</button>
+      <button id="result-title-btn" type="button">Title</button>
+    </div>
+  </section>
+
+  <section id="yard-sheet" class="sheet" hidden>
+    <h2>Mason's yard</h2>
+    <p class="quiet" id="yard-rubble"></p>
+    <p id="yard-plaque" class="egg" hidden></p>
+    <div id="yard-list"></div>
+    <div class="actions">
+      <button id="next-siege" class="primary" type="button">Next siege</button>
+      <button id="yard-back" type="button">Title</button>
+    </div>
+  </section>
+
+  <section id="pause-sheet" class="sheet" hidden>
+    <h2>Hold the shot</h2>
+    <div class="actions">
+      <button id="resume" class="primary" type="button">Resume</button>
+      <button id="pause-retry" type="button">Retry this keep</button>
+      <button id="pause-title" type="button">Title</button>
+    </div>
+  </section>
+</div>
+<p id="live" class="sr" aria-live="polite"></p>
+<script src="vendor/matter.min.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
