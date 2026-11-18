@@ -338,15 +338,63 @@ test("a full quota does not throw, and upgrades do not move the rival keep", () 
   );
 });
 
-test("a drag on a foot outlines that foot, not the beam", () => {
-  for (const [number, weaponId] of [[3, "harpoon"], [6, "boulder"]]) {
+function beamFeet(layout) {
+  const banner = layout.blocks.find((b) => b.side === "enemy" && b.material === "banner");
+  const host = banner && layout.blocks.find((b) => (banner.neighbors.below || []).includes(b.id));
+  const ids = new Set((host && host.neighbors.below) || []);
+  if (host && !ids.size) ids.add(host.id);
+  const key = layout.blocks.find((b) => b.side === "enemy" && b.material === "keystone");
+  if (key) ids.add(key.id);
+  return [...ids].map((id) => layout.blocks.find((b) => b.id === id)).filter(Boolean);
+}
+
+test("a pointer on a foot outlines that foot, not the neighbour", () => {
+  const sheltered = [];
+  for (let number = 1; number <= 9; number++) {
     const layout = layoutByNumber(number, defaultSave());
-    const weapon = weaponById(weaponId);
-    const foot = layout.blocks.find((b) => b.id === "efootb");
-    const aim = aimToward(layout.playerCannon, { x: foot.x, y: foot.y }, weapon, layout.blocks, layout.wind, "player");
-    assert.equal(aim.hit.id, foot.id, `${layout.name} outlined ${aim.hit && aim.hit.id}`);
-    assert.notEqual(aim.hit.id, "elintel");
+    for (const foot of beamFeet(layout)) {
+      const weapons = ["roundshot", "harpoon", "boulder"].map((id) => weaponById(id));
+      const reached = weapons.filter((weapon) => {
+        const aim = aimToward(layout.playerCannon, { x: foot.x, y: foot.y }, weapon, layout.blocks, layout.wind, "player");
+        return aim && aim.hit && aim.hit.id === foot.id;
+      });
+      if (!reached.length) {
+        sheltered.push(`${number}:${foot.id}`);
+        continue;
+      }
+      const points = [
+        [0, 0],
+        [foot.w * 0.32, 0],
+        [-foot.w * 0.32, 0],
+        [0, foot.h * 0.28],
+        [0, -foot.h * 0.28],
+      ];
+      for (const weapon of reached) {
+        for (const [dx, dy] of points) {
+          const aim = aimToward(
+            layout.playerCannon,
+            { x: foot.x + dx, y: foot.y + dy },
+            weapon,
+            layout.blocks,
+            layout.wind,
+            "player",
+          );
+          assert.equal(
+            aim && aim.hit && aim.hit.id,
+            foot.id,
+            `${layout.name} ${weapon.id} on ${foot.id} at ${dx.toFixed(1)},${dy.toFixed(1)} outlined ${aim && aim.hit && aim.hit.id}`,
+          );
+          assert.notEqual(aim.hit.id, "elintel");
+        }
+      }
+    }
   }
+  assert.deepEqual(sheltered, ["2:ehaunchR", "7:ehaunchR", "8:ehaunchR"]);
+  const barn = layoutByNumber(3, defaultSave());
+  const timber = barn.blocks.find((b) => b.id === "e0x7");
+  const hook = aimToward(barn.playerCannon, { x: timber.x, y: timber.y }, weaponById("harpoon"), barn.blocks, barn.wind, "player");
+  assert.equal(hook.hit.id, "e0x7");
+  assert.notEqual(hook.hit.id, "e1x7");
 });
 
 test("Bram is affordable before Low Buttress if you hired Sable and Puck", () => {

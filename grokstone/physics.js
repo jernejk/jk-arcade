@@ -341,7 +341,7 @@ function killBlock(siege, id) {
   return info;
 }
 
-const SHARD_CUTS = [
+export const SHARD_CUTS = [
   { w: 0.72, h: 0.22 },
   { w: 0.18, h: 0.78 },
   { w: 0.4, h: 0.36 },

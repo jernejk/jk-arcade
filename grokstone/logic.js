@@ -655,6 +655,10 @@ function capBondStandard(blocks, side, near, spec) {
     footMat = "timber";
     footHp = 210;
     footArch = true;
+    const course = blocks.find((b) => b.side === side && b.col === near && b.row === face.row - 1);
+    // The inner band has to stand proud of the course under it. Tucked behind
+    // that course, every arc clips the neighbour and the foot never outlines.
+    if (course) face.x = course.x - course.w / 2 - 10 + face.w / 2;
   } else if (enemy && crown === "buttress") {
     footMat = "keystone";
     footHeavy = true;
@@ -664,12 +668,15 @@ function capBondStandard(blocks, side, near, spec) {
   }
   face.maxHp = faceHp;
   face.hp = faceHp;
+  // Timber bands need a gap a hook can fly through. Forty pixels leaves an
+  // 11px slot, which a radius-5 shot cannot use.
+  const footGap = footMat === "timber" ? 66 : 40;
   const foot = makeBlock({
     id: `${side[0]}footb`,
     side,
     col: near,
     row: face.row,
-    x: face.x + outward * 40,
+    x: face.x + outward * footGap,
     y: face.y,
     w: 26,
     h: BLOCK_H,
@@ -680,6 +687,7 @@ function capBondStandard(blocks, side, near, spec) {
     heavy: footHeavy,
     sealed: footSealed,
   });
+  const cover = Math.abs(face.x - foot.x) + face.w / 2 + foot.w / 2 + 8;
   const lintel = makeBlock({
     id: `${side[0]}lintel`,
     side,
@@ -687,7 +695,7 @@ function capBondStandard(blocks, side, near, spec) {
     row: face.row + 1,
     x: (face.x + foot.x) / 2,
     y: face.y - face.h / 2 - 2 - 9,
-    w: 70,
+    w: footMat === "timber" ? Math.max(70, cover) : 70,
     h: 18,
     material: "stone",
     maxHp: 640,
@@ -1225,46 +1233,89 @@ function pointerBlock(point, blocks) {
       nearD = outside;
     }
   }
-  return inside || near;
+  if (inside) return { block: inside, inside: true };
+  if (near) return { block: near, inside: false };
+  return null;
+}
+
+function rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked) {
+  const vel = shotVelocity(weapon, angle, power);
+  const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 96, weapon.air);
+  const hit = firstHit(pts, blocks, weapon.radius);
+  let bestD = Infinity;
+  let approach = Infinity;
+  const stop = hit ? hit.index : pts.length - 1;
+  for (let p = 0; p <= stop; p += 1) {
+    const q = pts[p];
+    const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2;
+    if (d < bestD) bestD = d;
+    if (locked) {
+      const gap = Math.hypot(q.x - locked.x, q.y - locked.y);
+      if (gap < approach) approach = gap;
+    }
+  }
+  if (hit && hit.type === "block") {
+    const dHit = (hit.x - point.x) ** 2 + (hit.y - point.y) ** 2;
+    if (dHit < bestD) bestD = dHit;
+  }
+  const onWanted = Boolean(wanted && hit && hit.id === wanted.id);
+  let rank = bestD;
+  // A block under the finger wins outright. A rank bonus still let the
+  // neighbour take the outline when its arc passed closer to the point.
+  if (locked && onWanted) rank = bestD - 1e9;
+  else if (locked) rank = bestD + 1e6;
+  else if (onWanted) rank -= 10000;
+  else if (wanted && hit && hit.type === "block") {
+    const struck = blocks.find((b) => b.id === hit.id);
+    if (struck && struck.heavy && struck.w >= 48 && wanted.id !== struck.id) rank += 4000;
+  }
+  if (!locked && onWanted) {
+    const beams = blocks.filter((b) => b.heavy && b.w >= 48 && b.id !== wanted.id);
+    const skim = pts.slice(0, hit.index).some((q) => beams.some((b) => Math.abs(q.x - b.x) < b.w / 2 + 8 && Math.abs(q.y - b.y) < b.h / 2 + 8));
+    if (skim) rank += 6000;
+  }
+  return { angle, power, distance: bestD, rank, hit, approach };
 }
 
 export function aimToward(cannon, point, weapon, blocks, wind, side) {
-  const wanted = pointerBlock(point, blocks.filter((b) => b.side && b.side !== side));
-  const angles = angleRange(side, wanted ? 32 : 18);
-  const steps = wanted ? 12 : 8;
+  const picked = pointerBlock(point, blocks.filter((b) => b.side && b.side !== side));
+  const wanted = picked ? picked.block : null;
+  const locked = picked && picked.inside ? picked.block : null;
+  const angles = angleRange(side, locked ? 36 : (wanted ? 28 : 18));
+  const steps = locked ? 14 : (wanted ? 11 : 8);
   let best = null;
+  let lockedAim = null;
+  const seeds = [];
   for (const angle of angles) {
     for (let i = 0; i < steps; i++) {
       const power = 0.28 + i * (0.72 / (steps - 1));
-      const vel = shotVelocity(weapon, angle, power);
-      const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 80, weapon.air);
-      const hit = firstHit(pts, blocks, weapon.radius);
-      let bestD = Infinity;
-      const stop = hit ? hit.index : pts.length - 1;
-      for (let p = 0; p <= stop; p += 1) {
-        const q = pts[p];
-        const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2;
-        if (d < bestD) bestD = d;
+      const aim = rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked);
+      if (locked && aim.hit && aim.hit.id === locked.id) {
+        if (!lockedAim || aim.distance < lockedAim.distance) lockedAim = aim;
       }
-      if (hit && hit.type === "block") {
-        const dHit = (hit.x - point.x) ** 2 + (hit.y - point.y) ** 2;
-        if (dHit < bestD) bestD = dHit;
-      }
-      let rank = bestD;
-      if (wanted && hit && hit.id === wanted.id) rank -= 10000;
-      else if (wanted && hit && hit.type === "block") {
-        const struck = blocks.find((b) => b.id === hit.id);
-        if (struck && struck.heavy && struck.w >= 48 && wanted.id !== struck.id) rank += 4000;
-      }
-      if (hit && wanted && hit.id === wanted.id) {
-        const beams = blocks.filter((b) => b.heavy && b.w >= 48 && b.id !== wanted.id);
-        const skim = pts.slice(0, hit.index).some((q) => beams.some((b) => Math.abs(q.x - b.x) < b.w / 2 + 8 && Math.abs(q.y - b.y) < b.h / 2 + 8));
-        if (skim) rank += 6000;
-      }
-      if (!best || rank < best.rank) best = { angle, power, distance: bestD, rank, hit };
+      if (!best || aim.rank < best.rank) best = aim;
+      if (locked) seeds.push(aim);
     }
   }
-  return best;
+  // The uniform grid can step over a narrow lane. Refine around the arcs
+  // that came closest to the block under the pointer.
+  if (locked && !lockedAim && seeds.length) {
+    seeds.sort((a, b) => a.approach - b.approach);
+    const angleStep = (angles[1] - angles[0]) / 4;
+    const powerStep = (0.72 / (steps - 1)) / 3;
+    for (const seed of seeds.slice(0, 8)) {
+      for (let da = -3; da <= 3; da++) {
+        for (let dp = -3; dp <= 3; dp++) {
+          const angle = seed.angle + da * angleStep;
+          const power = clamp(seed.power + dp * powerStep, 0.28, 1);
+          const aim = rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked);
+          if (aim.hit && aim.hit.id === locked.id && (!lockedAim || aim.distance < lockedAim.distance)) lockedAim = aim;
+        }
+      }
+      if (lockedAim) break;
+    }
+  }
+  return lockedAim || best;
 }
 
 export function starsFor(shots, par, won, clever = false) {

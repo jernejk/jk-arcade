@@ -32,6 +32,7 @@ import {
   writeSave,
 } from "./logic.js";
 import {
+  SHARD_CUTS,
   bannerStatus,
   consumeFx,
   createSiege,
@@ -633,14 +634,21 @@ function shiftHex(hex, amount) {
   return `rgb(${r} ${g} ${b})`;
 }
 
+const STONE_TONES = [
+  ["#f6efe4", "#dccab0", "#b09a84"],
+  ["#e4e0d6", "#b7b0a4", "#7e7870"],
+  ["#edd4a4", "#c4964e", "#8a5e2c"],
+  ["#f0d5c8", "#c99280", "#8d5b4c"],
+];
+
 function blockColors(material, variant = 1) {
-  const shift = (variant - 1) * 10;
-  let colors = ["#f3eadb", "#d9c7ae", "#a89882"];
+  const tone = Math.abs(variant | 0) % STONE_TONES.length;
+  if (material === "stone" || material === "foundation" || material === "merlon") return STONE_TONES[tone];
+  const shift = (tone - 1) * 16;
+  let colors = STONE_TONES[0];
   if (material === "timber") colors = ["#e7b07a", "#c4844a", "#8d5430"];
   else if (material === "keystone") colors = ["#ffe3a4", "#e7b15a", "#a87428"];
   else if (material === "keg") colors = ["#a14a42", "#6e2c2a", "#3a2424"];
-  else if (material === "foundation") colors = ["#d9cbb8", "#b7a490", "#7d6a58"];
-  else if (material === "merlon") colors = ["#f3eadb", "#d7c7ae", "#a89882"];
   else if (material === "banner") colors = ["#f4efe6", "#cbbba4", "#8c7864"];
   return colors.map((hex) => shiftHex(hex, shift));
 }
@@ -690,6 +698,65 @@ function stoneSilhouette(x, y, w, h, variant) {
   ctx.closePath();
 }
 
+// A standing course that has been hit loses a corner the size of a fallen
+// shard (SHARD_CUTS), with a crack running into the gap. The 7px nick did
+// not read at play size.
+function shardBite(w, h, variant) {
+  const cut = SHARD_CUTS[(variant || 0) % SHARD_CUTS.length];
+  const long = Math.max(cut.w, cut.h);
+  return {
+    biteW: Math.min(w * 0.64, Math.max(w * 0.5, w * long)),
+    biteH: Math.min(h * 0.72, Math.max(h * 0.55, h * long)),
+    corner: (variant || 0) % 4,
+  };
+}
+
+function bittenSilhouette(x, y, w, h, variant) {
+  const { biteW, biteH, corner } = shardBite(w, h, variant);
+  const left = x;
+  const top = y;
+  const right = x + w;
+  const bot = y + h;
+  ctx.beginPath();
+  if (corner === 0) {
+    ctx.moveTo(left, top);
+    ctx.lineTo(right - biteW, top);
+    ctx.lineTo(right - biteW * 0.42, top + biteH * 0.38);
+    ctx.lineTo(right, top + biteH);
+    ctx.lineTo(right, bot);
+    ctx.lineTo(left, bot);
+  } else if (corner === 1) {
+    ctx.moveTo(left, top);
+    ctx.lineTo(right, top);
+    ctx.lineTo(right, bot);
+    ctx.lineTo(left + biteW, bot);
+    ctx.lineTo(left + biteW * 0.4, bot - biteH * 0.42);
+    ctx.lineTo(left, bot - biteH);
+  } else if (corner === 2) {
+    ctx.moveTo(left, top);
+    ctx.lineTo(right, top);
+    ctx.lineTo(right, bot - biteH);
+    ctx.lineTo(right - biteW * 0.38, bot - biteH * 0.4);
+    ctx.lineTo(right - biteW, bot);
+    ctx.lineTo(left, bot);
+  } else {
+    ctx.moveTo(left + biteW, top);
+    ctx.lineTo(right, top);
+    ctx.lineTo(right, bot);
+    ctx.lineTo(left, bot);
+    ctx.lineTo(left, top + biteH);
+    ctx.lineTo(left + biteW * 0.36, top + biteH * 0.4);
+  }
+  ctx.closePath();
+  const anchor = [
+    [right - biteW * 0.42, top + biteH * 0.38, -1, 1],
+    [left + biteW * 0.4, bot - biteH * 0.42, 1, -1],
+    [right - biteW * 0.38, bot - biteH * 0.4, -1, -1],
+    [left + biteW * 0.36, top + biteH * 0.4, 1, 1],
+  ][corner];
+  return { x: anchor[0], y: anchor[1], ix: anchor[2], iy: anchor[3] };
+}
+
 function drawBlock(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
@@ -698,6 +765,11 @@ function drawBlock(b) {
     drawShard(b);
     ctx.restore();
     return;
+  }
+  const course = (b.material === "stone" || b.material === "merlon" || b.material === "foundation") && b.w < 48;
+  if (course) {
+    const v = b.variant || 0;
+    ctx.scale(0.8 + (v % 3) * 0.12, 0.76 + (v % 4) * 0.1);
   }
   ctx.fillStyle = "rgba(30, 16, 12, 0.28)";
   ctx.beginPath();
@@ -708,12 +780,13 @@ function drawBlock(b) {
   grad.addColorStop(0, hi);
   grad.addColorStop(0.55, mid);
   grad.addColorStop(1, lo);
-  stoneSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0);
+  const hurt = b.maxHp ? b.hp / b.maxHp < 0.98 : false;
+  const crack = hurt ? bittenSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0) : null;
+  if (!hurt) stoneSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0);
+  ctx.save();
+  ctx.clip();
   ctx.fillStyle = grad;
-  ctx.fill();
-  ctx.strokeStyle = "rgba(60, 36, 24, 0.35)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.fillRect(-b.w, -b.h, b.w * 2, b.h * 2);
   ctx.fillStyle = "rgba(255, 248, 236, 0.28)";
   ctx.fillRect(-b.w / 2 + 3, -b.h / 2 + 2, b.w - 6, 1.4);
   ctx.fillStyle = "rgba(90, 68, 48, 0.45)";
@@ -744,31 +817,20 @@ function drawBlock(b) {
     ctx.textAlign = "center";
     ctx.fillText(mark, 0, 3);
   }
-  const ratio = b.maxHp ? b.hp / b.maxHp : 1;
-  if (ratio < 0.98) {
-    ctx.fillStyle = "rgba(74, 52, 36, 0.85)";
+  ctx.restore();
+  if (hurt) bittenSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0);
+  else stoneSilhouette(-b.w / 2, -b.h / 2, b.w, b.h, b.variant || 0);
+  ctx.strokeStyle = "rgba(60, 36, 24, 0.55)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  if (crack) {
+    ctx.strokeStyle = "rgba(42, 24, 16, 0.95)";
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    const notch = (b.variant % 4);
-    if (notch === 0) { ctx.moveTo(b.w / 2, -b.h / 2); ctx.lineTo(b.w / 2 - 7, -b.h / 2); ctx.lineTo(b.w / 2, -b.h / 2 + 6); }
-    else if (notch === 1) { ctx.moveTo(-b.w / 2, b.h / 2); ctx.lineTo(-b.w / 2 + 8, b.h / 2); ctx.lineTo(-b.w / 2, b.h / 2 - 5); }
-    else if (notch === 2) { ctx.moveTo(b.w / 2, b.h / 2); ctx.lineTo(b.w / 2 - 6, b.h / 2); ctx.lineTo(b.w / 2, b.h / 2 - 7); }
-    else { ctx.moveTo(-b.w / 2, -b.h / 2); ctx.lineTo(-b.w / 2 + 6, -b.h / 2); ctx.lineTo(-b.w / 2, -b.h / 2 + 7); }
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(42, 24, 16, 0.9)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-b.w * 0.28, -b.h * 0.05);
-    ctx.lineTo(b.w * 0.05, b.h * 0.08);
-    ctx.lineTo(b.w * 0.22, b.h * 0.28);
-    if (ratio < 0.7) {
-      ctx.moveTo(b.w * 0.12, -b.h * 0.22);
-      ctx.lineTo(-b.w * 0.08, b.h * 0.02);
-    }
-    if (ratio < 0.45) {
-      ctx.moveTo(-b.w * 0.05, -b.h * 0.3);
-      ctx.lineTo(b.w * 0.02, b.h * 0.18);
-    }
+    ctx.moveTo(crack.x, crack.y);
+    ctx.lineTo(crack.x + crack.ix * b.w * 0.24, crack.y + crack.iy * b.h * 0.32);
+    ctx.lineTo(crack.x + crack.ix * b.w * 0.06, crack.y + crack.iy * b.h * 0.62);
     ctx.stroke();
   }
   if (b.flash > 0.08) {
@@ -1225,19 +1287,25 @@ function boot() {
         const pred = predicted();
         return pred && pred.hit && pred.hit.type === "block" ? pred.hit.id : null;
       },
-      clientFor(id) {
+      clientFor(id, dx = 0, dy = 0) {
         const block = aimBlocks().find((b) => b.id === id) || (id === "cannon" ? state.layout.playerCannon : null);
         if (!block) return null;
         const rect = canvas.getBoundingClientRect();
         return {
-          x: rect.left + view.ox + block.x * view.scale,
-          y: rect.top + view.oy + block.y * view.scale,
+          x: rect.left + view.ox + (block.x + dx) * view.scale,
+          y: rect.top + view.oy + (block.y + dy) * view.scale,
         };
       },
       feet() {
-        const lintel = aimBlocks().find((b) => b.id === "elintel");
-        const live = new Set(aimBlocks().map((b) => b.id));
-        return ((lintel && lintel.neighbors && lintel.neighbors.below) || []).filter((id) => live.has(id));
+        const blocks = aimBlocks();
+        const live = new Set(blocks.map((b) => b.id));
+        const banner = blocks.find((b) => b.side === "enemy" && b.material === "banner");
+        const host = banner && blocks.find((b) => (banner.neighbors.below || []).includes(b.id));
+        const ids = new Set((host && host.neighbors && host.neighbors.below) || []);
+        if (host && !ids.size) ids.add(host.id);
+        const key = blocks.find((b) => b.side === "enemy" && b.material === "keystone");
+        if (key) ids.add(key.id);
+        return [...ids].filter((id) => live.has(id));
       },
       aimAt(id) {
         const block = aimBlocks().find((b) => b.id === id);

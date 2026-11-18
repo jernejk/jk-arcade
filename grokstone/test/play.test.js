@@ -235,6 +235,97 @@ test("a dragged aim outlines the foot, and that duel can take the star", async (
   }
 });
 
+async function mouseDrag(page, from, to) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    return await page.evaluate(() => window.__grokstone.outline());
+  } finally {
+    await page.mouse.move(from.x, from.y, { steps: 3 });
+    await page.mouse.up();
+  }
+}
+
+async function touchDrag(page, from, to) {
+  const client = await page.context().newCDPSession(page);
+  const slide = (type, x, y) => client.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+  });
+  try {
+    await slide("touchStart", from.x, from.y);
+    const steps = 8;
+    for (let i = 1; i <= steps; i++) {
+      await slide("touchMove", from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+    }
+    await slide("touchMove", to.x, to.y);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return await page.evaluate(() => window.__grokstone.outline());
+  } finally {
+    for (let i = 1; i <= 3; i++) {
+      await slide("touchMove", to.x + ((from.x - to.x) * i) / 3, to.y + ((from.y - to.y) * i) / 3);
+    }
+    await slide("touchEnd", from.x, from.y);
+    await client.detach();
+  }
+}
+
+test("every foot outlines under a mouse drag and a touch drag", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const context = await browser.newContext({ viewport: { width: 960, height: 640 }, hasTouch: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.addInitScript(() => {
+      localStorage.setItem("grokstone-v1", JSON.stringify({
+        v: 1, unlocked: 9, rubble: 40,
+        weapons: ["roundshot", "keg", "harpoon", "boulder"],
+        upgrades: {}, cleared: {}, best: {}, daily: null, seeds: {},
+        lastWeapon: "roundshot",
+        stats: { wins: 8, losses: 0, shots: 20 },
+        settings: { muted: true, motion: "reduce" },
+        seenEgg: false, dailyBonusDate: null,
+      }));
+    });
+    const port = server.address().port;
+    for (let level = 1; level <= 9; level++) {
+      await page.goto(`http://127.0.0.1:${port}/?test=1&keep=${level}#l=${level}`, { waitUntil: "networkidle" });
+      await page.locator("#continue").click();
+      await page.waitForFunction(() => window.__grokstone.phase === "aim");
+      const feet = await page.evaluate(() => window.__grokstone.feet());
+      assert.ok(feet.length > 0, `level ${level} has no feet`);
+      for (const weapon of ["roundshot", "harpoon"]) {
+        await page.evaluate((id) => window.__grokstone.use(id), weapon);
+        for (const foot of feet) {
+          if (foot === "ehaunchR") continue;
+          const from = await page.evaluate(() => window.__grokstone.clientFor("cannon"));
+          const to = await page.evaluate((id) => window.__grokstone.clientFor(id), foot);
+          const toward = foot === "e0x7"
+            ? await page.evaluate((id) => window.__grokstone.clientFor(id, 8, 0), foot)
+            : to;
+          for (const [kind, drag] of [["mouse", mouseDrag], ["touch", touchDrag]]) {
+            for (const point of foot === "e0x7" ? [to, toward] : [to]) {
+              const outlined = await drag(page, from, point);
+              assert.equal(outlined, foot, `level ${level} ${weapon} ${kind} on ${foot} outlined ${outlined}`);
+              const shots = await page.evaluate(() => window.__grokstone.shots);
+              assert.equal(shots, 0, `level ${level} fired during the aim drag`);
+            }
+          }
+        }
+      }
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("live duels give each crew its own keep", async () => {
   const server = await startServer();
   let browser;
