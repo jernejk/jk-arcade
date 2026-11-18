@@ -223,7 +223,17 @@ button:disabled { opacity: 0.45; cursor: default; }
   #pause { grid-column: 1; grid-row: 1; }
   #mute { grid-column: 3; grid-row: 1; }
   #level-name { font-size: 16px; white-space: normal; line-height: 1.15; }
-  #result.sheet { left: 8px; right: 8px; width: auto; max-height: 38dvh; }
+  #result.sheet {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: none;
+    padding: 10px 12px 12px;
+  }
+  #result .share-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #result h2 { font-size: 22px; margin-bottom: 4px; }
+  #result .eyebrow, #result #result-detail, #result .stars { margin-bottom: 4px; }
+  #result .actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
 @media (min-width: 800px) {
   .sheet:not(#result) { left: auto; width: min(440px, calc(100% - 32px)); right: 24px; }

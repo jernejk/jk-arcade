@@ -249,7 +249,10 @@ function aimBlocks() {
       maxHp: body.grok.maxHp,
       material: body.grok.material,
       rooted: body.grok.rooted,
+      pin: body.grok.pin === true,
+      heavy: body.grok.heavy === true,
       arch: body.grok.arch,
+      neighbors: body.grok.neighbors,
       loose: false,
       col: body.grok.col,
       row: body.grok.row,
@@ -389,9 +392,11 @@ function paintTitle() {
   const begun = state.save.stats.wins + state.save.stats.losses > 0 || state.save.unlocked > 1;
   const hash = parseHash(location.hash);
   const today = localDateString();
+  const linked = hash.mode === "campaign" && hash.number ? layoutByNumber(hash.number, state.save) : null;
   const button = document.querySelector("#continue");
   if (hash.mode === "daily") button.textContent = hash.date && hash.date !== today ? `Open ${hash.date}` : "Open today's keep";
   else if (hash.mode === "seed") button.textContent = "Open the shared keep";
+  else if (linked) button.textContent = `Open ${linked.name}`;
   else button.textContent = begun ? `Continue · ${layout.name}` : "Begin the siege";
   const daily = state.save.daily;
   document.querySelector("#daily").textContent = daily && daily.date === today && daily.won ? `Today's keep · ${daily.shots} shots` : "Today's keep";
@@ -438,38 +443,40 @@ function screenToWorld(clientX, clientY) {
 }
 
 function puff(x, y, chip) {
-  const dustN = reduced() ? 3 : 10;
+  const dustN = reduced() ? 4 : 22;
   for (let i = 0; i < dustN; i++) {
+    const spread = 6 + (i % 5) * 7;
     state.particles.push({
       dust: true,
-      x: x + (Math.random() - 0.5) * 10,
-      y: y + (Math.random() - 0.5) * 6,
-      vx: (Math.random() - 0.5) * 0.8,
-      vy: -0.25 - Math.random() * 0.55,
-      life: 46 + Math.random() * 16,
-      max: 62,
-      r: 7 + Math.random() * 12,
-      color: "rgba(214, 196, 170, 0.42)",
-      g: 0.015,
+      x: x + (Math.random() - 0.5) * spread,
+      y: y + (Math.random() - 0.35) * spread * 0.7,
+      vx: (Math.random() - 0.5) * 1.15,
+      vy: -0.2 - Math.random() * 0.85,
+      life: 54 + Math.random() * 28,
+      max: 82,
+      r: 10 + Math.random() * 18,
+      color: i % 3 === 0 ? "rgba(232, 214, 186, 0.38)" : "rgba(168, 148, 124, 0.32)",
+      g: 0.008,
     });
   }
-  const chipN = reduced() ? 2 : 8;
+  const chipN = reduced() ? 3 : 16;
   for (let i = 0; i < chipN; i++) {
     state.particles.push({
       chip: true,
-      x, y,
-      vx: (Math.random() - 0.5) * 3.2,
-      vy: -1.2 - Math.random() * 2.2,
-      life: 34,
-      max: 34,
-      r: 1.4 + Math.random() * 1.8,
+      x: x + (Math.random() - 0.5) * 8,
+      y,
+      vx: (Math.random() - 0.5) * 4.4,
+      vy: -1.4 - Math.random() * 3.1,
+      life: 40,
+      max: 40,
+      r: 1.6 + Math.random() * 2.6,
       rot: Math.random() * 6,
-      vr: (Math.random() - 0.5) * 0.25,
+      vr: (Math.random() - 0.5) * 0.32,
       color: chip,
-      g: 0.22,
+      g: 0.24,
     });
   }
-  if (state.particles.length > 180) state.particles.splice(0, state.particles.length - 180);
+  if (state.particles.length > 280) state.particles.splice(0, state.particles.length - 280);
 }
 
 function burst(x, y, n, color, speed, life) {
@@ -517,7 +524,8 @@ function handleFx(events) {
       audio.boom();
       callout("The pantry answers.");
     } else if (fx.kind === "collapse") {
-      puff(fx.x, fx.y, "#cbbba4");
+      const clouds = reduced() ? 1 : Math.min(5, 1 + Math.floor((fx.n || 1) / 3));
+      for (let i = 0; i < clouds; i++) puff(fx.x + (i - (clouds - 1) / 2) * 22, fx.y - i * 6, "#cbbba4");
       state.shake = Math.min(14, state.shake + Math.min(8, fx.n / 2));
       if (!reduced()) state.slow = Math.max(state.slow, fx.n >= 10 ? 100 : 72);
       audio.crumble();
@@ -527,7 +535,7 @@ function handleFx(events) {
       callout("Cloth won't do it. Drop the stone.");
     } else if (fx.kind === "yank") {
       burst(fx.x, fx.y, 8, "#d7c4a4", 2, 24);
-      callout("The hook has it.");
+      callout(fx.heavy ? "The gold stone stays." : "The hook has it.");
     } else if (fx.kind === "fire") {
       state.flash = 1;
     }
@@ -642,14 +650,17 @@ function drawBlock(b) {
   ctx.strokeStyle = "rgba(60, 36, 24, 0.35)";
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = "rgba(255, 248, 236, 0.35)";
-  ctx.fillRect(-b.w / 2 + 2, -b.h / 2 + 2, b.w - 4, 2);
-  const specks = 4 + (b.variant || 0);
-  ctx.fillStyle = "rgba(70, 46, 32, 0.25)";
-  for (let i = 0; i < specks; i++) {
-    const px = ((b.variant * 17 + i * 29) % (b.w - 6)) - b.w / 2 + 3;
-    const py = ((b.variant * 11 + i * 19) % (b.h - 6)) - b.h / 2 + 3;
-    ctx.fillRect(px, py, 2, 1.3);
+  ctx.fillStyle = "rgba(255, 248, 236, 0.28)";
+  ctx.fillRect(-b.w / 2 + 3, -b.h / 2 + 2, b.w - 6, 1.4);
+  ctx.fillStyle = "rgba(90, 68, 48, 0.45)";
+  ctx.fillRect(-b.w / 2, b.h / 2 - 2.2, b.w, 2.2);
+  ctx.fillRect(-b.w / 2, -b.h / 2, 1.6, b.h);
+  const grain = 7 + (b.variant || 0);
+  for (let i = 0; i < grain; i++) {
+    const px = ((b.variant * 17 + i * 29) % (b.w - 8)) - b.w / 2 + 4;
+    const py = ((b.variant * 11 + i * 19) % (b.h - 8)) - b.h / 2 + 4;
+    ctx.fillStyle = i % 2 === 0 ? "rgba(255, 248, 236, 0.28)" : "rgba(70, 46, 32, 0.32)";
+    ctx.fillRect(px, py, i % 3 === 0 ? 4 : 2, 1.2);
   }
   if (b.material === "keg") {
     ctx.strokeStyle = "#d7c4a4";

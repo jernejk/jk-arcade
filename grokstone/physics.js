@@ -99,6 +99,8 @@ function addBlock(siege, block) {
     hp: block.hp,
     maxHp: block.maxHp,
     rooted: block.rooted,
+    pin: block.pin === true,
+    heavy: block.heavy === true,
     arch: block.arch,
     loose: false,
     variant: block.variant,
@@ -184,6 +186,8 @@ function liveStructural(siege) {
       h: g.h,
       hp: g.hp,
       rooted: g.rooted && !g.loose,
+      pin: g.pin === true && !g.loose,
+      heavy: g.heavy === true,
       arch: g.arch,
       loose: false,
       neighbors: g.neighbors,
@@ -396,8 +400,13 @@ function explode(siege, x, y, radius, damage) {
 
 function yank(siege, body, toward) {
   const { Body, Sleeping } = matter();
+  if (body.grok.heavy) {
+    siege.fx.push({ kind: "yank", x: body.position.x, y: body.position.y, heavy: true });
+    return;
+  }
   body.grok.loose = true;
   body.grok.rooted = false;
+  body.grok.pin = false;
   if (body.isStatic) Body.setStatic(body, false);
   Sleeping.set(body, false);
   breakConstraintsOn(siege, body);

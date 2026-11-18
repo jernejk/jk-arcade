@@ -14,6 +14,7 @@ import {
   localDateString,
   parseHash,
   recordResult,
+  sampleAims,
   seedLayout,
   shareText,
   stableIds,
@@ -45,36 +46,75 @@ function fallenCols(layout, id) {
   return { fallen, cols };
 }
 
-test("the bonded foot brings down more than one column", () => {
+test("one foot of a bonded course is not the wall", () => {
   const layout = layoutByNumber(1, defaultSave());
-  const banner = layout.blocks.find((b) => b.side === "enemy" && b.material === "banner");
-  const feet = layout.blocks.filter((b) => b.side === "enemy" && b.material === "foundation");
-  const foot = feet.sort((a, b) => Math.abs(a.x - banner.x) - Math.abs(b.x - banner.x))[0];
-  const { fallen, cols } = fallenCols(layout, foot.id);
-  assert.ok(fallen.includes(banner.id));
-  assert.ok(cols.size >= 3, `cols ${[...cols]}`);
-  const cap = layout.blocks.find((b) => b.side === "enemy" && b.material === "merlon");
-  const nick = collapseIds(layout.blocks.map((b) => (b.id === cap.id ? { ...b, hp: 0 } : b)));
-  assert.equal(nick.includes(banner.id), false);
+  const foot = layout.blocks.find((b) => b.id === "e0x0");
+  const { fallen } = fallenCols(layout, foot.id);
+  assert.equal(fallen.includes("ebanner"), false);
+  const banner = layout.blocks.find((b) => b.id === "ebanner");
+  const host = layout.blocks.find((b) => banner.neighbors.below.includes(b.id));
+  const { fallen: crown } = fallenCols(layout, host.id);
+  assert.ok(crown.includes("ebanner"));
 });
 
-test("the arch crown falls together when the keystone goes", () => {
+test("a two-support course survives losing one support", () => {
+  const blocks = [
+    { id: "footA", side: "enemy", x: 0, y: 40, w: 32, h: 20, hp: 10, rooted: true, neighbors: { below: [], left: [], right: [], above: ["course"] } },
+    { id: "footB", side: "enemy", x: 34, y: 40, w: 32, h: 20, hp: 10, rooted: true, neighbors: { below: [], left: [], right: [], above: ["course"] } },
+    { id: "course", side: "enemy", x: 17, y: 18, w: 32, h: 20, hp: 10, neighbors: { below: ["footA", "footB"], left: [], right: [], above: ["cloth"] } },
+    { id: "cloth", side: "enemy", x: 17, y: -16, w: 16, h: 34, hp: 10, material: "banner", neighbors: { below: ["course"], left: [], right: [], above: [] } },
+  ];
+  assert.equal(collapseIds(blocks).includes("cloth"), false);
+  const one = collapseIds(blocks.map((b) => (b.id === "footA" ? { ...b, hp: 0 } : b)));
+  assert.equal(one.includes("cloth"), false);
+  assert.equal(one.includes("course"), false);
+  const both = collapseIds(blocks.map((b) => (b.id === "footA" || b.id === "footB" ? { ...b, hp: 0 } : b)));
+  assert.ok(both.includes("course"));
+  assert.ok(both.includes("cloth"));
+});
+
+test("the arch crown falls when the keystone goes, and the foot does not bring it down", () => {
   const layout = layoutByNumber(2, defaultSave());
   const key = layout.blocks.find((b) => b.material === "keystone" && b.side === "enemy");
   assert.ok(key);
-  assert.equal(key.arch, true);
-  const { fallen, cols } = fallenCols(layout, key.id);
+  assert.equal(key.pin, true);
+  const { fallen } = fallenCols(layout, key.id);
   assert.ok(fallen.includes("ebanner"));
-  assert.ok(cols.size >= 3, `cols ${[...cols]}`);
-  assert.ok(fallen.length >= 8);
+  assert.ok(fallen.length >= 4);
+  const foot = fallenCols(layout, "e0x0");
+  assert.equal(foot.fallen.includes("ebanner"), false);
 });
 
-test("the bridge banner stands on the span", () => {
+test("a single hook pluck cannot clear Brackencrown", () => {
+  const layout = layoutByNumber(8, defaultSave());
+  const enemy = layout.blocks.filter((b) => b.side === "enemy" && b.material !== "banner");
+  const key = enemy.find((b) => b.material === "keystone");
+  assert.equal(key.heavy, true);
+  assert.ok(enemy.some((b) => b.heavy && b.material === "stone"));
+  for (const block of enemy) {
+    if (block.heavy) continue;
+    const plucked = collapseIds(layout.blocks.map((b) => (b.id === block.id ? { ...b, loose: true } : b)));
+    assert.equal(plucked.includes("ebanner"), false, block.id);
+  }
+  const spent = collapseIds(layout.blocks.map((b) => (b.id === key.id ? { ...b, hp: 0 } : b)));
+  assert.ok(spent.includes("ebanner"));
+  const keg = enemy.find((b) => b.material === "keg");
+  assert.ok(keg);
+  assert.ok(keg.col > 0, "the keg is in the masonry");
+  const popped = collapseIds(layout.blocks.map((b) => (b.id === keg.id ? { ...b, hp: 0 } : b)));
+  assert.equal(popped.includes("ebanner"), false);
+});
+
+test("the bridge banner stands on the span, and the span is the shot", () => {
   const layout = layoutByNumber(5, defaultSave());
   const span = layout.blocks.find((b) => b.side === "enemy" && b.arch && b.material === "timber");
+  assert.ok(span.maxHp < 80);
   const { fallen } = fallenCols(layout, span.id);
   assert.ok(fallen.includes("ebanner"));
-  assert.ok(fallen.some((id) => id.startsWith("edeck")));
+  const aims = sampleAims(layout.playerCannon, weaponById("roundshot"), layout.blocks, layout.wind, "player", false);
+  assert.ok(aims.some((aim) => aim.targetId === span.id));
+  const foot = fallenCols(layout, "e0x0");
+  assert.equal(foot.fallen.includes("ebanner"), false);
 });
 
 test("a daily keep is the same all day and different tomorrow", () => {
@@ -140,10 +180,20 @@ test("saves survive junk and round-trip", () => {
   const save = defaultSave();
   save.rubble = 12;
   save.settings.muted = true;
+  save.dailyBonusDate = "2026-11-18";
   writeSave(storage, save);
   const loaded = loadSave(storage);
   assert.equal(loaded.rubble, 12);
   assert.equal(loaded.settings.muted, true);
+  assert.equal(loaded.dailyBonusDate, "2026-11-18");
+  assert.equal(coerceSave({ dailyBonusDate: "2026-11-18" }).dailyBonusDate, "2026-11-18");
+  assert.equal(coerceSave({ dailyBonusDate: "yesterday" }).dailyBonusDate, null);
+  const daily = dailyLayout(defaultSave(), "2026-11-18");
+  const paid = recordResult(defaultSave(), daily, { won: true, shots: 3, rubble: 0 }, "2026-11-18");
+  const reloaded = coerceSave(JSON.parse(JSON.stringify(paid)));
+  assert.equal(reloaded.dailyBonusDate, "2026-11-18");
+  const farmed = recordResult(reloaded, daily, { won: true, shots: 3, rubble: 0 }, "2026-11-18");
+  assert.equal(farmed.rubble, paid.rubble);
   storage.setItem("grokstone-v1", "{");
   assert.equal(loadSave(storage).unlocked, 1);
 });

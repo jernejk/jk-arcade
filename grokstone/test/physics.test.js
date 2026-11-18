@@ -58,7 +58,10 @@ function staticBlocks(siege) {
       hp: body.grok.hp,
       material: body.grok.material,
       rooted: body.grok.rooted,
+      pin: body.grok.pin === true,
+      heavy: body.grok.heavy === true,
       arch: body.grok.arch,
+      neighbors: body.grok.neighbors,
       loose: false,
       col: body.grok.col,
       row: body.grok.row,
@@ -86,13 +89,19 @@ test("the preview arc matches Matter for a clear shot", () => {
   assert.ok(WORLD.groundTop > 500);
 });
 
-test("striking the bonded foot brings the banner down", () => {
+test("striking one foot leaves the banner up", () => {
   const layout = layoutByNumber(1, defaultSave());
   const siege = createSiege(layout);
-  const banner = [...siege.bodies.values()].find((b) => b.grok.material === "banner" && b.grok.side === "enemy");
-  const feet = [...siege.bodies.values()].filter((b) => b.grok.material === "foundation" && b.grok.side === "enemy");
-  const foot = feet.sort((a, b) => Math.abs(a.position.x - banner.position.x) - Math.abs(b.position.x - banner.position.x))[0];
-  strikeBlock(siege, foot.grok.id, 500);
+  strikeBlock(siege, "e0x0", 500);
+  for (let i = 0; i < 180; i++) {
+    stepSiege(siege);
+    finite(siege);
+    if (isSettled(siege) && i > 20) break;
+  }
+  assert.equal(bannerStatus(siege, "enemy"), "up");
+  const banner = [...siege.bodies.values()].find((b) => b.grok.id === "ebanner");
+  const hostId = banner.grok.neighbors.below[0];
+  strikeBlock(siege, hostId, 500);
   for (let i = 0; i < 240; i++) {
     stepSiege(siege);
     finite(siege);
@@ -134,11 +143,22 @@ test("one roundshot does not clear Brackencrown", () => {
     if (isSettled(siege) && i > 15) break;
   }
   const fallen = [...siege.bodies.values()].filter((b) => b.grok.side === "enemy" && !b.isStatic);
-  const cols = new Set(fallen.map((b) => b.grok.col));
   assert.equal(nan, false);
   assert.equal(bannerStatus(siege, "enemy"), "fallen");
-  assert.ok(cols.size >= 3);
-  assert.ok(fallen.length >= 10);
+  assert.ok(fallen.length >= 4);
+  destroySiege(siege);
+});
+
+test("a hook pluck does not drop Brackencrown", () => {
+  const layout = layoutByNumber(8, defaultSave());
+  const siege = createSiege(layout);
+  const weapon = weaponById("harpoon");
+  const key = [...siege.bodies.values()].find((b) => b.grok.material === "keystone");
+  assert.equal(key.grok.heavy, true);
+  const aim = bestAim(layout.playerCannon, weapon, staticBlocks(siege), layout.wind, "player", false);
+  runShot(siege, layout, aim.angle, aim.power, weapon);
+  assert.equal(key.grok.loose, false);
+  assert.equal(bannerStatus(siege, "enemy"), "up");
   destroySiege(siege);
 });
 

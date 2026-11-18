@@ -108,6 +108,12 @@ test("phone and desktop play a keep without page errors", async () => {
     await page.waitForSelector("#result:not([hidden])", { timeout: 8000 });
     assert.match(await page.locator("#result-title").innerText(), /banner falls/i);
     assert.equal(await page.evaluate(() => window.__grokstone.won), true);
+    const view = page.viewportSize();
+    for (const id of ["#retry", "#result-title-btn", "#share"]) {
+      const box = await page.locator(id).boundingBox();
+      assert.ok(box, id);
+      assert.ok(box.y >= 0 && box.y + box.height <= view.height + 1, `${id} y ${box.y}`);
+    }
     assert.deepEqual(errors, []);
     await page.close();
 
@@ -124,6 +130,11 @@ test("phone and desktop play a keep without page errors", async () => {
     }, null, { timeout: 8000 });
     assert.deepEqual(desktop.errors, []);
     await desktop.page.close();
+
+    const linked = await openPage(browser, server, { width: 360, height: 640 }, "?test=1#l=8");
+    assert.match(await linked.page.locator("#continue").innerText(), /Brackencrown/);
+    assert.deepEqual(linked.errors, []);
+    await linked.page.close();
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
