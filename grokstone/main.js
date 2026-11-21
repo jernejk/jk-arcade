@@ -24,6 +24,7 @@ import {
   seedLayout,
   shareText,
   shotVelocity,
+  stepClock,
   cleverClear,
   missingStar,
   starsFor,
@@ -129,6 +130,7 @@ function show(screen) {
   ui.hud.hidden = !battle;
   ui.tray.hidden = screen !== "battle";
   document.body.dataset.screen = screen;
+  resize();
 }
 
 function motionLabel() {
@@ -176,6 +178,7 @@ function startBattle(layout) {
   say(line);
   document.querySelector("#level-name").textContent = layout.name;
   document.querySelector("#foe-name").textContent = layout.foe;
+  resize();
 }
 
 function callout(text) {
@@ -320,10 +323,10 @@ function endBattle(won, note) {
   const clever = won && cleverClear(state.layout.blocks, state.siege ? state.siege.broken : []);
   const stars = starsFor(state.shots, state.layout.par, won, clever);
   const outcome = { won, shots: state.shots, rubble: state.rubble, stars, clever };
+  state.phase = "over";
   state.result = outcome;
   state.save = recordResult(state.save, state.layout, outcome, localDateString());
   persist();
-  state.phase = "over";
   const text = shareText(state.layout, { ...outcome, stars });
   const url = new URL(location.href);
   url.search = "";
@@ -1041,7 +1044,9 @@ function stepSimulation() {
 }
 
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = last ? Math.min(48, now - last) : STEP_MS;
+  const k = dt / STEP_MS;
   last = now;
   state.time = now;
   if (state.calloutUntil && now > state.calloutUntil) ui.callout.hidden = true;
@@ -1054,23 +1059,20 @@ function frame(now) {
     } else if (state.phase === "hold") {
       if (now >= state.holdUntil) endBattle(state.holdWon, state.holdNote);
     } else if (state.phase === "sim") {
-      simAcc = Math.min(STEP_MS * 5, simAcc + dt);
-      let guard = 0;
-      while (state.phase === "sim" && simAcc >= STEP_MS && guard++ < 5) {
-        simAcc -= STEP_MS;
-        stepSimulation();
-      }
+      const clock = stepClock(simAcc, dt);
+      simAcc = clock.acc;
+      for (let i = 0; i < clock.steps && state.phase === "sim"; i++) stepSimulation();
     } else simAcc = 0;
   } else simAcc = 0;
-  state.shake *= 0.86;
-  state.recoil *= 0.8;
-  state.flash *= 0.86;
+  state.shake *= 0.86 ** k;
+  state.recoil *= 0.8 ** k;
+  state.flash *= 0.86 ** k;
   for (const p of state.particles) {
-    p.life -= 1;
-    p.vy += p.g;
-    p.x += p.vx;
-    p.y += p.vy;
-    if (p.chip) p.rot = (p.rot || 0) + (p.vr || 0);
+    p.life -= k;
+    p.vy += p.g * k;
+    p.x += p.vx * k;
+    p.y += p.vy * k;
+    if (p.chip) p.rot = (p.rot || 0) + (p.vr || 0) * k;
   }
   state.particles = state.particles.filter((p) => p.life > 0);
   resize();
@@ -1079,17 +1081,10 @@ function frame(now) {
   if (state.screen === "battle" || state.screen === "pause" || state.screen === "result") {
     const pred = state.phase === "aim" ? predicted() : null;
     drawWorld(bodiesToDraw(), state.layout && { player: state.layout.playerCannon, enemy: state.layout.enemyCannon }, pred);
-    if (state.phase === "aim" && pred && pred.hit && pred.hit.type === "block") {
-      const block = aimBlocks().find((b) => b.id === pred.hit.id);
-      if (block && block.material === "banner" && state.dragging) {
-        /* hint already on release via clink */
-      }
-    }
     paintHud();
   } else if (state.vista) {
     drawWorld(state.vista.blocks, { player: state.vista.playerCannon, enemy: state.vista.enemyCannon }, null);
   }
-  requestAnimationFrame(frame);
 }
 
 function bind() {
@@ -1272,6 +1267,8 @@ function boot() {
       get phase() { return state.phase; },
       get shots() { return state.shots; },
       get won() { return !!(state.result && state.result.won); },
+      get time() { return state.time; },
+      get layout() { return state.layout && { mode: state.layout.mode, date: state.layout.date, seed: state.layout.seed, name: state.layout.name }; },
       fireSolution() {
         const aim = bestAim(state.layout.playerCannon, currentWeapon(), aimBlocks(), state.layout.wind, "player", state.save.upgrades.powder);
         state.angle = aim.angle;

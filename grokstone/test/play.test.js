@@ -205,6 +205,7 @@ test("a dragged aim outlines the foot, and that duel can take the star", async (
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
       await page.mouse.move(to.x, to.y, { steps: 12 });
+      await nextFrames(page, 2);
       const outlined = await page.evaluate(() => window.__grokstone.outline());
       assert.equal(outlined, foot, `level ${level} outlined ${outlined}`);
       await page.mouse.up();
@@ -240,6 +241,7 @@ async function mouseDrag(page, from, to) {
   await page.mouse.down();
   try {
     await page.mouse.move(to.x, to.y, { steps: 8 });
+    await nextFrames(page, 2);
     return await page.evaluate(() => window.__grokstone.outline());
   } finally {
     await page.mouse.move(from.x, from.y, { steps: 3 });
@@ -260,7 +262,7 @@ async function touchDrag(page, from, to) {
       await slide("touchMove", from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
     }
     await slide("touchMove", to.x, to.y);
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await nextFrames(page, 2);
     return await page.evaluate(() => window.__grokstone.outline());
   } finally {
     for (let i = 1; i <= 3; i++) {
@@ -312,7 +314,7 @@ test("every foot outlines under a mouse drag and a touch drag", async () => {
               const outlined = await drag(page, from, point);
               assert.equal(outlined, foot, `level ${level} ${weapon} ${kind} on ${foot} outlined ${outlined}`);
               const shots = await page.evaluate(() => window.__grokstone.shots);
-              assert.equal(shots, 0, `level ${level} fired during the aim drag`);
+              assert.equal(shots, 0, `level ${level} ${weapon} ${kind} on ${foot} fired during the aim drag`);
             }
           }
         }
@@ -349,6 +351,135 @@ test("live duels give each crew its own keep", async () => {
       assert.deepEqual(errors, [], `${level} ${weapon}`);
       assert.equal(status.won && status.stars === 3, false, `${level} ${weapon} ${status.detail}`);
     }
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+async function nextFrames(page, n) {
+  await page.evaluate((count) => new Promise((resolve) => {
+    let left = count;
+    const tick = () => (--left <= 0 ? resolve() : requestAnimationFrame(tick));
+    requestAnimationFrame(tick);
+  }), n);
+}
+
+test("blocked storage still boots, and a full quota still ends the siege", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const port = server.address().port;
+
+    const blocked = await browser.newPage({ viewport: { width: 360, height: 640 } });
+    const blockedErrors = [];
+    blocked.on("pageerror", (error) => blockedErrors.push(String(error)));
+    await blocked.addInitScript(() => {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() { throw new DOMException("storage is off", "SecurityError"); },
+      });
+    });
+    await blocked.goto(`http://127.0.0.1:${port}/?test=1`, { waitUntil: "networkidle" });
+    await blocked.getByRole("button", { name: "Begin the siege" }).click();
+    await blocked.waitForFunction(() => window.__grokstone.screen === "battle" && window.__grokstone.phase === "aim");
+    assert.deepEqual(blockedErrors, []);
+    await blocked.close();
+
+    const full = await browser.newPage({ viewport: { width: 360, height: 640 } });
+    const fullErrors = [];
+    full.on("pageerror", (error) => fullErrors.push(String(error)));
+    await full.addInitScript(() => {
+      Storage.prototype.setItem = function setItem() {
+        throw new DOMException("quota", "QuotaExceededError");
+      };
+    });
+    await full.goto(`http://127.0.0.1:${port}/?test=1`, { waitUntil: "networkidle" });
+    await full.getByRole("button", { name: "Begin the siege" }).click();
+    for (let i = 0; i < 6; i++) {
+      if (await full.evaluate(() => window.__grokstone.screen === "result")) break;
+      await full.waitForFunction(() => window.__grokstone.phase === "aim" && window.__grokstone.screen === "battle", null, { timeout: 12000 });
+      await full.evaluate(() => window.__grokstone.fireSolution());
+      await full.waitForFunction(() => {
+        const game = window.__grokstone;
+        return (game.phase === "aim" && game.screen === "battle") || game.screen === "result";
+      }, null, { timeout: 12000 });
+    }
+    await full.waitForSelector("#result:not([hidden])", { timeout: 8000 });
+    const before = await full.evaluate(() => window.__grokstone.time);
+    await nextFrames(full, 3);
+    assert.ok(await full.evaluate(() => window.__grokstone.time) > before, "the frame loop stopped");
+    assert.deepEqual(fullErrors, []);
+    await full.close();
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("focused buttons keep their keys, and a played daily link keeps its date", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.addInitScript(() => {
+      window.__canvasWrites = 0;
+      for (const key of ["width", "height"]) {
+        const desc = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, key);
+        Object.defineProperty(HTMLCanvasElement.prototype, key, {
+          configurable: true,
+          get: desc.get,
+          set(value) {
+            window.__canvasWrites += 1;
+            desc.set.call(this, value);
+          },
+        });
+      }
+    });
+    const port = server.address().port;
+    await page.goto(`http://127.0.0.1:${port}/?test=1#daily=2026-01-15`, { waitUntil: "networkidle" });
+    assert.equal(await page.locator("#continue").innerText(), "Open 2026-01-15");
+    await page.locator("#continue").click();
+    await page.waitForFunction(() => window.__grokstone.screen === "battle" && window.__grokstone.phase === "aim");
+    const layout = await page.evaluate(() => window.__grokstone.layout);
+    assert.equal(layout.mode, "daily");
+    assert.equal(layout.date, "2026-01-15");
+    assert.equal(await page.locator("#level-name").innerText(), "The keep of 2026-01-15");
+
+    await nextFrames(page, 3);
+    const writes = await page.evaluate(() => window.__canvasWrites);
+    await nextFrames(page, 30);
+    assert.equal(await page.evaluate(() => window.__canvasWrites), writes, "the canvas was reset on a still viewport");
+
+    await page.focus("#pause");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(() => window.__grokstone.screen), "pause");
+    await page.locator("#resume").click();
+    await page.focus('[data-weapon="roundshot"]');
+    await page.keyboard.press("Space");
+    await page.focus("#mute");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator("#mute").getAttribute("aria-pressed"), "true");
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 0, "a focused button fired the cannon");
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => window.__grokstone.shots === 1);
+
+    await page.waitForFunction(() => window.__grokstone.phase === "aim" || window.__grokstone.screen === "result", null, { timeout: 12000 });
+    if (await page.evaluate(() => window.__grokstone.screen === "battle")) {
+      await page.keyboard.press("Escape");
+      await page.locator("#pause-title").click();
+    } else {
+      await page.locator("#result-title-btn").click();
+    }
+    assert.equal(await page.evaluate(() => location.hash), "");
+    assert.doesNotMatch(await page.locator("#continue").innerText(), /Open/);
+    assert.deepEqual(errors, []);
+    await page.close();
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));

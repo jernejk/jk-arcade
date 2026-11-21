@@ -23,6 +23,7 @@ import {
   shareText,
   stableIds,
   starsFor,
+  stepClock,
   weaponById,
   writeSave,
 } from "../logic.js";
@@ -432,4 +433,28 @@ test("the second siege and today's keep lend one extra crew", () => {
 test("roundshot is the crew you start with", () => {
   assert.equal(weaponById("roundshot").crew, "Ida Flint");
   assert.equal(localDateString(new Date(2026, 10, 18)), "2026-11-18");
+});
+
+test("physics steps follow elapsed time, not the display refresh", () => {
+  for (const hz of [30, 60, 120, 144]) {
+    let acc = 0;
+    let steps = 0;
+    for (let i = 0; i < hz * 2; i++) {
+      const clock = stepClock(acc, 1000 / hz);
+      acc = clock.acc;
+      steps += clock.steps;
+    }
+    assert.equal(steps, 120, `${hz} Hz`);
+  }
+  assert.equal(stepClock(0, 2000).steps, 5);
+  assert.equal(stepClock(0, -5).steps, 0);
+});
+
+test("a played daily keeps its date in the name, and today's stays today's", () => {
+  const today = localDateString();
+  assert.equal(dailyLayout(defaultSave(), today).name, "Today's keep");
+  const old = dailyLayout(defaultSave(), "2026-01-15");
+  assert.equal(old.name, "The keep of 2026-01-15");
+  assert.equal(old.date, "2026-01-15");
+  assert.equal(parseHash(hashFor(old)).date, "2026-01-15");
 });

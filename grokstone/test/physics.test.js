@@ -184,3 +184,31 @@ test("breaking a full stone lowers the keep, and a keg still bursts on rubble", 
   assert.equal(exploded, true);
   destroySiege(siege);
 });
+
+test("a full-health stone that breaks still lowers the keep", () => {
+  const siege = createSiege(layoutByNumber(1, defaultSave()));
+  const foot = [...siege.bodies.values()].find((b) => b.grok.side === "enemy" && b.grok.material === "foundation");
+  assert.equal(foot.grok.hp, foot.grok.maxHp);
+  strikeBlock(siege, foot.grok.id, 9999);
+  assert.equal(siege.bodies.has(foot.grok.id), false);
+  assert.ok(sideIntegrity(siege, "enemy") < 1);
+  destroySiege(siege);
+});
+
+test("the turn timeout stills stones without putting them to sleep", () => {
+  const siege = createSiege(layoutByNumber(1, defaultSave()));
+  const foot = [...siege.bodies.values()].find((b) => b.grok.side === "enemy" && b.grok.material === "foundation");
+  strikeBlock(siege, foot.grok.id, 9999);
+  for (let i = 0; i < 4; i++) stepSiege(siege);
+  forceSettle(siege);
+  const loose = [...siege.bodies.values(), ...siege.debris].filter((b) => !b.isStatic);
+  assert.ok(loose.length > 0);
+  for (const body of loose) {
+    assert.equal(body.isSleeping, false);
+    assert.equal(body.speed, 0);
+  }
+  const before = loose.map((b) => b.position.y);
+  for (let i = 0; i < 12; i++) stepSiege(siege);
+  assert.ok(loose.some((b, i) => b.position.y > before[i] + 1), "nothing fell after the timeout");
+  destroySiege(siege);
+});

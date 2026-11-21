@@ -267,6 +267,13 @@ export function dailySeed(dateStr) {
   return hashString(`grokstone-daily-${dateStr}`);
 }
 
+export function stepClock(acc, elapsed, maxSteps = 5) {
+  const total = Math.min(PHYS.dt * maxSteps, acc + Math.max(0, elapsed));
+  // The epsilon keeps two 8.33 ms frames at 120 Hz from landing a hair short of one step.
+  const steps = Math.floor(total / PHYS.dt + 1e-6);
+  return { steps, acc: Math.max(0, total - steps * PHYS.dt) };
+}
+
 export function weaponById(id) {
   return WEAPONS.find((w) => w.id === id) || WEAPONS[0];
 }
@@ -1021,7 +1028,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     ai = { skill: clamp(spec.skill, 0.35, 0.85), weapon: spec.weapon };
     if (mode === "daily") {
       id = `daily-${date}`;
-      name = "Today's keep";
+      name = !date || date === localDateString() ? "Today's keep" : `The keep of ${date}`;
       starShot = spec.bridge ? "the timber span" : spec.arch ? "the gold stone" : spec.kegs ? "the casks" : "both feet under the cloth";
       blurb = `${foe} stood up overnight. Ida and one other crew are lent. Fewest shots is the mark.`;
     } else {
