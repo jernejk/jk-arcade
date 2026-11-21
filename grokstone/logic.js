@@ -125,6 +125,8 @@ export const UPGRADES = Object.freeze([
   { id: "boulder", kind: "weapon", weapon: "boulder", cost: 15, name: "Hire Bram Holt", blurb: "A boulder for doors, feet, and bad ideas." },
 ]);
 
+export const FIRST_HIRE = Math.min(...UPGRADES.map((item) => item.cost));
+
 export const LEVELS = Object.freeze([
   {
     number: 1,
@@ -1371,7 +1373,8 @@ export function recordResult(save, layout, outcome, today = null) {
   if (layout.mode === "campaign") {
     if (!next.cleared[layout.id]) {
       next.cleared = { ...next.cleared, [layout.id]: true };
-      next.rubble += outcome.rubble | 0;
+      const earned = outcome.rubble | 0;
+      next.rubble += layout.number === 1 ? Math.max(earned, FIRST_HIRE) : earned;
     }
     next.unlocked = Math.max(next.unlocked, (layout.number || 1) + 1);
   } else if (layout.mode === "daily") {

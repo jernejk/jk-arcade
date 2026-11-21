@@ -117,6 +117,8 @@ test("phone and desktop play a keep without page errors", async () => {
     }
     await page.locator("#yard").click();
     await page.waitForSelector("#yard-sheet:not([hidden])");
+    assert.ok(await page.locator(".yard-row:not([disabled])").count() > 0, "the first yard visit has nothing to buy");
+    assert.ok(await page.locator(".yard-row[disabled] .price small").count() > 0, "a locked item does not say how much more it needs");
     for (const size of [{ width: 360, height: 640 }, { width: 1280, height: 800 }]) {
       await page.setViewportSize(size);
       const row = page.locator(".yard-row").first();

@@ -337,7 +337,9 @@ function endBattle(won, note) {
   const outcome = { won, shots: state.shots, rubble: state.rubble, stars, clever };
   state.phase = "over";
   state.result = outcome;
+  const had = state.save.rubble;
   state.save = recordResult(state.save, state.layout, outcome, localDateString());
+  const gained = state.save.rubble - had;
   persist();
   const text = shareText(state.layout, { ...outcome, stars });
   const url = new URL(location.href);
@@ -348,7 +350,7 @@ function endBattle(won, note) {
   document.querySelector("#result-title").textContent = won ? "The banner falls" : "Your standard is down";
   const gap = missingStar(state.layout, stars, won);
   document.querySelector("#result-detail").textContent = won
-    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && outcome.rubble ? ` · +${state.rubble} rubble` : ""}${gap ? `. ${gap}` : ""}`
+    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && gained > 0 ? ` · +${gained} rubble` : ""}${gap ? `. ${gap}` : ""}`
     : (note || "The rival keep is still standing.");
   document.querySelector("#result-stars").textContent = won ? "★".repeat(stars) + "☆".repeat(3 - stars) : "☆☆☆";
   document.querySelector("#yard").hidden = !won;
@@ -373,7 +375,8 @@ function openYard() {
     row.type = "button";
     row.className = "yard-row";
     row.disabled = owned || state.save.rubble < item.cost;
-    row.innerHTML = `<span><b>${item.name}</b><small>${item.blurb}</small></span><span>${owned ? "Kept" : item.cost}</span>`;
+    const short = owned ? 0 : item.cost - state.save.rubble;
+    row.innerHTML = `<span><b>${item.name}</b><small>${item.blurb}</small></span><span class="price">${owned ? "Kept" : item.cost}${short > 0 ? `<small>${short} more</small>` : ""}</span>`;
     row.addEventListener("click", () => {
       const bought = buy(state.save, item.id);
       if (!bought.ok) return;

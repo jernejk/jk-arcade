@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  FIRST_HIRE,
   LEVELS,
+  UPGRADES,
   aimToward,
   buy,
   cleverClear,
@@ -494,4 +496,20 @@ test("an arch lintel sits on its haunches before any shot", () => {
     }
   }
   assert.ok(arches >= 3, `only ${arches} arch keeps`);
+});
+
+test("the first keep pays for a first hire, and later keeps pay what they earn", () => {
+  assert.equal(FIRST_HIRE, Math.min(...UPGRADES.map((item) => item.cost)));
+  for (const earned of [0, 3, 7]) {
+    const save = recordResult(defaultSave(), layoutByNumber(1, defaultSave()), { won: true, shots: 3, rubble: earned });
+    assert.ok(save.rubble >= FIRST_HIRE, `earned ${earned}, holding ${save.rubble}`);
+    const affordable = UPGRADES.filter((item) => buy(save, item.id).ok);
+    assert.ok(affordable.length > 0, `nothing to buy after earning ${earned}`);
+  }
+  let save = recordResult(defaultSave(), layoutByNumber(1, defaultSave()), { won: true, shots: 3, rubble: 7 });
+  const first = save.rubble;
+  save = recordResult(save, layoutByNumber(1, save), { won: true, shots: 1, rubble: 7 });
+  assert.equal(save.rubble, first, "a replay of the first keep pays again");
+  save = recordResult(save, layoutByNumber(2, save), { won: true, shots: 3, rubble: 3 });
+  assert.equal(save.rubble, first + 3);
 });
