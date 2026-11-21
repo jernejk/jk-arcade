@@ -31,11 +31,11 @@
 
     <main class="stage" id="stage">
       <canvas id="board" aria-label="Leaded window. Tap a pane to slide it out."></canvas>
+      <div class="tip" id="tip" hidden>
+        <p id="tip-text"></p>
+        <button class="btn small" id="tip-ok">Got it</button>
+      </div>
     </main>
-    <div class="tip" id="tip" hidden>
-      <p id="tip-text"></p>
-      <button class="btn small" id="tip-ok">Got it</button>
-    </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <footer class="bar bottom" id="controls" hidden>

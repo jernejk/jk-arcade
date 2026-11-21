@@ -69,15 +69,23 @@ const TIPS = {
   intro: '<strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.',
   keystone: '<strong>Keystones</strong> wear a gold-leaded ring. A keystone only leaves once every pane touching it has gone, so clear around it first.',
   pair: '<strong>Leaded pairs</strong> are joined by a lead bar and leave together. Both arrows need a clear run, or the pair bumps.',
-  weighted: '<strong>Weighted panes</strong> (heavy lead rim) slide until they hit a pane or the rim, then lift out with a second tap. Slide one too early and it can wall others in.',
+  weighted: '<strong>Weighted panes</strong> (lead band and weight) slide until they hit a pane or the rim, then lift out with a second tap. Slide one too early and it can wall others in.',
 };
 
-function tipFor(lv) {
-  if (!progress.tipSeen && lv.kind === 'campaign' && lv.number === 1) return 'intro';
-  if (!progress.seen.keystone && lv.tiles.some((t) => t.keystone)) return 'keystone';
-  if (!progress.seen.pair && lv.tiles.some((t) => t.pair)) return 'pair';
-  if (!progress.seen.weighted && lv.tiles.some((t) => t.weighted)) return 'weighted';
-  return null;
+const SHORT_TIPS = {
+  keystone: '<strong>Keystones</strong> (gold ring) leave only once nothing touches them.',
+  pair: '<strong>Leaded pairs</strong> leave together, so both arrows need a clear run.',
+  weighted: '<strong>Weighted panes</strong> slide until they hit something, then lift out from the rim.',
+};
+
+function tipsFor(lv) {
+  if (!progress.tipSeen && lv.kind === 'campaign' && lv.number === 1) return ['intro'];
+  return ['keystone', 'pair', 'weighted'].filter((rule) => !progress.seen[rule] && lv.tiles.some((t) => t[rule]));
+}
+
+function tipHtml(rules) {
+  if (rules.length === 1) return TIPS[rules[0]];
+  return rules.map((r) => SHORT_TIPS[r]).join(' ');
 }
 
 function start(spec) {
@@ -86,9 +94,9 @@ function start(spec) {
   game = createGame(level);
   combo = 0;
   setStuck(false);
-  const tip = tipFor(level);
-  $('tip').dataset.tip = tip || '';
-  if (tip) $('tip-text').innerHTML = TIPS[tip];
+  const tips = tipsFor(level);
+  $('tip').dataset.tip = tips.join(',');
+  if (tips.length) $('tip-text').innerHTML = tipHtml(tips);
   show(null);
   history.replaceState(null, '', hashFor(level));
   $('level-kicker').textContent =
@@ -97,7 +105,7 @@ function start(spec) {
   renderer.setLevel(level);
   updateHud();
   const current = game;
-  if (tip === 'intro') later(() => current === game && showHint(false), 700);
+  if (tips[0] === 'intro') later(() => current === game && showHint(false), 700);
 }
 
 function restart() {
@@ -239,11 +247,15 @@ function showResult(current, won, g) {
     $('result-again').textContent = 'Play again';
   } else {
     $('result-title').textContent = 'The frame gave way';
-    $('result-text').textContent = 'Too many bumps cracked the frame. Look for an arrow with nothing in front of it, and clear around keystones first.';
+    const extra = [];
+    if (level.tiles.some((t) => t.keystone)) extra.push('clear around keystones first');
+    if (level.tiles.some((t) => t.weighted)) extra.push('mind where weighted panes will stop');
+    const more = extra.length ? ` ${extra.join(' and ').replace(/^./, (c) => c.toUpperCase())}.` : '';
+    $('result-text').textContent = `Too many bumps cracked the frame. Look for an arrow with nothing in front of it.${more}`;
     next.hidden = true;
     $('result-again').textContent = 'Try again';
   }
-  $('result').hidden = false;
+  show('result');
   (won ? next : $('result-again')).focus({ preventScroll: true });
 }
 
@@ -274,11 +286,13 @@ function doUndo() {
 }
 
 function dismissTip() {
-  const tip = $('tip').dataset.tip;
+  const tips = $('tip').dataset.tip.split(',').filter(Boolean);
   $('tip').hidden = true;
   $('tip').dataset.tip = '';
-  if (tip === 'intro') progress.tipSeen = true;
-  else if (tip) progress.seen = { ...progress.seen, [tip]: true };
+  for (const tip of tips) {
+    if (tip === 'intro') progress.tipSeen = true;
+    else progress.seen = { ...progress.seen, [tip]: true };
+  }
   persist();
 }
 

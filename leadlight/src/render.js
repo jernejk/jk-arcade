@@ -69,8 +69,36 @@ function drawArrow(c, s, dir, colour, heavy) {
   c.stroke();
   if (heavy) {
     c.beginPath();
-    c.arc(-s * 0.44, 0, s * 0.17, 0, Math.PI * 2);
-    const w = c.createRadialGradient(-s * 0.49, -s * 0.06, 0, -s * 0.44, 0, s * 0.17);
+    c.moveTo(-s * 0.86, -s * 0.5);
+    c.lineTo(-s * 0.86, s * 0.5);
+    c.lineTo(-s * 0.5, s * 0.29);
+    c.lineTo(-s * 0.5, -s * 0.29);
+    c.closePath();
+    const band = c.createLinearGradient(-s * 0.86, 0, -s * 0.5, 0);
+    band.addColorStop(0, '#2a2830');
+    band.addColorStop(0.45, '#b9b4c6');
+    band.addColorStop(0.7, '#77728a');
+    band.addColorStop(1, '#3a3842');
+    c.fillStyle = band;
+    c.fill();
+    c.lineWidth = s * 0.03;
+    c.strokeStyle = '#0d0c11';
+    c.stroke();
+    c.beginPath();
+    c.moveTo(-s * 0.52, -s * 0.26);
+    c.lineTo(-s * 0.52, s * 0.26);
+    c.lineWidth = s * 0.03;
+    c.strokeStyle = 'rgba(225,220,240,0.6)';
+    c.stroke();
+    for (const y of [-0.22, 0.22]) {
+      c.beginPath();
+      c.arc(-s * 0.68, s * y, s * 0.05, 0, Math.PI * 2);
+      c.fillStyle = '#2a2830';
+      c.fill();
+    }
+    c.beginPath();
+    c.arc(-s * 0.42, 0, s * 0.2, 0, Math.PI * 2);
+    const w = c.createRadialGradient(-s * 0.48, -s * 0.07, 0, -s * 0.42, 0, s * 0.2);
     w.addColorStop(0, '#a9a4b8');
     w.addColorStop(0.5, '#4d4a57');
     w.addColorStop(1, '#22202a');
@@ -149,18 +177,22 @@ function paintPane(c, s, colour, dir, keystone, weighted, seed) {
     c.fill();
   }
   if (weighted) {
-    c.fillStyle = 'rgba(22,18,30,0.32)';
+    c.fillStyle = 'rgba(22,18,30,0.1)';
     c.fillRect(-s, -s, s * 2, s * 2);
   }
   c.restore();
   if (weighted) {
     hexPath(c, 0, 0, s * 0.8);
-    c.lineWidth = s * 0.2;
-    c.strokeStyle = '#26242d';
+    c.lineWidth = s * 0.17;
+    c.strokeStyle = '#1b1a21';
     c.stroke();
     hexPath(c, 0, 0, s * 0.8);
-    c.lineWidth = s * 0.045;
-    c.strokeStyle = 'rgba(200,195,220,0.55)';
+    c.lineWidth = s * 0.1;
+    const rim = c.createLinearGradient(-s, -s, s, s);
+    rim.addColorStop(0, '#d6d1e2');
+    rim.addColorStop(0.5, '#7b768c');
+    rim.addColorStop(1, '#46434f');
+    c.strokeStyle = rim;
     c.stroke();
   }
   hexPath(c, 0, 0, s * 0.84);

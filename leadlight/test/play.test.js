@@ -191,11 +191,14 @@ test('a rule tip on a dense window closes on the first move and the board grows 
   if (skip) return t.skip(skip);
   const { page, errors } = await open('#window-23', { viewport: { width: 360, height: 640 }, progress: { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true } } });
   assert.equal(await page.isVisible('#tip'), true);
+  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 37, 'board shrank under the tip');
+  assert.match(await page.textContent('#tip'), /Weighted panes/);
   const first = await page.evaluate(() => window.__leadlight.level.solution[0]);
   await tapKey(page, first);
   await page.waitForTimeout(100);
   assert.equal(await page.isHidden('#tip'), true);
-  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 36);
+  assert.equal(await page.evaluate(() => window.__leadlight.game.history.length), 1);
+  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 37);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -223,6 +226,35 @@ test('a weighted pane slides and parks in the page, and undo slides it back', as
   assert.equal(after.last.kind, 'slide');
   await page.keyboard.press('u');
   assert.equal(await page.evaluate((key) => window.__leadlight.game.tiles.get(key)?.weighted, k), true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('a tip open at the moment of losing hides behind the loss card', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-4', { progress: { unlocked: 24, tipSeen: true, seen: {} } });
+  assert.equal(await page.isVisible('#tip'), true);
+  const held = await page.evaluate(() => {
+    const { game } = window.__leadlight;
+    return [...game.tiles.entries()].find(([, tile]) => tile.keystone && [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].some(([dq, dr]) => game.tiles.has(`${tile.q + dq},${tile.r + dr}`)))[0];
+  });
+  for (let i = 0; i < 3; i++) await tapKey(page, held);
+  assert.equal(await page.evaluate(() => window.__leadlight.game.status), 'lost');
+  await page.waitForSelector('#result:not([hidden])', { timeout: 4000 });
+  assert.equal(await page.isHidden('#tip'), true);
+  assert.match(await page.textContent('#result-text'), /^Too many bumps/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('skipping ahead shows every new rule in one tip', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-20', { progress: { unlocked: 24, tipSeen: true, seen: {} } });
+  const text = await page.textContent('#tip');
+  for (const rule of [/Keystones/, /Leaded pairs/, /Weighted panes/]) assert.match(text, rule);
+  await page.click('#tip-ok');
+  const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('leadlight-v1')).seen);
+  assert.deepEqual(seen, { keystone: true, pair: true, weighted: true });
   assert.deepEqual(errors, []);
   await page.close();
 });
