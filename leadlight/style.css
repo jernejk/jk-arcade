@@ -67,6 +67,7 @@ button { font: inherit; color: inherit; }
 }
 
 .kicker {
+  white-space: nowrap;
   font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -74,7 +75,7 @@ button { font: inherit; color: inherit; }
 }
 
 .name {
-  font-size: 19px;
+  font-size: clamp(16px, 4.8vw, 19px);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -393,6 +394,7 @@ h1 {
 }
 
 .toast.show { opacity: 1; transform: translateX(-50%); }
+.toast.low { top: auto; bottom: calc(env(safe-area-inset-bottom) + 24px); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

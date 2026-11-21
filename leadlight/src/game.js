@@ -1,5 +1,6 @@
 import { key } from './hex.js';
-import { boundsOf, moveBlocker, groupOf } from './board.js';
+import { boundsOf, analyseMove, applyMove, revertMove } from './board.js';
+import { solveTiles } from './solver.js';
 
 export function createGame(level) {
   const tiles = new Map();
@@ -15,6 +16,7 @@ export function createGame(level) {
     bumps: 0,
     hintsUsed: 0,
     status: 'playing',
+    weighted: level.tiles.some((t) => t.weighted),
   };
 }
 
@@ -22,47 +24,44 @@ export function tap(game, k) {
   if (game.status !== 'playing') return { type: 'none' };
   const tile = game.tiles.get(k);
   if (!tile) return { type: 'none' };
-  const block = moveBlocker(game.bounds, game.tiles, k);
-  if (block) {
+  const move = analyseMove(game.bounds, game.mask, game.tiles, k);
+  if (move.type === 'bump') {
     game.cracks++;
     game.bumps++;
     if (game.cracks >= game.maxCracks) game.status = 'lost';
-    return { type: 'bump', key: k, tile, blocker: block.key, reason: block.reason, from: block.from, status: game.status };
+    return { type: 'bump', key: k, tile, blocker: move.key, reason: move.reason, from: move.from, status: game.status };
   }
-  const group = groupOf(game.tiles, k);
-  const tiles = group.map((g) => game.tiles.get(g));
-  for (const g of group) game.tiles.delete(g);
-  game.history.push(group);
+  const record = applyMove(game.tiles, move);
+  game.history.push(record);
   if (game.tiles.size === 0) game.status = 'won';
-  return { type: 'fly', key: k, tile, tiles, keys: group, status: game.status };
+  if (move.type === 'slide') return { type: 'slide', key: k, to: move.to, tile: record.moved, from: tile, status: game.status };
+  return { type: 'fly', key: k, tile, tiles: record.tiles, keys: move.keys, status: game.status };
 }
 
 export function undo(game) {
   if (game.status !== 'playing' || !game.history.length) return null;
-  const group = game.history.pop();
-  const restored = group.map((k) => {
-    const id = game.level.tiles.findIndex((t) => key(t.q, t.r) === k);
-    const tile = { ...game.level.tiles[id], id };
-    game.tiles.set(k, tile);
-    return tile;
-  });
-  return { key: group[0], keys: group, tiles: restored, tile: restored[0] };
+  const record = game.history.pop();
+  revertMove(game.tiles, record);
+  if (record.kind === 'slide') return { kind: 'slide', key: record.from, keys: [record.from], from: record.to, tile: record.tile, tiles: [record.tile] };
+  const keys = record.tiles.map((t) => key(t.q, t.r));
+  return { kind: 'remove', key: keys[0], keys, tiles: record.tiles, tile: record.tiles[0] };
 }
 
-// The earliest remaining pane in the stored solution is always movable: every pane that could hold it came before it.
+export function solveFrom(game, { budget = 20000, ms = 250 } = {}) {
+  return solveTiles(game.bounds, game.mask, game.tiles, { budget, ms });
+}
+
+// Hints come from a fresh search of the current position, so they stay legal after any slide.
 export function hint(game) {
   if (game.status !== 'playing') return null;
-  for (const k of game.level.solution) {
-    if (game.tiles.has(k)) {
-      game.hintsUsed++;
-      return k;
-    }
-  }
-  return null;
+  const result = solveFrom(game);
+  if (result.status !== 'solved') return { key: null, stuck: true, proven: result.status === 'stuck' };
+  game.hintsUsed++;
+  return { key: result.moves[0], stuck: false };
 }
 
 export function isFree(game, k) {
-  return game.tiles.has(k) && !moveBlocker(game.bounds, game.tiles, k);
+  return game.tiles.has(k) && analyseMove(game.bounds, game.mask, game.tiles, k).type !== 'bump';
 }
 
 export function cracksLeft(game) {

@@ -39,7 +39,7 @@ function makeCanvas(w, h) {
 
 const PALE_ARROW = new Set(['gold', 'amber']);
 
-function drawArrow(c, s, dir, colour) {
+function drawArrow(c, s, dir, colour, heavy) {
   const pale = PALE_ARROW.has(colour);
   const shape = [[-0.44, -0.075], [0.06, -0.075], [0.06, -0.27], [0.5, 0], [0.06, 0.27], [0.06, 0.075], [-0.44, 0.075]];
   const trace = () => {
@@ -67,6 +67,19 @@ function drawArrow(c, s, dir, colour) {
   c.lineWidth = s * (pale ? 0.045 : 0.03);
   c.strokeStyle = pale ? 'rgba(255,246,214,0.95)' : 'rgba(92,56,8,0.7)';
   c.stroke();
+  if (heavy) {
+    c.beginPath();
+    c.arc(-s * 0.44, 0, s * 0.17, 0, Math.PI * 2);
+    const w = c.createRadialGradient(-s * 0.49, -s * 0.06, 0, -s * 0.44, 0, s * 0.17);
+    w.addColorStop(0, '#a9a4b8');
+    w.addColorStop(0.5, '#4d4a57');
+    w.addColorStop(1, '#22202a');
+    c.fillStyle = w;
+    c.fill();
+    c.lineWidth = s * 0.035;
+    c.strokeStyle = '#0f0e13';
+    c.stroke();
+  }
   c.restore();
 }
 
@@ -74,13 +87,16 @@ function drawRosette(c, s) {
   c.save();
   c.beginPath();
   c.arc(0, 0, s * 0.62, 0, Math.PI * 2);
-  c.fillStyle = 'rgba(0,0,0,0.28)';
+  c.fillStyle = 'rgba(255,248,225,0.2)';
   c.fill();
-  c.lineWidth = s * 0.17;
-  c.strokeStyle = '#121116';
+  c.lineWidth = s * 0.16;
+  c.strokeStyle = '#2a1c08';
   c.stroke();
-  c.lineWidth = s * 0.08;
-  c.strokeStyle = '#fff0b8';
+  c.lineWidth = s * 0.1;
+  c.strokeStyle = '#f3cf6a';
+  c.stroke();
+  c.lineWidth = s * 0.03;
+  c.strokeStyle = '#fff8d8';
   c.stroke();
   for (let i = 0; i < 6; i++) {
     const a = (Math.PI / 3) * i + Math.PI / 6;
@@ -98,7 +114,7 @@ function drawRosette(c, s) {
   c.restore();
 }
 
-function paintPane(c, s, colour, dir, keystone, seed) {
+function paintPane(c, s, colour, dir, keystone, weighted, seed) {
   const [light, mid, dark] = PIGMENT_COLOURS[colour];
   const rng = makeRng(seed);
   hexPath(c, 0, 0, s * 0.97);
@@ -132,7 +148,21 @@ function paintPane(c, s, colour, dir, keystone, seed) {
     c.fillStyle = 'rgba(255,255,255,0.12)';
     c.fill();
   }
+  if (weighted) {
+    c.fillStyle = 'rgba(22,18,30,0.32)';
+    c.fillRect(-s, -s, s * 2, s * 2);
+  }
   c.restore();
+  if (weighted) {
+    hexPath(c, 0, 0, s * 0.8);
+    c.lineWidth = s * 0.2;
+    c.strokeStyle = '#26242d';
+    c.stroke();
+    hexPath(c, 0, 0, s * 0.8);
+    c.lineWidth = s * 0.045;
+    c.strokeStyle = 'rgba(200,195,220,0.55)';
+    c.stroke();
+  }
   hexPath(c, 0, 0, s * 0.84);
   const bevel = c.createLinearGradient(-s, -s, s, s);
   bevel.addColorStop(0, 'rgba(255,255,255,0.55)');
@@ -142,7 +172,7 @@ function paintPane(c, s, colour, dir, keystone, seed) {
   c.strokeStyle = bevel;
   c.stroke();
   if (keystone) drawRosette(c, s);
-  drawArrow(c, s, dir, colour);
+  drawArrow(c, s, dir, colour, weighted);
 }
 
 export function createRenderer(canvas) {
@@ -163,6 +193,7 @@ export function createRenderer(canvas) {
     bumps: new Map(),
     shakes: new Map(),
     appear: new Map(),
+    slides: new Map(),
     cracks: [],
     particles: [],
     hint: null,
@@ -176,8 +207,8 @@ export function createRenderer(canvas) {
     return { x: p.x + view.ox, y: p.y + view.oy };
   };
 
-  function sprite({ colour, dir, keystone = false }) {
-    const id = `${colour}:${dir}:${keystone ? 'k' : ''}`;
+  function sprite({ colour, dir, keystone = false, weighted = false }) {
+    const id = `${colour}:${dir}:${keystone ? 'k' : ''}${weighted ? 'w' : ''}`;
     let sp = sprites.get(id);
     if (!sp) {
       const s = view.size * view.dpr;
@@ -185,7 +216,7 @@ export function createRenderer(canvas) {
       sp = makeCanvas(dim, dim);
       const c = sp.getContext('2d');
       c.translate(dim / 2, dim / 2);
-      paintPane(c, s, colour, dir, keystone, id);
+      paintPane(c, s, colour, dir, keystone, weighted, id);
       sprites.set(id, sp);
     }
     return sp;
@@ -584,6 +615,7 @@ export function createRenderer(canvas) {
       fx.bumps.clear();
       fx.shakes.clear();
       fx.appear.clear();
+      fx.slides.clear();
       fx.cracks = [];
       fx.particles = [];
       fx.hint = null;
@@ -616,6 +648,23 @@ export function createRenderer(canvas) {
     },
     crack(seed) {
       fx.cracks.push({ seed, t0: performance.now(), path: crackPath(seed) });
+    },
+    slide(fromKey, toKey, calm) {
+      const [fq, fr] = fromKey.split(',').map(Number);
+      const [tq, tr] = toKey.split(',').map(Number);
+      const from = px(fq, fr);
+      const to = px(tq, tr);
+      const cells = Math.round(Math.hypot(to.x - from.x, to.y - from.y) / (view.size * SQRT3));
+      const dur = calm ? 160 : 150 + cells * 55;
+      fx.slides.set(toKey, { from: [fq, fr], to: [tq, tr], t0: performance.now(), dur });
+      if (fx.hint && fx.hint.tile.q === fq && fx.hint.tile.r === fr) fx.hint = null;
+      return dur;
+    },
+    landed(k, colour, blockerKey) {
+      const [q, r] = k.split(',').map(Number);
+      const p = px(q, r);
+      emit(p.x, p.y, 8, ['#c9c4d6', '#8f8a9c', PIGMENT_COLOURS[colour][0]], 0.7);
+      if (blockerKey) fx.shakes.set(blockerKey, performance.now());
     },
     appear(k) {
       fx.appear.set(k, performance.now());
@@ -665,6 +714,17 @@ export function createRenderer(canvas) {
       for (const [k, tile] of game.tiles) {
         if (fx.bumps.has(k)) continue;
         let { x, y } = px(tile.q, tile.r);
+        const sl = fx.slides.get(k);
+        if (sl) {
+          const t = (now - sl.t0) / sl.dur;
+          if (t >= 1) fx.slides.delete(k);
+          else {
+            const e = t * t * (3 - 2 * t);
+            const a = px(sl.from[0], sl.from[1]);
+            x = lerp(a.x, x, e);
+            y = lerp(a.y, y, e);
+          }
+        }
         const sh = fx.shakes.get(k);
         if (sh !== undefined) {
           const t = (now - sh) / 320;

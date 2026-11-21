@@ -1,7 +1,8 @@
 import { key, toPixel } from './hex.js';
 import { makeRng } from './rng.js';
 import { shapeCells } from './shapes.js';
-import { boundsOf, rayCells, freeTiles, neighbourKeys, groupOf } from './board.js';
+import { boundsOf, rayCells, freeTiles, neighbourKeys, groupOf, analyseMove, applyMove, tileMap } from './board.js';
+import { solveTiles } from './solver.js';
 
 export const PIGMENTS = ['ruby', 'amber', 'gold', 'emerald', 'sapphire', 'amethyst'];
 
@@ -111,6 +112,72 @@ function colourFor(pattern, q, r, centre, palette, rng) {
   return palette[((i % n) + n) % n];
 }
 
+function slideTraps(bounds, mask, tiles, order, wKey) {
+  const sim = new Map(tiles);
+  let lastTarget = null;
+  let tried = 0;
+  for (const k of order) {
+    if (k === wKey) break;
+    const m = analyseMove(bounds, mask, sim, wKey);
+    if (m.type === 'slide' && m.to !== lastTarget) {
+      lastTarget = m.to;
+      const next = new Map(sim);
+      applyMove(next, m);
+      if (solveTiles(bounds, mask, next, { budget: 2500 }).status === 'stuck') return true;
+      if (++tried >= 4) return false;
+    }
+    if (!sim.has(k)) continue;
+    const step = analyseMove(bounds, mask, sim, k);
+    if (step.type !== 'remove') return false;
+    applyMove(sim, step);
+  }
+  return false;
+}
+
+// Prefers weights whose tempting early slide walls the window in, so the order of moves matters.
+function addWeights(cells, tiles, order, count, rng) {
+  if (!count) return 0;
+  const bounds = boundsOf(cells);
+  const mask = new Set(cells.map(([q, r]) => key(q, r)));
+  const base = tileMap(tiles);
+  const plain = rng.shuffle(tiles.filter((t) => !t.keystone && !t.pair));
+  const traps = [];
+  const rest = [];
+  let checks = 0;
+  for (const t of plain) {
+    const k = key(t.q, t.r);
+    if (traps.length >= count || checks >= 24) {
+      rest.push(t);
+      continue;
+    }
+    checks++;
+    const trial = new Map(base);
+    trial.set(k, { ...t, weighted: true });
+    (slideTraps(bounds, mask, trial, order, k) ? traps : rest).push(t);
+  }
+  for (const t of [...traps, ...rest].slice(0, count)) t.weighted = true;
+  return Math.min(traps.length, count);
+}
+
+function expandSolution(cells, tiles, order) {
+  const bounds = boundsOf(cells);
+  const mask = new Set(cells.map(([q, r]) => key(q, r)));
+  const sim = tileMap(tiles);
+  const moves = [];
+  for (const k of order) {
+    let at = k;
+    for (let step = 0; step < 2 && sim.has(at); step++) {
+      const m = analyseMove(bounds, mask, sim, at);
+      if (m.type === 'bump') return null;
+      applyMove(sim, m);
+      moves.push(at);
+      if (m.type === 'remove') break;
+      at = m.to;
+    }
+  }
+  return sim.size === 0 ? moves : null;
+}
+
 export function generateLevel(spec) {
   const rng = makeRng(spec.seed);
   const cells = shapeCells(spec.shape);
@@ -135,13 +202,20 @@ export function generateLevel(spec) {
     if (t.pair) tile.pair = t.pair;
     return tile;
   });
+  const order = [...best.placement].reverse();
+  const traps = addWeights(cells, tiles, order, spec.weighted ?? 0, rng);
+  let solution = expandSolution(cells, tiles, order);
+  if (!solution) {
+    for (const t of tiles) delete t.weighted;
+    solution = order;
+  }
   return {
     id: spec.id,
     name: spec.name,
     cells,
     tiles,
     placement: [...best.placement],
-    solution: [...best.placement].reverse(),
+    solution,
     cracks: spec.cracks ?? 3,
     stats: {
       panes: tiles.length,
@@ -150,6 +224,8 @@ export function generateLevel(spec) {
       layers: best.layers,
       keystones: tiles.filter((t) => t.keystone).length,
       pairs: tiles.filter((t) => t.pair).length / 2,
+      weighted: tiles.filter((t) => t.weighted).length,
+      traps,
     },
   };
 }

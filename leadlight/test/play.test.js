@@ -21,7 +21,7 @@ after(async () => {
   server?.close();
 });
 
-const PLAYED = { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true } };
+const PLAYED = { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true, weighted: true } };
 
 async function open(hash, { viewport = { width: 390, height: 844 }, progress = PLAYED } = {}) {
   const page = await browser.newPage({ viewport, hasTouch: true });
@@ -117,7 +117,8 @@ test('a deep link to a locked window opens the windows grid instead', async (t) 
   assert.equal(await page.isHidden('#hud'), true);
   assert.equal(await page.evaluate(() => window.__leadlight.game), null);
   assert.equal(await page.locator('#level-grid li.current').count(), 1);
-  await page.goto(page.url().replace(/#.*$/, '#trail-3'));
+  assert.equal(new URL(page.url()).hash, '');
+  await page.evaluate(() => { location.hash = '#trail-3'; });
   await page.waitForFunction(() => window.__leadlight.level?.id === 'trail-3');
   assert.deepEqual(errors, []);
   await page.close();
@@ -146,6 +147,82 @@ test('a keystone tapped too early bumps in the page too', async (t) => {
   const state = await page.evaluate((k) => ({ has: window.__leadlight.game.tiles.has(k), cracks: window.__leadlight.game.cracks }), target);
   assert.deepEqual(state, { has: true, cracks: 1 });
   assert.match(await page.textContent('#toast'), /Keystone/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('a rule tip hides behind the menu and comes back with the game, then closes after the first move', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-4', { progress: { unlocked: 24, tipSeen: true, seen: {} } });
+  assert.equal(await page.isVisible('#tip'), true);
+  await page.click('#menu-btn');
+  await page.waitForSelector('#home:not([hidden])');
+  assert.equal(await page.isHidden('#tip'), true);
+  await page.click('#windows-btn');
+  assert.equal(await page.isHidden('#tip'), true);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#hud:not([hidden])');
+  assert.equal(await page.isVisible('#tip'), true);
+  const first = await page.evaluate(() => window.__leadlight.level.solution[0]);
+  await tapKey(page, first);
+  assert.equal(await page.isHidden('#tip'), true);
+  assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('leadlight-v1')))).seen.keystone, true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('the header stays on one line at 360px', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23', { viewport: { width: 360, height: 640 } });
+  const heights = await page.evaluate(() => {
+    const k = document.getElementById('level-kicker').getBoundingClientRect().height;
+    const n = document.getElementById('level-name').getBoundingClientRect().height;
+    return { k, n };
+  });
+  assert.ok(heights.k < 20, `kicker wraps (${heights.k}px)`);
+  assert.ok(heights.n < 30, `name wraps (${heights.n}px)`);
+  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 34);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('a rule tip on a dense window closes on the first move and the board grows back', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23', { viewport: { width: 360, height: 640 }, progress: { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true } } });
+  assert.equal(await page.isVisible('#tip'), true);
+  const first = await page.evaluate(() => window.__leadlight.level.solution[0]);
+  await tapKey(page, first);
+  await page.waitForTimeout(100);
+  assert.equal(await page.isHidden('#tip'), true);
+  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 36);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('a weighted pane slides and parks in the page, and undo slides it back', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-14');
+  const plan = await page.evaluate(() => {
+    const { game } = window.__leadlight;
+    const w = [...game.tiles.entries()].find(([, t]) => t.weighted)[0];
+    return { w, sol: window.__leadlight.level.solution };
+  });
+  const before = await page.evaluate(() => window.__leadlight.game.tiles.size);
+  let k;
+  for (k of plan.sol) {
+    const tile = await page.evaluate((key) => window.__leadlight.game.tiles.get(key), k);
+    if (tile?.weighted) break;
+    await tapKey(page, k);
+  }
+  const removed = before - (await page.evaluate(() => window.__leadlight.game.tiles.size));
+  await tapKey(page, k);
+  const after = await page.evaluate((key) => ({ there: window.__leadlight.game.tiles.has(key), size: window.__leadlight.game.tiles.size, last: window.__leadlight.game.history.at(-1) }), k);
+  assert.equal(after.there, false);
+  assert.equal(after.size, before - removed);
+  assert.equal(after.last.kind, 'slide');
+  await page.keyboard.press('u');
+  assert.equal(await page.evaluate((key) => window.__leadlight.game.tiles.get(key)?.weighted, k), true);
   assert.deepEqual(errors, []);
   await page.close();
 });

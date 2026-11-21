@@ -31,6 +31,7 @@ const CAMPAIGN = [
 export const CAMPAIGN_SIZE = CAMPAIGN.length;
 export const KEYSTONES_FROM = 4;
 export const PAIRS_FROM = 8;
+export const WEIGHTS_FROM = 12;
 
 function cracksFor(cells) {
   return cells < 40 ? 3 : cells < 70 ? 4 : 5;
@@ -48,6 +49,7 @@ export function campaignLevel(n) {
   const colours = 2 + Math.round(t * 4);
   const keystones = n < KEYSTONES_FROM ? 0 : 0.05 + ((n - KEYSTONES_FROM) / (CAMPAIGN.length - KEYSTONES_FROM)) * 0.13;
   const pairs = n < PAIRS_FROM ? 0 : 0.05 + ((n - PAIRS_FROM) / (CAMPAIGN.length - PAIRS_FROM)) * 0.11;
+  const weighted = n < WEIGHTS_FROM ? 0 : 1 + Math.round(((n - WEIGHTS_FROM) / (CAMPAIGN.length - WEIGHTS_FROM)) * 5);
   const level = generateLevel({
     id: `window-${n}`,
     name,
@@ -59,6 +61,7 @@ export function campaignLevel(n) {
     pattern,
     keystones,
     pairs,
+    weighted,
     attempts: attemptsFor(bias),
   });
   level.cracks = cracksFor(level.cells.length);
@@ -99,6 +102,7 @@ function generatedLevel({ id, seed, difficulty, name }) {
     pattern: rng.pick(PATTERNS),
     keystones: 0.06 + d * 0.12,
     pairs: 0.04 + d * 0.1,
+    weighted: Math.round(d * 4),
     attempts: attemptsFor(bias),
   });
   level.cracks = cracksFor(level.cells.length);

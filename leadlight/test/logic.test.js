@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { key, DIRS, fromPixel, toPixel } from '../src/hex.js';
-import { boundsOf, rayCells, greedySolve, checkSolution, firstBlocker } from '../src/board.js';
+import { boundsOf, rayCells, replayMoves, firstBlocker } from '../src/board.js';
+import { solveLevel } from '../src/solver.js';
 import { generateLevel, placePanes } from '../src/generator.js';
 import { makeRng } from '../src/rng.js';
 import { shapeCells, SHAPE_NAMES } from '../src/shapes.js';
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from '../src/levels.js';
-import { createGame, tap, undo, hint, isFree, grade } from '../src/game.js';
+import { createGame, tap, undo, hint, isFree, grade, solveFrom } from '../src/game.js';
 import { defaultProgress, recordWin, isUnlocked } from '../src/storage.js';
 import { neighbourKeys } from '../src/board.js';
 
@@ -23,10 +24,10 @@ function line(dirs) {
 }
 
 function assertPlayable(level) {
-  const replay = greedySolve(level.cells, level.tiles);
-  assert.ok(replay.solved, `${level.id} is stuck with ${replay.stuck.length} panes left`);
-  assert.ok(checkSolution(level.cells, level.tiles, level.solution), `${level.id} stored solution fails`);
-  assert.equal(level.solution.length, level.tiles.length);
+  const search = solveLevel(level, { budget: 50000 });
+  assert.equal(search.status, 'solved', `${level.id}: search found no solution (${search.status})`);
+  assert.ok(replayMoves(level.cells, level.tiles, search.moves), `${level.id}: searched solution does not replay`);
+  assert.ok(replayMoves(level.cells, level.tiles, level.solution), `${level.id}: stored solution fails`);
   const mask = new Set(level.cells.map(([q, r]) => key(q, r)));
   for (const t of level.tiles) assert.ok(mask.has(key(t.q, t.r)), `${level.id} pane outside its window`);
   assert.equal(new Set(level.tiles.map((t) => key(t.q, t.r))).size, level.tiles.length);
@@ -134,20 +135,28 @@ test('undo puts the last pane back', () => {
   assert.equal(undo(game), null);
 });
 
-test('hint never points at a pane the rules would block, even after out-of-order play', () => {
+test('hint never points at an illegal move, even after slides and out-of-order play', () => {
   for (const level of [campaignLevel(12), campaignLevel(19), campaignLevel(24), trailLevel(40), dailyLevel('2026-11-22')]) {
-    assert.ok(level.tiles.some((t) => t.keystone) && level.tiles.some((t) => t.pair), `${level.id} lacks the new rules`);
-    for (let run = 0; run < 5; run++) {
+    assert.ok(level.tiles.some((t) => t.keystone) && level.tiles.some((t) => t.pair) && level.tiles.some((t) => t.weighted), `${level.id} lacks the rules`);
+    for (let run = 0; run < 4; run++) {
       const game = createGame(level);
       const rng = makeRng(`hint-check/${level.id}/${run}`);
-      while (game.status === 'playing') {
+      let steps = 0;
+      let followHint = false;
+      while (game.status === 'playing' && steps++ < 300) {
         const h = hint(game);
-        assert.ok(isFree(game, h), `${level.id}: hint ${h} is blocked`);
-        const free = [...game.tiles.keys()].filter((k) => isFree(game, k));
-        assert.ok(free.length, `${level.id}: stuck`);
-        assert.equal(tap(game, rng.pick(free)).type, 'fly');
+        if (h.stuck) {
+          assert.ok(undo(game), `${level.id}: stuck with nothing to undo`);
+          followHint = true;
+          continue;
+        }
+        assert.ok(isFree(game, h.key), `${level.id}: hint ${h.key} is blocked`);
+        const legal = [...game.tiles.keys()].filter((k) => isFree(game, k));
+        const pick = followHint || rng.next() < 0.5 ? h.key : rng.pick(legal);
+        followHint = false;
+        assert.notEqual(tap(game, pick).type, 'bump');
       }
-      assert.equal(game.status, 'won');
+      assert.equal(game.status, 'won', `${level.id}: run ${run} did not finish`);
     }
   }
 });
@@ -222,6 +231,77 @@ test('undo brings a leaded pair back together', () => {
   assert.deepEqual(res.keys.sort(), ['0,0', '1,0']);
   assert.equal(game.tiles.get('0,0').pair, '1,0');
   assert.equal(game.tiles.size, 3);
+});
+
+function trapBoard() {
+  return ruleBoard([
+    { q: -2, r: 0, dir: 0, weighted: true, colour: 'sapphire' },
+    { q: 1, r: 0, dir: 2, colour: 'ruby' },
+    { q: 1, r: -1, dir: 4, colour: 'gold' },
+  ]);
+}
+
+test('a weighted pane parks against the next pane instead of leaving', () => {
+  const game = createGame(trapBoard());
+  const res = tap(game, '-2,0');
+  assert.equal(res.type, 'slide');
+  assert.equal(res.to, '0,0');
+  assert.equal(game.tiles.has('-2,0'), false);
+  assert.equal(game.tiles.get('0,0').weighted, true);
+  assert.equal(game.tiles.size, 3);
+  assert.equal(game.cracks, 0);
+});
+
+test('a weighted pane with a clear run stops at the rim, then lifts out from there', () => {
+  const game = createGame(ruleBoard([{ q: -2, r: 0, dir: 0, weighted: true, colour: 'sapphire' }]));
+  const first = tap(game, '-2,0');
+  assert.equal(first.type, 'slide');
+  assert.equal(first.to, '3,0');
+  assert.equal(game.status, 'playing');
+  const second = tap(game, '3,0');
+  assert.equal(second.type, 'fly');
+  assert.equal(game.status, 'won');
+});
+
+test('a weighted pane with a pane right in front bumps and stays', () => {
+  const game = createGame(ruleBoard([
+    { q: 0, r: 0, dir: 0, weighted: true, colour: 'sapphire' },
+    { q: 1, r: 0, dir: 2, colour: 'ruby' },
+  ]));
+  const res = tap(game, '0,0');
+  assert.equal(res.type, 'bump');
+  assert.equal(res.blocker, '1,0');
+  assert.equal(game.tiles.has('0,0'), true);
+  assert.equal(game.cracks, 1);
+});
+
+test('an early weighted slide can wall the window in, and undo gets it back', () => {
+  const game = createGame(trapBoard());
+  assert.equal(solveFrom(game).status, 'solved');
+  assert.equal(tap(game, '-2,0').type, 'slide');
+  assert.equal(solveFrom(game).status, 'stuck');
+  assert.deepEqual(hint(game), { key: null, stuck: true, proven: true });
+  for (const k of game.tiles.keys()) assert.equal(isFree(game, k), false, `${k} should be held`);
+  const back = undo(game);
+  assert.equal(back.kind, 'slide');
+  assert.equal(game.tiles.get('-2,0').weighted, true);
+  assert.equal(game.tiles.has('0,0'), false);
+  const plan = solveFrom(game);
+  assert.equal(plan.status, 'solved');
+  assert.equal(hint(game).key, plan.moves[0]);
+  for (const k of plan.moves) assert.notEqual(tap(game, k).type, 'bump');
+  assert.equal(game.status, 'won');
+});
+
+test('weighted panes roll in from window 12 and later ones can trap you', () => {
+  for (let n = 1; n < 12; n++) assert.equal(campaignLevel(n).tiles.filter((t) => t.weighted).length, 0);
+  let trapped = 0;
+  for (let n = 12; n <= 24; n++) {
+    const level = campaignLevel(n);
+    assert.ok(level.stats.weighted >= 1, `window ${n} has no weighted panes`);
+    if (level.stats.traps > 0) trapped++;
+  }
+  assert.ok(trapped >= 10, `only ${trapped} late windows have a trapping slide`);
 });
 
 test('keystones and pairs roll in after the first windows', () => {

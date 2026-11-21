@@ -86,6 +86,26 @@ export function createAudio() {
       osc.stop(t + 0.25);
       noise(t, 0.08, { type: 'lowpass', freq: 900, gain: 0.25 });
     },
+    slide(durationMs = 300) {
+      if (!ensure()) return;
+      const t = ctx.currentTime;
+      const d = durationMs / 1000;
+      noise(t, d, { type: 'bandpass', freq: 600, q: 2, gain: 0.07, attack: 0.03 });
+      const land = t + d;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140, land);
+      osc.frequency.exponentialRampToValueAtTime(55, land + 0.16);
+      g.gain.setValueAtTime(0, land);
+      g.gain.linearRampToValueAtTime(0.4, land + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, land + 0.22);
+      osc.connect(g).connect(master);
+      osc.start(land);
+      osc.stop(land + 0.25);
+      noise(land, 0.06, { type: 'lowpass', freq: 1200, gain: 0.18 });
+      bell(note(0) / 2, land, 0.05, 0.6);
+    },
     crack() {
       if (!ensure()) return;
       const t = ctx.currentTime + 0.05;

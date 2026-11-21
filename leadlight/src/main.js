@@ -1,5 +1,5 @@
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from './levels.js';
-import { createGame, tap, undo, hint, cracksLeft, grade } from './game.js';
+import { createGame, tap, undo, hint, cracksLeft, grade, solveFrom } from './game.js';
 import { createRenderer, PIGMENT_COLOURS } from './render.js';
 import { createAudio } from './audio.js';
 import { loadProgress, saveProgress, recordWin, isUnlocked } from './storage.js';
@@ -37,14 +37,20 @@ function show(id) {
   const playing = id === null || id === 'result';
   $('hud').hidden = !playing;
   $('controls').hidden = !playing;
+  $('tip').hidden = id !== null || !$('tip').dataset.tip;
 }
 
-function toast(text) {
+function toast(text, { ms = 1600, low = false } = {}) {
   const el = $('toast');
   el.textContent = text;
+  el.classList.toggle('low', low);
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function setStuck(on) {
+  $('undo-btn').classList.toggle('glow', on);
 }
 
 function levelFor(spec) {
@@ -63,12 +69,14 @@ const TIPS = {
   intro: '<strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.',
   keystone: '<strong>Keystones</strong> wear a gold-leaded ring. A keystone only leaves once every pane touching it has gone, so clear around it first.',
   pair: '<strong>Leaded pairs</strong> are joined by a lead bar and leave together. Both arrows need a clear run, or the pair bumps.',
+  weighted: '<strong>Weighted panes</strong> (heavy lead rim) slide until they hit a pane or the rim, then lift out with a second tap. Slide one too early and it can wall others in.',
 };
 
 function tipFor(lv) {
   if (!progress.tipSeen && lv.kind === 'campaign' && lv.number === 1) return 'intro';
   if (!progress.seen.keystone && lv.tiles.some((t) => t.keystone)) return 'keystone';
   if (!progress.seen.pair && lv.tiles.some((t) => t.pair)) return 'pair';
+  if (!progress.seen.weighted && lv.tiles.some((t) => t.weighted)) return 'weighted';
   return null;
 }
 
@@ -77,17 +85,17 @@ function start(spec) {
   level = levelFor(spec);
   game = createGame(level);
   combo = 0;
+  setStuck(false);
+  const tip = tipFor(level);
+  $('tip').dataset.tip = tip || '';
+  if (tip) $('tip-text').innerHTML = TIPS[tip];
   show(null);
   history.replaceState(null, '', hashFor(level));
   $('level-kicker').textContent =
-    level.kind === 'campaign' ? `Window ${level.number} of ${CAMPAIGN_SIZE}` : level.kind === 'trail' ? `Trail · window ${level.number}` : `Today · ${prettyDate(level.date)}`;
+    level.kind === 'campaign' ? `Window ${level.number}/${CAMPAIGN_SIZE}` : level.kind === 'trail' ? `Trail · ${level.number}` : `Today · ${prettyDate(level.date)}`;
   $('level-name').textContent = level.name;
   renderer.setLevel(level);
   updateHud();
-  const tip = tipFor(level);
-  $('tip').hidden = !tip;
-  $('tip').dataset.tip = tip || '';
-  if (tip) $('tip-text').innerHTML = TIPS[tip];
   const current = game;
   if (tip === 'intro') later(() => current === game && showHint(false), 700);
 }
@@ -128,8 +136,17 @@ function onTap(k) {
   audio.unlock();
   const res = tap(game, k);
   if (res.type === 'none') return;
-  if (!$('tip').hidden && res.type === 'fly' && $('tip').dataset.tip === 'intro') dismissTip();
-  if (res.type === 'fly') {
+  if ($('tip').dataset.tip && res.type !== 'bump') dismissTip();
+  if (res.type === 'slide') {
+    combo = 0;
+    const dur = renderer.slide(k, res.to, calm());
+    audio.slide(dur);
+    const [dq, dr] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]][res.tile.dir];
+    const ahead = `${res.tile.q + dq},${res.tile.r + dr}`;
+    const current = game;
+    later(() => current === game && renderer.landed(res.to, res.tile.colour, game.tiles.has(ahead) ? ahead : null), dur);
+    navigator.vibrate?.(14);
+  } else if (res.type === 'fly') {
     const now = performance.now();
     combo = now - lastFly < 1600 ? combo + 1 : 0;
     lastFly = now;
@@ -152,6 +169,15 @@ function onTap(k) {
   updateHud(res.type === 'bump' ? cracksLeft(game) : -1);
   if (game.status === 'won') finishWin();
   else if (game.status === 'lost') finishLoss();
+  else if (res.type !== 'bump') checkStuck();
+}
+
+function checkStuck() {
+  if (!game.weighted) return;
+  const status = solveFrom(game, { ms: 150 }).status;
+  setStuck(status !== 'solved');
+  if (status === 'stuck') toast('Walled in: this window can’t be cleared from here. Undo (U) to step back.', { ms: 3200 });
+  else if (status === 'unknown') toast('I can’t find a way out from here. Undo (U) may help.', { ms: 3200 });
 }
 
 function finishWin() {
@@ -213,7 +239,7 @@ function showResult(current, won, g) {
     $('result-again').textContent = 'Play again';
   } else {
     $('result-title').textContent = 'The frame gave way';
-    $('result-text').textContent = 'The frame gave way after too many bumps. Look for an arrow with nothing in front of it, and clear around keystones first.';
+    $('result-text').textContent = 'Too many bumps cracked the frame. Look for an arrow with nothing in front of it, and clear around keystones first.';
     next.hidden = true;
     $('result-again').textContent = 'Try again';
   }
@@ -223,10 +249,15 @@ function showResult(current, won, g) {
 
 function showHint(count = true) {
   if (!game || game.status !== 'playing') return;
-  const k = hint(game);
-  if (!k) return;
+  const h = hint(game);
+  if (!h) return;
+  if (h.stuck) {
+    setStuck(true);
+    toast(h.proven ? 'No way out from here. Undo (U) to step back, or restart.' : 'I can’t find a way out from here. Try Undo (U).', { ms: 3200 });
+    return;
+  }
   if (!count) game.hintsUsed--;
-  renderer.showHint(game.tiles.get(k));
+  renderer.showHint(game.tiles.get(h.key));
   if (count) audio.tick();
 }
 
@@ -234,15 +265,18 @@ function doUndo() {
   if (!game) return;
   const res = undo(game);
   if (!res) return;
-  renderer.appear(res.key);
+  if (res.kind === 'slide') renderer.slide(res.from, res.key, calm());
+  else for (const k of res.keys) renderer.appear(k);
   audio.tick();
   combo = 0;
   updateHud();
+  if ($('undo-btn').classList.contains('glow')) checkStuck();
 }
 
 function dismissTip() {
   const tip = $('tip').dataset.tip;
   $('tip').hidden = true;
+  $('tip').dataset.tip = '';
   if (tip === 'intro') progress.tipSeen = true;
   else if (tip) progress.seen = { ...progress.seen, [tip]: true };
   persist();
@@ -341,8 +375,9 @@ function route() {
   let m;
   if ((m = /^window-(\d+)$/.exec(h)) && +m[1] >= 1 && +m[1] <= CAMPAIGN_SIZE) {
     if (isUnlocked(progress, +m[1])) return start({ kind: 'campaign', n: +m[1] });
+    history.replaceState(null, '', location.pathname + location.search);
     openLevels();
-    toast(`Window ${m[1]} is still locked`);
+    toast(`Window ${m[1]} is still locked`, { low: true });
     return;
   }
   if ((m = /^trail-(\d+)$/.exec(h)) && +m[1] >= 1) return start({ kind: 'trail', n: +m[1] });
@@ -424,6 +459,7 @@ globalThis.__leadlight = {
   get level() { return level; },
   start,
   tapKey: onTap,
+  paneSize: () => renderer.view.size * Math.sqrt(3),
   pixelOf(k) {
     const [q, r] = k.split(',').map(Number);
     const rect = canvas.getBoundingClientRect();
