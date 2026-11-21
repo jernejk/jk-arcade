@@ -200,7 +200,8 @@ button:disabled { opacity: 0.45; cursor: default; }
   min-height: 52px;
 }
 .map-row span, .yard-row span { display: block; }
-.map-row small, .yard-row small { opacity: 0.7; }
+.map-row b, .yard-row b, .map-row small, .yard-row small { display: block; }
+.map-row small, .yard-row small { opacity: 0.7; margin-top: 2px; }
 .sr {
   position: absolute;
   width: 1px; height: 1px;

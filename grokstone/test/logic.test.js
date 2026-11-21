@@ -16,6 +16,7 @@ import {
   missingStar,
   loadSave,
   localDateString,
+  lossLine,
   parseHash,
   recordResult,
   sampleAims,
@@ -457,4 +458,40 @@ test("a played daily keeps its date in the name, and today's stays today's", () 
   assert.equal(old.name, "The keep of 2026-01-15");
   assert.equal(old.date, "2026-01-15");
   assert.equal(parseHash(hashFor(old)).date, "2026-01-15");
+});
+
+test("a lost keep says which stone gave way, not the heading again", () => {
+  const layout = layoutByNumber(1, defaultSave());
+  const banner = layout.blocks.find((b) => b.side === "player" && b.material === "banner");
+  const byId = new Map(layout.blocks.map((b) => [b.id, b]));
+  let support = byId.get(banner.neighbors.below[0]);
+  while (support.neighbors.below.length) support = byId.get(support.neighbors.below[0]);
+  const line = lossLine(layout.blocks, [{ id: support.id, material: support.material, side: "player" }]);
+  assert.match(line, /gave way/);
+  assert.doesNotMatch(line, /standard is down/i);
+  const aside = layout.blocks.find((b) => b.side === "player" && b.material !== "banner" && !b.neighbors.above.length && b.id !== banner.neighbors.below[0]);
+  if (aside) assert.match(lossLine(layout.blocks, [{ id: aside.id, material: aside.material, side: "player" }]), /broke 1 of your stones/);
+  assert.match(lossLine(layout.blocks, []), /shook your cloth loose/);
+});
+
+test("an arch lintel sits on its haunches before any shot", () => {
+  const layouts = LEVELS.map((level) => layoutByNumber(level.number, defaultSave()));
+  for (let d = 1; d <= 28; d++) layouts.push(dailyLayout(defaultSave(), `2026-11-${String(d).padStart(2, "0")}`));
+  let arches = 0;
+  for (const layout of layouts) {
+    const lintel = layout.blocks.find((b) => b.id === "elintel");
+    if (!lintel) continue;
+    const banner = layout.blocks.find((b) => b.id === "ebanner");
+    assert.deepEqual(banner.neighbors.below, ["elintel"], layout.name);
+    if (layout.blocks.some((b) => b.id === "ehaunchL")) {
+      arches += 1;
+      assert.deepEqual(lintel.neighbors.below.slice().sort(), ["ehaunchL", "ehaunchR"], layout.name);
+    }
+    for (const id of lintel.neighbors.below) {
+      const support = layout.blocks.find((b) => b.id === id);
+      const gap = (support.y - support.h / 2) - (lintel.y + lintel.h / 2);
+      assert.ok(gap >= 0 && gap <= 2.5, `${layout.name} ${id} gap ${gap}`);
+    }
+  }
+  assert.ok(arches >= 3, `only ${arches} arch keeps`);
 });

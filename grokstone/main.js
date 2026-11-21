@@ -15,6 +15,7 @@ import {
   hashFor,
   inscription,
   integrate,
+  lossLine,
   layoutByNumber,
   loadSave,
   localDateString,
@@ -313,7 +314,7 @@ function finishSim() {
         if (body.grok.side === "enemy" && !body.isStatic) puff(body.position.x, body.position.y, "#efe6d4");
       }
     }
-    state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? "Your standard is down." : "");
+    state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? lossLine(state.layout.blocks, state.siege.broken) : "");
     return;
   }
   if (state.simFor === "player") {
@@ -352,7 +353,7 @@ function endBattle(won, note) {
   document.querySelector("#result-stars").textContent = won ? "★".repeat(stars) + "☆".repeat(3 - stars) : "☆☆☆";
   document.querySelector("#yard").hidden = !won;
   show("result");
-  say(won ? `${text}.` : "Your standard is down.");
+  say(won ? `${text}.` : `Your standard is down. ${note || ""}`.trim());
   if (won) audio.win(); else audio.lose();
 }
 
@@ -780,7 +781,7 @@ function drawBlock(b) {
     ctx.restore();
     return;
   }
-  const course = (b.material === "stone" || b.material === "merlon" || b.material === "foundation") && b.w < 48;
+  const course = (b.material === "stone" || b.material === "merlon" || b.material === "foundation") && b.w < 48 && !String(b.id).includes("haunch");
   if (course) {
     const v = b.variant || 0;
     ctx.scale(0.8 + (v % 3) * 0.12, 0.76 + (v % 4) * 0.1);
@@ -1185,6 +1186,7 @@ function bind() {
   canvas.addEventListener("pointercancel", () => { state.dragging = false; });
 
   addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "m" || event.key === "M") {
       toggleMute();
       event.preventDefault();

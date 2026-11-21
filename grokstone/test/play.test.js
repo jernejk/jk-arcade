@@ -115,6 +115,15 @@ test("phone and desktop play a keep without page errors", async () => {
       assert.ok(box, id);
       assert.ok(box.y >= 0 && box.y + box.height <= view.height + 1, `${id} y ${box.y}`);
     }
+    await page.locator("#yard").click();
+    await page.waitForSelector("#yard-sheet:not([hidden])");
+    for (const size of [{ width: 360, height: 640 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(size);
+      const row = page.locator(".yard-row").first();
+      const name = await row.locator("b").boundingBox();
+      const blurb = await row.locator("small").boundingBox();
+      assert.ok(blurb.y >= name.y + name.height - 1, `yard row name and blurb share a line at ${size.width}px`);
+    }
     assert.deepEqual(errors, []);
     await page.close();
 
@@ -470,6 +479,15 @@ test("focused buttons keep their keys, and a played daily link keeps its date", 
     await page.evaluate(() => document.activeElement.blur());
     await page.keyboard.press("Space");
     await page.waitForFunction(() => window.__grokstone.shots === 1);
+    await page.evaluate(() => {
+      for (const key of ["r", "m"]) {
+        for (const mod of ["metaKey", "ctrlKey", "altKey"]) {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key, [mod]: true, bubbles: true, cancelable: true }));
+        }
+      }
+    });
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 1, "a browser shortcut restarted the keep");
+    assert.equal(await page.locator("#mute").getAttribute("aria-pressed"), "true", "a browser shortcut toggled the sound");
 
     await page.waitForFunction(() => window.__grokstone.phase === "aim" || window.__grokstone.screen === "result", null, { timeout: 12000 });
     if (await page.evaluate(() => window.__grokstone.screen === "battle")) {

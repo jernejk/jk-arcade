@@ -616,7 +616,7 @@ function buildArchCrown(blocks, side) {
     col: key.col,
     row: key.row + 2,
     x: key.x,
-    y: y1 - BLOCK_H / 2 - 2 - 9,
+    y: y1 - 7 - 2 - 9,
     w: 52,
     h: 18,
     material: "stone",
@@ -1400,6 +1400,34 @@ export function recordResult(save, layout, outcome, today = null) {
     next.seeds = seeds;
   }
   return next;
+}
+
+const STONE_WORDS = {
+  foundation: "footing",
+  stone: "course",
+  merlon: "merlon",
+  timber: "timber",
+  keystone: "gold stone",
+  keg: "keg",
+};
+
+export function lossLine(blocks, broken) {
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+  const banner = blocks.find((b) => b.side === "player" && b.material === "banner");
+  const under = new Set();
+  const queue = banner && banner.neighbors ? [...banner.neighbors.below] : [];
+  while (queue.length) {
+    const id = queue.shift();
+    if (under.has(id)) continue;
+    under.add(id);
+    const block = byId.get(id);
+    if (block && block.neighbors) queue.push(...block.neighbors.below);
+  }
+  const mine = (broken || []).filter((b) => b.side === "player" && b.material !== "banner");
+  const support = mine.find((b) => under.has(b.id));
+  if (support) return `Your ${STONE_WORDS[support.material] || "stone"} gave way, and the cloth went with it.`;
+  if (mine.length) return `They broke ${mine.length} of your stones, and the cloth came down.`;
+  return "Their shot shook your cloth loose.";
 }
 
 export function shareText(layout, outcome) {
