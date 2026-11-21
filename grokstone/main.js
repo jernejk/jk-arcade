@@ -187,13 +187,23 @@ function callout(text) {
   state.calloutUntil = performance.now() + 2400;
 }
 
+const hudShown = {};
+
+function paintHudPart(selector, key, value) {
+  if (hudShown[selector] === value) return;
+  hudShown[selector] = value;
+  const el = document.querySelector(selector);
+  if (key === "width") el.style.width = value;
+  else el.textContent = value;
+}
+
 function paintHud() {
   const you = state.siege ? sideIntegrity(state.siege, "player") : 1;
   const foe = state.siege ? sideIntegrity(state.siege, "enemy") : 1;
-  document.querySelector("#you-bar").style.width = `${Math.round(you * 100)}%`;
-  document.querySelector("#foe-bar").style.width = `${Math.round(foe * 100)}%`;
+  paintHudPart("#you-bar", "width", `${Math.round(you * 100)}%`);
+  paintHudPart("#foe-bar", "width", `${Math.round(foe * 100)}%`);
   const par = state.layout ? state.layout.par : "";
-  document.querySelector("#shot-count").textContent = state.phase === "enemy" ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`;
+  paintHudPart("#shot-count", "text", state.phase === "enemy" ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`);
 }
 
 function paintWeapons() {
@@ -210,7 +220,7 @@ function paintWeapons() {
     button.dataset.weapon = weapon.id;
     button.innerHTML = `<b>${weapon.short}</b><small>${unlocked ? weapon.crew.split(" ")[0] : "Locked"}</small>`;
     button.setAttribute("aria-label", unlocked ? `${weapon.crew}, ${weapon.name}. ${weapon.line}` : `${weapon.name} is hired in the yard`);
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
       if (!unlocked) {
         callout("Hire that crew in the mason's yard.");
         return;
@@ -219,6 +229,7 @@ function paintWeapons() {
       state.save.lastWeapon = weapon.id;
       persist();
       paintWeapons();
+      if (event.detail === 0) root.querySelector(`[data-weapon="${weapon.id}"]`).focus();
       audio.blip();
     });
     root.append(button);
@@ -894,13 +905,17 @@ function drawTrajectory(pred) {
   if (!pred) return;
   const pts = pred.points;
   const stop = pred.hit ? pred.hit.index : pts.length - 1;
-  for (let i = 2; i <= stop; i += 3) {
+  const px = 1 / view.scale;
+  for (let i = 2; i <= stop; i += 2) {
     const p = pts[i];
-    ctx.fillStyle = i > stop - 8 ? "#ffe3a4" : "rgba(255, 236, 210, 0.95)";
+    const near = i > stop - 6;
+    ctx.globalAlpha = near ? 1 : 0.55 + 0.4 * (i / Math.max(1, stop));
+    ctx.fillStyle = near ? "#ffe3a4" : "#ffecd2";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, i > stop - 8 ? 3.1 : 2.2, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, Math.max(near ? 3.1 : 2.2, (near ? 3 : 2.2) * px), 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
   if (pred.hit && pred.hit.type === "block") {
     const block = aimBlocks().find((b) => b.id === pred.hit.id);
     if (!block) return;

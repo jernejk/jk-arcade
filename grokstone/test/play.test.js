@@ -461,6 +461,7 @@ test("focused buttons keep their keys, and a played daily link keeps its date", 
     await page.locator("#resume").click();
     await page.focus('[data-weapon="roundshot"]');
     await page.keyboard.press("Space");
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.weapon), "roundshot", "a keyboard crew pick lost focus");
     await page.focus("#mute");
     await page.keyboard.press("Enter");
     assert.equal(await page.locator("#mute").getAttribute("aria-pressed"), "true");
