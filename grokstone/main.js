@@ -1137,14 +1137,8 @@ function bind() {
       persist();
     }
   });
-  document.querySelector("#pause").addEventListener("click", () => {
-    state.paused = true;
-    show("pause");
-  });
-  document.querySelector("#resume").addEventListener("click", () => {
-    state.paused = false;
-    show("battle");
-  });
+  document.querySelector("#pause").addEventListener("click", pause);
+  document.querySelector("#resume").addEventListener("click", resume);
   document.querySelector("#pause-retry").addEventListener("click", () => startBattle(rebuild()));
   document.querySelector("#retry").addEventListener("click", () => startBattle(rebuild()));
   document.querySelector("#pause-title").addEventListener("click", goTitle);
@@ -1198,13 +1192,8 @@ function bind() {
       return;
     }
     if (event.key === "Escape") {
-      if (state.screen === "battle") {
-        state.paused = true;
-        show("pause");
-      } else if (state.screen === "pause") {
-        state.paused = false;
-        show("battle");
-      }
+      if (state.screen === "battle") pause();
+      else if (state.screen === "pause") resume();
       return;
     }
     if (state.screen !== "battle" || state.phase !== "aim") return;
@@ -1231,6 +1220,21 @@ function bind() {
     event.preventDefault();
   });
   addEventListener("resize", resize);
+}
+
+function pause() {
+  state.paused = true;
+  state.pausedAt = performance.now();
+  show("pause");
+}
+
+function resume() {
+  const held = state.pausedAt ? performance.now() - state.pausedAt : 0;
+  state.enemyAt += held;
+  state.holdUntil = (state.holdUntil || 0) + held;
+  state.pausedAt = 0;
+  state.paused = false;
+  show("battle");
 }
 
 function clampAngle(angle) {

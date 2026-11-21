@@ -505,3 +505,33 @@ test("focused buttons keep their keys, and a played daily link keeps its date", 
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("a pause during the rival's wind-up keeps the wind-up", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const page = await browser.newPage({ viewport: { width: 960, height: 640 } });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    const port = server.address().port;
+    await page.goto(`http://127.0.0.1:${port}/?test=1`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Begin the siege" }).click();
+    await page.waitForFunction(() => window.__grokstone.phase === "aim");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => window.__grokstone.phase === "enemy" || window.__grokstone.screen === "result", null, { timeout: 12000 });
+    assert.equal(await page.evaluate(() => window.__grokstone.screen), "battle", "one shot ended the first keep");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(900);
+    await page.keyboard.press("Escape");
+    await nextFrames(page, 3);
+    assert.equal(await page.evaluate(() => window.__grokstone.phase), "enemy", "the rival fired the moment the pause ended");
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
