@@ -6,6 +6,7 @@ Small browser games I built with AI coding tools. Free, no accounts, and most of
 
 | Game | Play |
 |---|---|
+| Leadlight — slide stained-glass panes out of a leaded window, one clear path at a time | [leadlight/](https://jernejk.github.io/jk-arcade/leadlight/) |
 | Nap Patch — tuck sleepy bush critters into a patchwork quilt, one per patch, row and column | [nap-patch/](https://jernejk.github.io/jk-arcade/nap-patch/) |
 | Piece by Pixel — rebuild pixel-art postcards one piece at a time | [Gull Harbor, Master tier](https://jernejk.github.io/jk-arcade/piece-by-pixel/#gull-harbor@master) |
 | Tumbleverse — smash endless generated towers, castles and tiny planets | [tumbleverse/](https://jernejk.github.io/jk-arcade/tumbleverse/) |

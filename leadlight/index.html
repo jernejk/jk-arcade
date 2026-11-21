@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#140f0c">
+  <meta name="description" content="Leadlight: slide stained-glass panes out of a leaded window, one clear path at a time.">
+  <title>Leadlight</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="bar top" id="hud" hidden>
+      <button class="icon-btn" id="menu-btn" aria-label="Menu (Esc)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <button class="icon-btn" id="mute-btn" aria-label="Sound on (M)" aria-pressed="true">
+        <svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+        <svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+      </button>
+      <div class="title">
+        <span class="kicker" id="level-kicker">Window 1</span>
+        <span class="name" id="level-name">First Light</span>
+      </div>
+      <div class="status">
+        <div class="cracks" id="cracks" aria-label="Frame strength"></div>
+        <span class="panes" id="panes-left">0 panes</span>
+      </div>
+    </header>
+
+    <main class="stage" id="stage">
+      <canvas id="board" aria-label="Leaded window. Tap a pane to slide it out."></canvas>
+      <div class="tip" id="tip" hidden>
+        <p id="tip-text"></p>
+        <button class="btn small" id="tip-ok">Got it</button>
+      </div>
+    </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <footer class="bar bottom" id="controls" hidden>
+      <button class="btn tool" id="undo-btn" aria-label="Undo (U)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -6)"/></svg>
+        <span>Undo</span>
+      </button>
+      <button class="btn tool" id="hint-btn" aria-label="Hint (H)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2M5.6 5.6 7 7M3 12h2M19 12h2M17 7l1.4-1.4"/><path d="M8.5 15a5 5 0 1 1 7 0c-.8.8-1.5 1.7-1.5 3h-4c0-1.3-.7-2.2-1.5-3z"/><path d="M10 21h4"/></svg>
+        <span>Hint</span>
+      </button>
+      <button class="btn tool" id="restart-btn" aria-label="Restart (R)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+        <span>Restart</span>
+      </button>
+    </footer>
+
+    <section class="sheet home" id="home" hidden>
+      <div class="home-inner">
+        <div class="logo" aria-hidden="true">
+          <img src="favicon.svg" alt="" width="96" height="96">
+        </div>
+        <h1>Leadlight</h1>
+        <p class="lede">Slide the coloured panes out of the window, one clear path at a time.</p>
+        <div class="menu">
+          <button class="btn primary" id="continue-btn">Continue</button>
+          <button class="btn" id="windows-btn">Windows</button>
+          <button class="btn" id="trail-btn">Trail</button>
+          <button class="btn" id="daily-btn">Today’s window</button>
+        </div>
+        <div class="toggles">
+          <button class="chip" id="sound-btn" aria-pressed="true">Sound on</button>
+          <button class="chip" id="calm-btn" aria-pressed="false">Calm off</button>
+        </div>
+        <a class="back" href="../">← Back to the arcade</a>
+      </div>
+    </section>
+
+    <section class="sheet levels" id="levels" hidden>
+      <div class="levels-inner">
+        <div class="sheet-head">
+          <button class="icon-btn" id="levels-back" aria-label="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <h2>Windows</h2>
+          <span class="spacer"></span>
+        </div>
+        <ol class="level-grid" id="level-grid"></ol>
+      </div>
+    </section>
+
+    <section class="sheet result" id="result" hidden>
+      <div class="card">
+        <div class="grade" id="result-grade"></div>
+        <h2 id="result-title">Window clear</h2>
+        <p id="result-text"></p>
+        <div class="menu">
+          <button class="btn primary" id="result-next">Next window</button>
+          <button class="btn" id="result-share" hidden>Share today’s window</button>
+          <button class="btn" id="result-again">Play again</button>
+          <button class="btn ghost" id="result-menu">Menu</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
