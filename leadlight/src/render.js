@@ -10,6 +10,7 @@ export const PIGMENT_COLOURS = {
   amethyst: ['#e6bcff', '#8d43d4', '#330c57'],
 };
 
+const MIN_PANE = 36;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
 const easeOut = (t) => 1 - (1 - t) ** 3;
@@ -219,6 +220,7 @@ export function createRenderer(canvas) {
   let centre = { x: 0, y: 0, reach: 1 };
   let sprites = new Map();
   let light = 0;
+  let reserveBottom = 0;
   let stars = [];
   const fx = {
     flying: [],
@@ -287,9 +289,13 @@ export function createRenderer(canvas) {
       maxY = Math.max(maxY, p.y + 1);
     }
     const pad = 0.6;
-    view.size = Math.min(64, (view.w - 8) / (maxX - minX + pad * 2), (view.h - 8) / (maxY - minY + pad * 2));
+    const fit = (h) => Math.min(64, (view.w - 8) / (maxX - minX + pad * 2), (h - 8) / (maxY - minY + pad * 2));
+    const above = reserveBottom ? fit(view.h - reserveBottom) : 0;
+    const roomAbove = above * SQRT3 >= MIN_PANE;
+    view.size = roomAbove ? above : fit(view.h);
+    const usable = roomAbove ? view.h - reserveBottom : view.h;
     view.ox = view.w / 2 - ((minX + maxX) / 2) * view.size;
-    view.oy = view.h / 2 - ((minY + maxY) / 2) * view.size;
+    view.oy = usable / 2 - ((minY + maxY) / 2) * view.size;
     cells = level.cells.map(([q, r]) => ({ q, r, k: key(q, r), ...px(q, r) }));
     let cx = 0, cy = 0;
     for (const c of cells) {
@@ -642,6 +648,11 @@ export function createRenderer(canvas) {
       layout();
     },
     resize: layout,
+    reserve(px) {
+      if (px === reserveBottom) return;
+      reserveBottom = px;
+      layout();
+    },
     reset() {
       fx.flying = [];
       fx.bumps.clear();

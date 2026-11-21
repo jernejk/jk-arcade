@@ -38,6 +38,12 @@ function show(id) {
   $('hud').hidden = !playing;
   $('controls').hidden = !playing;
   $('tip').hidden = id !== null || !$('tip').dataset.tip;
+  syncReserve();
+}
+
+function syncReserve() {
+  const tip = $('tip');
+  renderer.reserve(tip.hidden ? 0 : tip.getBoundingClientRect().height + 12);
 }
 
 function toast(text, { ms = 1600, low = false } = {}) {
@@ -293,6 +299,7 @@ function dismissTip() {
     if (tip === 'intro') progress.tipSeen = true;
     else progress.seen = { ...progress.seen, [tip]: true };
   }
+  syncReserve();
   persist();
 }
 
@@ -412,7 +419,10 @@ $('mute-btn').onclick = toggleMute;
 $('undo-btn').onclick = doUndo;
 $('hint-btn').onclick = () => showHint(true);
 $('restart-btn').onclick = restart;
-$('tip-ok').onclick = dismissTip;
+$('tip').onclick = (e) => {
+  e.stopPropagation();
+  dismissTip();
+};
 $('continue-btn').onclick = () => {
   audio.unlock();
   if (Object.keys(progress.best).length >= CAMPAIGN_SIZE) start({ kind: 'trail', n: progress.trail });

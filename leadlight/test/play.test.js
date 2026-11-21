@@ -191,7 +191,7 @@ test('a rule tip on a dense window closes on the first move and the board grows 
   if (skip) return t.skip(skip);
   const { page, errors } = await open('#window-23', { viewport: { width: 360, height: 640 }, progress: { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true } } });
   assert.equal(await page.isVisible('#tip'), true);
-  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 37, 'board shrank under the tip');
+  assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 36, 'board shrank too far for the tip');
   assert.match(await page.textContent('#tip'), /Weighted panes/);
   const first = await page.evaluate(() => window.__leadlight.level.solution[0]);
   await tapKey(page, first);
@@ -258,3 +258,19 @@ test('skipping ahead shows every new rule in one tip', async (t) => {
   assert.deepEqual(errors, []);
   await page.close();
 });
+
+for (const viewport of [{ width: 360, height: 640 }, { width: 390, height: 844 }]) {
+  test(`tapping the tip text at ${viewport.width}px closes it and never reaches a pane`, async (t) => {
+    if (skip) return t.skip(skip);
+    const { page, errors } = await open('#window-23', { viewport, progress: { unlocked: 24, tipSeen: true, seen: {} } });
+    const box = await page.locator('#tip-text').boundingBox();
+    const before = await page.evaluate(() => window.__leadlight.game.tiles.size);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const state = await page.evaluate(() => ({ cracks: window.__leadlight.game.cracks, size: window.__leadlight.game.tiles.size, moves: window.__leadlight.game.history.length }));
+    assert.deepEqual(state, { cracks: 0, size: before, moves: 0 });
+    assert.equal(await page.isHidden('#tip'), true);
+    assert.ok((await page.evaluate(() => window.__leadlight.paneSize())) >= 37);
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+}
