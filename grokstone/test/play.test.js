@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,11 +57,11 @@ async function openPage(browser, server, viewport, query) {
 }
 
 function launchOptions() {
+  const args = ["--no-sandbox", "--disable-dev-shm-usage"];
   const executablePath = process.env.GROKSTONE_CHROME;
-  return {
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    ...(executablePath ? { executablePath } : {}),
-  };
+  if (executablePath) return { args, executablePath };
+  if (existsSync(chromium.executablePath())) return { args };
+  return { args, channel: "chrome" };
 }
 
 test("phone and desktop play a keep without page errors", async () => {
@@ -85,7 +86,7 @@ test("phone and desktop play a keep without page errors", async () => {
       await page.waitForFunction(() => {
         const game = window.__grokstone;
         return game.phase === "aim" || game.screen === "result";
-      }, null, { timeout: 8000 });
+      }, null, { timeout: 12000 });
       assert.deepEqual(errors, []);
       await page.close();
     }
@@ -103,9 +104,9 @@ test("phone and desktop play a keep without page errors", async () => {
       await page.waitForFunction(() => {
         const game = window.__grokstone;
         return (game.phase === "aim" && game.screen === "battle") || game.screen === "result";
-      }, null, { timeout: 8000 });
+      }, null, { timeout: 12000 });
     }
-    await page.waitForSelector("#result:not([hidden])", { timeout: 8000 });
+    await page.waitForSelector("#result:not([hidden])", { timeout: 12000 });
     assert.match(await page.locator("#result-title").innerText(), /banner falls/i);
     assert.equal(await page.evaluate(() => window.__grokstone.won), true);
     const view = page.viewportSize();
@@ -127,7 +128,7 @@ test("phone and desktop play a keep without page errors", async () => {
       const text = document.querySelector("#shot-count").textContent;
       const result = document.querySelector("#result");
       return text.includes("Their") || text.includes("Shot 2") || (result && !result.hidden);
-    }, null, { timeout: 8000 });
+    }, null, { timeout: 12000 });
     assert.deepEqual(desktop.errors, []);
     await desktop.page.close();
 

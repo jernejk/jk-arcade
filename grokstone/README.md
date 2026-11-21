@@ -20,6 +20,6 @@ Sound is synthesized in the browser. Motion follows the device, or can be set ca
 npm test
 ```
 
-The browser check uses Playwright's Chromium. Install it once with `npx playwright install chromium`. To point the check at a Chrome already on the machine, set `GROKSTONE_CHROME` to that executable.
+The browser check uses Playwright's Chromium. Install it once with `npx playwright install chromium`. Without it, the check falls back to the installed Google Chrome. To point it at another browser, set `GROKSTONE_CHROME` to that executable.
 
 Core rules live in `logic.js`. The page is static: `index.html`, `style.css`, `main.js`, `audio.js`, `physics.js`, and Matter boxed up in `vendor/` so the folder works offline. Serve it with `npx serve grokstone` from the repo.
