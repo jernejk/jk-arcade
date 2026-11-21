@@ -2,7 +2,7 @@
   {
     "id": "leadlight",
     "title": "Leadlight",
-    "pitch": "Slide stained-glass panes out of a leaded window, one clear path at a time. Tap a pane with nothing in its way and it flies out in a glitter of light; tap a blocked one and the frame cracks. 24 windows, an endless trail and a daily window.",
+    "pitch": "Slide stained-glass panes out of a leaded window, one clear path at a time. Tap a pane with nothing in its way and it flies out in a glitter of light; tap a blocked one and the frame cracks. Keystones and leaded pairs make you plan the order. 24 windows, an endless trail and a daily window.",
     "controls": "Tap or click a pane to slide it along its arrow. U or Z undo, H hint, R restart, M mute, Esc menu.",
     "url": "leadlight/",
     "shot": "shots/leadlight.webp"

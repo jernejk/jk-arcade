@@ -1,5 +1,5 @@
 import { key } from './hex.js';
-import { boundsOf, firstBlocker } from './board.js';
+import { boundsOf, moveBlocker, groupOf } from './board.js';
 
 export function createGame(level) {
   const tiles = new Map();
@@ -22,31 +22,34 @@ export function tap(game, k) {
   if (game.status !== 'playing') return { type: 'none' };
   const tile = game.tiles.get(k);
   if (!tile) return { type: 'none' };
-  const blocker = firstBlocker(game.bounds, game.tiles, tile.q, tile.r, tile.dir);
-  if (blocker) {
+  const block = moveBlocker(game.bounds, game.tiles, k);
+  if (block) {
     game.cracks++;
     game.bumps++;
     if (game.cracks >= game.maxCracks) game.status = 'lost';
-    return { type: 'bump', key: k, tile, blocker, status: game.status };
+    return { type: 'bump', key: k, tile, blocker: block.key, reason: block.reason, from: block.from, status: game.status };
   }
-  game.tiles.delete(k);
-  game.history.push(k);
-  game.lastRemoved = tile;
+  const group = groupOf(game.tiles, k);
+  const tiles = group.map((g) => game.tiles.get(g));
+  for (const g of group) game.tiles.delete(g);
+  game.history.push(group);
   if (game.tiles.size === 0) game.status = 'won';
-  return { type: 'fly', key: k, tile, status: game.status };
+  return { type: 'fly', key: k, tile, tiles, keys: group, status: game.status };
 }
 
 export function undo(game) {
   if (game.status !== 'playing' || !game.history.length) return null;
-  const k = game.history.pop();
-  const tile = game.level.tiles.find((t) => key(t.q, t.r) === k);
-  const id = game.level.tiles.indexOf(tile);
-  const restored = { ...tile, id };
-  game.tiles.set(k, restored);
-  return { key: k, tile: restored };
+  const group = game.history.pop();
+  const restored = group.map((k) => {
+    const id = game.level.tiles.findIndex((t) => key(t.q, t.r) === k);
+    const tile = { ...game.level.tiles[id], id };
+    game.tiles.set(k, tile);
+    return tile;
+  });
+  return { key: group[0], keys: group, tiles: restored, tile: restored[0] };
 }
 
-// The earliest remaining pane in the stored solution is always free: everything that blocked it came before it.
+// The earliest remaining pane in the stored solution is always movable: every pane that could hold it came before it.
 export function hint(game) {
   if (game.status !== 'playing') return null;
   for (const k of game.level.solution) {
@@ -59,8 +62,7 @@ export function hint(game) {
 }
 
 export function isFree(game, k) {
-  const t = game.tiles.get(k);
-  return !!t && !firstBlocker(game.bounds, game.tiles, t.q, t.r, t.dir);
+  return game.tiles.has(k) && !moveBlocker(game.bounds, game.tiles, k);
 }
 
 export function cracksLeft(game) {

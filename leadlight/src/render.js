@@ -53,24 +53,52 @@ function drawArrow(c, s, dir, colour) {
   c.translate(s * 0.03, s * 0.045);
   c.rotate((-Math.PI / 3) * dir);
   trace();
-  c.fillStyle = 'rgba(20,8,0,0.45)';
+  c.fillStyle = pale ? 'rgba(255,240,200,0.35)' : 'rgba(20,8,0,0.45)';
   c.fill();
   c.restore();
   c.rotate((-Math.PI / 3) * dir);
   trace();
   const g = c.createLinearGradient(0, -s * 0.3, 0, s * 0.3);
-  g.addColorStop(0, '#fffbe6');
-  g.addColorStop(0.45, pale ? '#fff3d0' : '#f6d77a');
-  g.addColorStop(1, pale ? '#e8cf9a' : '#c08f2e');
+  g.addColorStop(0, pale ? '#6b3a08' : '#fffbe6');
+  g.addColorStop(0.45, pale ? '#4a2404' : '#f6d77a');
+  g.addColorStop(1, pale ? '#2c1402' : '#c08f2e');
   c.fillStyle = g;
   c.fill();
-  c.lineWidth = s * (pale ? 0.05 : 0.03);
-  c.strokeStyle = pale ? 'rgba(70,30,0,0.85)' : 'rgba(92,56,8,0.7)';
+  c.lineWidth = s * (pale ? 0.045 : 0.03);
+  c.strokeStyle = pale ? 'rgba(255,246,214,0.95)' : 'rgba(92,56,8,0.7)';
   c.stroke();
   c.restore();
 }
 
-function paintPane(c, s, colour, dir, seed) {
+function drawRosette(c, s) {
+  c.save();
+  c.beginPath();
+  c.arc(0, 0, s * 0.62, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(0,0,0,0.28)';
+  c.fill();
+  c.lineWidth = s * 0.17;
+  c.strokeStyle = '#121116';
+  c.stroke();
+  c.lineWidth = s * 0.08;
+  c.strokeStyle = '#fff0b8';
+  c.stroke();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i + Math.PI / 6;
+    const x = Math.cos(a) * s * 0.62;
+    const y = Math.sin(a) * s * 0.62;
+    c.beginPath();
+    c.arc(x, y, s * 0.085, 0, Math.PI * 2);
+    c.fillStyle = '#4a4752';
+    c.fill();
+    c.beginPath();
+    c.arc(x - s * 0.02, y - s * 0.025, s * 0.035, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,240,200,0.6)';
+    c.fill();
+  }
+  c.restore();
+}
+
+function paintPane(c, s, colour, dir, keystone, seed) {
   const [light, mid, dark] = PIGMENT_COLOURS[colour];
   const rng = makeRng(seed);
   hexPath(c, 0, 0, s * 0.97);
@@ -113,6 +141,7 @@ function paintPane(c, s, colour, dir, seed) {
   c.lineWidth = s * 0.07;
   c.strokeStyle = bevel;
   c.stroke();
+  if (keystone) drawRosette(c, s);
   drawArrow(c, s, dir, colour);
 }
 
@@ -147,8 +176,8 @@ export function createRenderer(canvas) {
     return { x: p.x + view.ox, y: p.y + view.oy };
   };
 
-  function sprite(colour, dir) {
-    const id = `${colour}:${dir}`;
+  function sprite({ colour, dir, keystone = false }) {
+    const id = `${colour}:${dir}:${keystone ? 'k' : ''}`;
     let sp = sprites.get(id);
     if (!sp) {
       const s = view.size * view.dpr;
@@ -156,7 +185,7 @@ export function createRenderer(canvas) {
       sp = makeCanvas(dim, dim);
       const c = sp.getContext('2d');
       c.translate(dim / 2, dim / 2);
-      paintPane(c, s, colour, dir, id);
+      paintPane(c, s, colour, dir, keystone, id);
       sprites.set(id, sp);
     }
     return sp;
@@ -503,6 +532,39 @@ export function createRenderer(canvas) {
     ctx.restore();
   }
 
+  function drawBar(ax, ay, bx, by, alpha = 1) {
+    const s = view.size;
+    const x1 = lerp(ax, bx, 0.24);
+    const y1 = lerp(ay, by, 0.24);
+    const x2 = lerp(ax, bx, 0.76);
+    const y2 = lerp(ay, by, 0.76);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineWidth = s * 0.4;
+    ctx.strokeStyle = '#121116';
+    ctx.stroke();
+    ctx.lineWidth = s * 0.26;
+    ctx.strokeStyle = '#d9b75a';
+    ctx.stroke();
+    ctx.lineWidth = s * 0.1;
+    ctx.strokeStyle = '#fff1c2';
+    ctx.stroke();
+    for (const [x, y] of [[x1, y1], [x2, y2]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, s * 0.15, 0, Math.PI * 2);
+      ctx.fillStyle = '#f3d27a';
+      ctx.fill();
+      ctx.lineWidth = s * 0.03;
+      ctx.strokeStyle = '#3b2606';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   let last = 0;
 
   return {
@@ -529,15 +591,28 @@ export function createRenderer(canvas) {
       fx.lose = null;
       fx.shake = null;
     },
-    fly(tile, calm) {
-      fx.flying.push({ tile, t0: performance.now(), calm });
-      if (fx.hint && fx.hint.tile === tile) fx.hint = null;
+    fly(tiles, calm) {
+      const t0 = performance.now();
+      const group = tiles.map((tile) => ({ tile, t0, calm }));
+      if (group.length === 2) {
+        group[0].mate = group[1];
+        group[1].mate = group[0];
+      }
+      fx.flying.push(...group);
+      if (fx.hint && tiles.includes(fx.hint.tile)) fx.hint = null;
     },
     bump(k, tile, blockerKey, calm) {
       const now = performance.now();
-      fx.bumps.set(k, { tile, t0: now });
+      const [bq, br] = blockerKey.split(',').map(Number);
+      const from = px(tile.q, tile.r);
+      const to = px(bq, br);
+      const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+      fx.bumps.set(k, { tile, t0: now, v: { x: (to.x - from.x) / len, y: (to.y - from.y) / len } });
       fx.shakes.set(blockerKey, now + 90);
       if (!calm) fx.shake = { t0: now, mag: view.size * 0.12 };
+    },
+    nudge(k) {
+      fx.shakes.set(k, performance.now());
     },
     crack(seed) {
       fx.cracks.push({ seed, t0: performance.now(), path: crackPath(seed) });
@@ -612,10 +687,17 @@ export function createRenderer(canvas) {
             alpha = easeOut(t);
           }
         }
-        drawSprite(sprite(tile.colour, tile.dir), x, y, { scale, alpha });
+        drawSprite(sprite(tile), x, y, { scale, alpha });
       }
 
       ctx.drawImage(leadLayer, 0, 0, view.w, view.h);
+      for (const [k, tile] of game.tiles) {
+        if (!tile.pair || k > tile.pair || !game.tiles.has(tile.pair) || fx.bumps.has(k) || fx.bumps.has(tile.pair)) continue;
+        const mate = game.tiles.get(tile.pair);
+        const a = px(tile.q, tile.r);
+        const b = px(mate.q, mate.r);
+        drawBar(a.x, a.y, b.x, b.y);
+      }
       drawHint(now);
 
       for (const [k, b] of fx.bumps) {
@@ -624,17 +706,17 @@ export function createRenderer(canvas) {
           fx.bumps.delete(k);
           if (game.tiles.has(k)) {
             const p = px(b.tile.q, b.tile.r);
-            drawSprite(sprite(b.tile.colour, b.tile.dir), p.x, p.y);
+            drawSprite(sprite(b.tile), p.x, p.y);
           }
           continue;
         }
-        const v = dirVector(b.tile.dir);
+        const v = b.v;
         const out = t < 0.3 ? easeOut(t / 0.3) : Math.cos(((t - 0.3) / 0.7) * Math.PI * 1.5) * Math.exp(-(t - 0.3) * 4);
         const reach = calm ? 0.12 : 0.3;
         const p = px(b.tile.q, b.tile.r);
         const squash = calm ? 0 : Math.max(0, out) * (t < 0.36 && t > 0.24 ? 1 : 0.4);
-        const along = (-Math.PI / 3) * b.tile.dir;
-        drawSprite(sprite(b.tile.colour, b.tile.dir), p.x + v.x * view.size * reach * out, p.y + v.y * view.size * reach * out, {
+        const along = Math.atan2(v.y, v.x);
+        drawSprite(sprite(b.tile), p.x + v.x * view.size * reach * out, p.y + v.y * view.size * reach * out, {
           sx: 1 - squash * 0.14,
           sy: 1 + squash * 0.08,
           along,
@@ -685,12 +767,18 @@ export function createRenderer(canvas) {
           ctx.fillStyle = glow;
           ctx.fillRect(x - view.size * 2, y - view.size * 2, view.size * 4, view.size * 4);
           ctx.restore();
-          drawSprite(sprite(f.tile.colour, f.tile.dir), x + view.size * 0.12, y + view.size * 0.22, { scale: lift, rot, alpha: 0.25 });
+          drawSprite(sprite(f.tile), x + view.size * 0.12, y + view.size * 0.22, { scale: lift, rot, alpha: 0.25 });
           if (Math.random() < 0.9) emit(x - v.x * view.size * 0.6, y - v.y * view.size * 0.6, 2, [PIGMENT_COLOURS[f.tile.colour][0], '#fff6d6'], 0.6);
         }
-        drawSprite(sprite(f.tile.colour, f.tile.dir), x, y, { scale: lift, rot, alpha });
+        drawSprite(sprite(f.tile), x, y, { scale: lift, rot, alpha });
+        f.pos = { x, y };
         return true;
       });
+      for (const f of fx.flying) {
+        if (f.mate && f.pos && f.mate.pos && fx.flying.includes(f.mate) && f.tile.id < f.mate.tile.id) {
+          drawBar(f.pos.x, f.pos.y, f.mate.pos.x, f.mate.pos.y, f.calm ? Math.max(0, 1 - (now - f.t0) / 350) : 1);
+        }
+      }
 
       drawWin(now);
       drawParticles(dt);

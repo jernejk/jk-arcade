@@ -12,9 +12,9 @@ if (skip) {
 }
 const server = await startServer();
 const page = await browser.newPage({ viewport: { width: 960, height: 600 }, deviceScaleFactor: 1 });
+await page.addInitScript(() => localStorage.setItem('leadlight-v1', JSON.stringify({ unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true } })));
 await page.goto(`http://127.0.0.1:${server.address().port}/#window-20`);
 await page.waitForFunction(() => window.__leadlight);
-await page.evaluate(() => localStorage.setItem('leadlight-v1', JSON.stringify({ tipSeen: true })));
 const solution = await page.evaluate(() => window.__leadlight.level.solution);
 for (const k of solution.slice(0, 10)) {
   const p = await page.evaluate((key) => window.__leadlight.pixelOf(key), k);

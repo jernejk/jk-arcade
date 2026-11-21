@@ -15,6 +15,10 @@
       <button class="icon-btn" id="menu-btn" aria-label="Menu (Esc)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
+      <button class="icon-btn" id="mute-btn" aria-label="Sound on (M)" aria-pressed="true">
+        <svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+        <svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+      </button>
       <div class="title">
         <span class="kicker" id="level-kicker">Window 1</span>
         <span class="name" id="level-name">First Light</span>
@@ -27,12 +31,12 @@
 
     <main class="stage" id="stage">
       <canvas id="board" aria-label="Leaded window. Tap a pane to slide it out."></canvas>
-      <div class="tip" id="tip" hidden>
-        <p><strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.</p>
-        <button class="btn small" id="tip-ok">Got it</button>
-      </div>
-      <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </main>
+    <div class="tip" id="tip" hidden>
+      <p id="tip-text"></p>
+      <button class="btn small" id="tip-ok">Got it</button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <footer class="bar bottom" id="controls" hidden>
       <button class="btn tool" id="undo-btn" aria-label="Undo (U)">

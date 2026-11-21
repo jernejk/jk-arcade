@@ -1,11 +1,29 @@
 import { key, toPixel } from './hex.js';
 import { makeRng } from './rng.js';
 import { shapeCells } from './shapes.js';
-import { boundsOf, rayCells, freeTiles } from './board.js';
+import { boundsOf, rayCells, freeTiles, neighbourKeys, groupOf } from './board.js';
 
 export const PIGMENTS = ['ruby', 'amber', 'gold', 'emerald', 'sapphire', 'amethyst'];
 
-export function placePanes(cells, rng, { fill, bias }) {
+function weightedPick(rng, options) {
+  let total = 0;
+  for (const o of options) total += o.weight;
+  let roll = rng.next() * total;
+  for (const o of options) {
+    roll -= o.weight;
+    if (roll <= 0) return o;
+  }
+  return options[options.length - 1];
+}
+
+const isNeighbour = (a, b) => {
+  const dq = b.q - a.q;
+  const dr = b.r - a.r;
+  return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) === 1;
+};
+
+// Built backwards: each placement must be a legal move in a board holding only the panes placed before it.
+export function placePanes(cells, rng, { fill, bias, keystones = 0, pairs = 0 }) {
   const bounds = boundsOf(cells);
   const mask = new Set(cells.map(([q, r]) => key(q, r)));
   const placed = new Map();
@@ -13,7 +31,6 @@ export function placePanes(cells, rng, { fill, bias }) {
   const target = Math.max(1, Math.round(cells.length * fill));
   while (placed.size < target) {
     const options = [];
-    let total = 0;
     for (const [q, r] of cells) {
       const k = key(q, r);
       if (placed.has(k)) continue;
@@ -22,23 +39,35 @@ export function placePanes(cells, rng, { fill, bias }) {
         if (ray.some((c) => placed.has(c))) continue;
         let reach = 0;
         for (const c of ray) if (mask.has(c)) reach++;
-        const weight = (reach + 1) ** bias;
-        total += weight;
-        options.push({ q, r, k, dir, weight });
+        options.push({ q, r, k, dir, weight: (reach + 1) ** bias });
       }
     }
     if (!options.length) break;
-    let roll = rng.next() * total;
-    let choice = options[options.length - 1];
-    for (const o of options) {
-      roll -= o.weight;
-      if (roll <= 0) {
-        choice = o;
-        break;
+    const step = placement.length;
+    const roll = rng.next();
+    if (keystones > 0 && (step === 0 || roll < keystones)) {
+      const lonely = options.filter((o) => neighbourKeys(o.q, o.r).every((n) => !placed.has(n)));
+      if (lonely.length) {
+        const o = weightedPick(rng, lonely);
+        placed.set(o.k, { q: o.q, r: o.r, dir: o.dir, keystone: true });
+        placement.push(o.k);
+        continue;
       }
     }
-    placed.set(choice.k, { q: choice.q, r: choice.r, dir: choice.dir });
-    placement.push(choice.k);
+    if (pairs > 0 && placed.size + 2 <= target && ((step === 1 && keystones > 0) || (step === 0 && !keystones) || roll > 1 - pairs)) {
+      const a = weightedPick(rng, options);
+      const mates = options.filter((o) => o.k !== a.k && isNeighbour(a, o));
+      if (mates.length) {
+        const b = weightedPick(rng, mates);
+        placed.set(a.k, { q: a.q, r: a.r, dir: a.dir, pair: b.k });
+        placed.set(b.k, { q: b.q, r: b.r, dir: b.dir, pair: a.k });
+        placement.push(a.k, b.k);
+        continue;
+      }
+    }
+    const o = weightedPick(rng, options);
+    placed.set(o.k, { q: o.q, r: o.r, dir: o.dir });
+    placement.push(o.k);
   }
   return { placed, placement, bounds };
 }
@@ -49,7 +78,7 @@ export function layerCount(bounds, placed) {
   while (tiles.size) {
     const free = freeTiles(bounds, tiles);
     if (!free.length) return Infinity;
-    for (const k of free) tiles.delete(k);
+    for (const k of free) if (tiles.has(k)) for (const g of groupOf(tiles, k)) tiles.delete(g);
     layers++;
   }
   return layers;
@@ -96,9 +125,15 @@ export function generateLevel(spec) {
   }
   const palette = rng.shuffle([...PIGMENTS]).slice(0, Math.max(1, Math.min(6, spec.colours ?? 3)));
   const centre = centreOf(cells);
+  const colours = new Map();
   const tiles = best.placement.map((k) => {
     const t = best.placed.get(k);
-    return { q: t.q, r: t.r, dir: t.dir, colour: colourFor(spec.pattern, t.q, t.r, centre, palette, rng) };
+    const colour = colours.get(t.pair) ?? colourFor(spec.pattern, t.q, t.r, centre, palette, rng);
+    colours.set(k, colour);
+    const tile = { q: t.q, r: t.r, dir: t.dir, colour };
+    if (t.keystone) tile.keystone = true;
+    if (t.pair) tile.pair = t.pair;
+    return tile;
   });
   return {
     id: spec.id,
@@ -108,6 +143,13 @@ export function generateLevel(spec) {
     placement: [...best.placement],
     solution: [...best.placement].reverse(),
     cracks: spec.cracks ?? 3,
-    stats: { panes: tiles.length, cells: cells.length, free: best.free, layers: best.layers },
+    stats: {
+      panes: tiles.length,
+      cells: cells.length,
+      free: best.free,
+      layers: best.layers,
+      keystones: tiles.filter((t) => t.keystone).length,
+      pairs: tiles.filter((t) => t.pair).length / 2,
+    },
   };
 }

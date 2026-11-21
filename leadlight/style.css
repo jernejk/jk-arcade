@@ -36,7 +36,7 @@ button { font: inherit; color: inherit; }
 #app {
   height: 100dvh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   max-width: 720px;
   margin: 0 auto;
@@ -50,7 +50,11 @@ button { font: inherit; color: inherit; }
   padding: 10px 16px;
 }
 
-.bar.top { justify-content: space-between; min-height: 64px; }
+.bar.top { justify-content: space-between; min-height: 64px; gap: 8px; }
+
+#mute-btn .off, #mute-btn.muted .on { display: none; }
+#mute-btn.muted .off { display: block; }
+#mute-btn.muted { color: var(--muted); }
 
 .title {
   flex: 1;
@@ -301,8 +305,28 @@ h1 {
 }
 
 .level-grid button.locked { background: linear-gradient(140deg, #3d332c, #1c1511); color: #6d5f52; cursor: default; text-shadow: none; }
-.level-grid button.current { filter: drop-shadow(0 0 10px rgba(243, 210, 122, 0.7)); }
-.level-grid .pips { font-size: 10px; letter-spacing: 2px; color: #fff4c0; }
+.level-grid li { position: relative; }
+
+.level-grid li.current::before, .level-grid li.selected::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: linear-gradient(160deg, #fff6d0, #f1c232 50%, #8a5d05);
+}
+
+.level-grid li.current::before { animation: beacon 1.6s ease-in-out infinite; }
+.level-grid li.selected::before { background: linear-gradient(160deg, #ffffff, #d8d2c4 50%, #7d776c); }
+@keyframes beacon { 50% { opacity: 0.45; } }
+
+.level-grid .gems { display: flex; gap: 3px; }
+.level-grid .gems i {
+  width: 12px;
+  height: 14px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: rgba(0, 0, 0, 0.45);
+}
+.level-grid .gems i.on { background: linear-gradient(140deg, #fffbe0, #f1c232 50%, #9a6c08); box-shadow: 0 0 0 1px #3b2606; }
 
 .result { background: linear-gradient(180deg, rgba(8, 6, 4, 0) 30%, rgba(8, 6, 4, 0.75)); align-items: end; }
 
@@ -336,12 +360,8 @@ h1 {
 @keyframes pop { from { transform: scale(0); } 70% { transform: scale(1.3); } }
 
 .tip {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 12px;
-  z-index: 5;
-  padding: 14px 16px;
+  margin: 4px 16px 0;
+  padding: 12px 14px;
   border-radius: 18px;
   background: rgba(20, 14, 10, 0.92);
   border: 1px solid rgba(243, 210, 122, 0.4);
@@ -355,7 +375,10 @@ h1 {
 
 .toast {
   position: absolute;
-  top: 10px;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top) + 72px);
+  max-width: calc(100% - 32px);
+  text-align: center;
   left: 50%;
   transform: translateX(-50%) translateY(-8px);
   padding: 8px 14px;
@@ -366,7 +389,7 @@ h1 {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .toast.show { opacity: 1; transform: translateX(-50%); }

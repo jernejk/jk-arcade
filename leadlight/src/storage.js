@@ -1,7 +1,7 @@
 export const STORAGE_KEY = 'leadlight-v1';
 
 export function defaultProgress() {
-  return { unlocked: 1, best: {}, trail: 1, trailCleared: 0, daily: {}, muted: false, calm: null, tipSeen: false };
+  return { unlocked: 1, best: {}, trail: 1, trailCleared: 0, daily: {}, muted: false, calm: null, tipSeen: false, seen: {} };
 }
 
 export function loadProgress(store = globalThis.localStorage) {
@@ -21,10 +21,15 @@ export function saveProgress(progress, store = globalThis.localStorage) {
   } catch {}
 }
 
+export function isUnlocked(progress, n) {
+  return n >= 1 && n <= progress.unlocked;
+}
+
 export function recordWin(progress, level, grade, campaignSize) {
   if (level.kind === 'campaign') {
+    if (level.number > progress.unlocked) return progress;
     progress.best[level.number] = Math.max(progress.best[level.number] || 0, grade);
-    progress.unlocked = Math.min(campaignSize, Math.max(progress.unlocked, level.number + 1));
+    if (level.number === progress.unlocked) progress.unlocked = Math.min(campaignSize, level.number + 1);
   } else if (level.kind === 'trail') {
     if (level.number >= progress.trail) progress.trail = level.number + 1;
     progress.trailCleared = Math.max(progress.trailCleared, level.number);

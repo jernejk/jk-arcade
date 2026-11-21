@@ -2,7 +2,7 @@ import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDa
 import { createGame, tap, undo, hint, cracksLeft, grade } from './game.js';
 import { createRenderer, PIGMENT_COLOURS } from './render.js';
 import { createAudio } from './audio.js';
-import { loadProgress, saveProgress, recordWin } from './storage.js';
+import { loadProgress, saveProgress, recordWin, isUnlocked } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -15,8 +15,15 @@ let game = null;
 let level = null;
 let combo = 0;
 let lastFly = 0;
-let resultTimer = 0;
+let timers = [];
 let toastTimer = 0;
+
+const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+
+function clearTimers() {
+  timers.forEach(clearTimeout);
+  timers = [];
+}
 
 const calm = () => progress.calm ?? reduceMotion;
 audio.setMuted(progress.muted);
@@ -52,8 +59,21 @@ function hashFor(lv) {
   return `#daily-${lv.date}`;
 }
 
+const TIPS = {
+  intro: '<strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.',
+  keystone: '<strong>Keystones</strong> wear a gold-leaded ring. A keystone only leaves once every pane touching it has gone, so clear around it first.',
+  pair: '<strong>Leaded pairs</strong> are joined by a lead bar and leave together. Both arrows need a clear run, or the pair bumps.',
+};
+
+function tipFor(lv) {
+  if (!progress.tipSeen && lv.kind === 'campaign' && lv.number === 1) return 'intro';
+  if (!progress.seen.keystone && lv.tiles.some((t) => t.keystone)) return 'keystone';
+  if (!progress.seen.pair && lv.tiles.some((t) => t.pair)) return 'pair';
+  return null;
+}
+
 function start(spec) {
-  clearTimeout(resultTimer);
+  clearTimers();
   level = levelFor(spec);
   game = createGame(level);
   combo = 0;
@@ -64,13 +84,17 @@ function start(spec) {
   $('level-name').textContent = level.name;
   renderer.setLevel(level);
   updateHud();
-  const firstRun = !progress.tipSeen && level.kind === 'campaign' && level.number === 1;
-  $('tip').hidden = !firstRun;
-  if (firstRun) setTimeout(() => showHint(false), 700);
+  const tip = tipFor(level);
+  $('tip').hidden = !tip;
+  $('tip').dataset.tip = tip || '';
+  if (tip) $('tip-text').innerHTML = TIPS[tip];
+  const current = game;
+  if (tip === 'intro') later(() => current === game && showHint(false), 700);
 }
 
 function restart() {
   if (!level) return;
+  clearTimers();
   start(specOf(level));
   audio.tick();
 }
@@ -104,17 +128,22 @@ function onTap(k) {
   audio.unlock();
   const res = tap(game, k);
   if (res.type === 'none') return;
-  if (!$('tip').hidden && res.type === 'fly') dismissTip();
+  if (!$('tip').hidden && res.type === 'fly' && $('tip').dataset.tip === 'intro') dismissTip();
   if (res.type === 'fly') {
     const now = performance.now();
     combo = now - lastFly < 1600 ? combo + 1 : 0;
     lastFly = now;
-    renderer.fly(res.tile, calm());
+    renderer.fly(res.tiles, calm());
     audio.chime(combo);
+    if (res.tiles.length > 1) setTimeout(() => audio.chime(combo + 2), 70);
     navigator.vibrate?.(8);
   } else {
     combo = 0;
-    renderer.bump(k, res.tile, res.blocker, calm());
+    const blocked = game.tiles.get(res.from);
+    renderer.bump(res.from, blocked, res.blocker, calm());
+    if (res.from !== k) renderer.nudge(k);
+    if (res.reason === 'keystone') toast('Keystone: clear every pane touching it first');
+    else if (res.reason === 'pair') toast('Leaded pair: its partner is blocked');
     renderer.crack(`${level.id}/crack/${game.bumps}`);
     audio.bump();
     audio.crack();
@@ -129,23 +158,26 @@ function finishWin() {
   const g = grade(game);
   recordWin(progress, level, g, CAMPAIGN_SIZE);
   persist();
-  resultTimer = setTimeout(() => {
+  const current = game;
+  later(() => {
     renderer.win(calm());
     audio.win();
   }, calm() ? 200 : 650);
-  setTimeout(() => showResult(true, g), calm() ? 900 : 2300);
+  later(() => showResult(current, true, g), calm() ? 900 : 2300);
 }
 
 function finishLoss() {
-  setTimeout(() => {
+  const current = game;
+  later(() => {
     renderer.lose(calm());
     audio.lose();
   }, 260);
-  resultTimer = setTimeout(() => showResult(false, 0), 1300);
+  later(() => showResult(current, false, 0), 1300);
 }
 
-function showResult(won, g) {
-  if (!game || (won ? game.status !== 'won' : game.status !== 'lost')) return;
+function showResult(current, won, g) {
+  if (!game || current !== game || !$('home').hidden || !$('levels').hidden) return;
+  if (won ? game.status !== 'won' : game.status !== 'lost') return;
   const gradeEl = $('result-grade');
   gradeEl.replaceChildren();
   gradeEl.hidden = !won;
@@ -181,7 +213,7 @@ function showResult(won, g) {
     $('result-again').textContent = 'Play again';
   } else {
     $('result-title').textContent = 'The frame gave way';
-    $('result-text').textContent = 'Every pane you tried was blocked. Look for an arrow with nothing in front of it.';
+    $('result-text').textContent = 'The frame gave way after too many bumps. Look for an arrow with nothing in front of it, and clear around keystones first.';
     next.hidden = true;
     $('result-again').textContent = 'Try again';
   }
@@ -209,13 +241,15 @@ function doUndo() {
 }
 
 function dismissTip() {
+  const tip = $('tip').dataset.tip;
   $('tip').hidden = true;
-  progress.tipSeen = true;
+  if (tip === 'intro') progress.tipSeen = true;
+  else if (tip) progress.seen = { ...progress.seen, [tip]: true };
   persist();
 }
 
 function openHome() {
-  clearTimeout(resultTimer);
+  clearTimers();
   const next = Math.min(progress.unlocked, CAMPAIGN_SIZE);
   const allDone = Object.keys(progress.best).length >= CAMPAIGN_SIZE;
   $('continue-btn').innerHTML = allDone ? `Trail <small>window ${progress.trail}</small>` : `Continue <small>window ${next}</small>`;
@@ -230,6 +264,7 @@ function openHome() {
 }
 
 function openLevels() {
+  clearTimers();
   const grid = $('level-grid');
   grid.replaceChildren();
   const pigments = Object.values(PIGMENT_COLOURS);
@@ -248,8 +283,10 @@ function openLevels() {
       b.textContent = n;
     } else {
       const best = progress.best[n] || 0;
-      if (n === progress.unlocked && !best) b.classList.add('current');
-      b.innerHTML = `<span>${n}</span><span class="pips">${'◆'.repeat(best)}${'◇'.repeat(best ? 3 - best : 0)}</span>`;
+      if (n === progress.unlocked && !best) li.classList.add('current');
+      if (level?.kind === 'campaign' && level.number === n) li.classList.add('selected');
+      const gems = best ? `<span class="gems">${[0, 1, 2].map((i) => `<i class="${i < best ? 'on' : ''}"></i>`).join('')}</span>` : '';
+      b.innerHTML = `<span>${n}</span>${gems}`;
       b.setAttribute('aria-label', `Window ${n}${best ? `, ${best} of 3 gems` : ''}`);
       b.onclick = () => start({ kind: 'campaign', n });
     }
@@ -260,6 +297,10 @@ function openLevels() {
 }
 
 function syncToggles() {
+  const hudMute = $('mute-btn');
+  hudMute.classList.toggle('muted', progress.muted);
+  hudMute.setAttribute('aria-label', progress.muted ? 'Sound off (M)' : 'Sound on (M)');
+  hudMute.setAttribute('aria-pressed', String(!progress.muted));
   const s = $('sound-btn');
   s.textContent = progress.muted ? 'Sound off' : 'Sound on';
   s.setAttribute('aria-pressed', String(!progress.muted));
@@ -298,7 +339,12 @@ async function shareDaily() {
 function route() {
   const h = location.hash.slice(1);
   let m;
-  if ((m = /^window-(\d+)$/.exec(h)) && +m[1] >= 1 && +m[1] <= CAMPAIGN_SIZE) return start({ kind: 'campaign', n: +m[1] });
+  if ((m = /^window-(\d+)$/.exec(h)) && +m[1] >= 1 && +m[1] <= CAMPAIGN_SIZE) {
+    if (isUnlocked(progress, +m[1])) return start({ kind: 'campaign', n: +m[1] });
+    openLevels();
+    toast(`Window ${m[1]} is still locked`);
+    return;
+  }
   if ((m = /^trail-(\d+)$/.exec(h)) && +m[1] >= 1) return start({ kind: 'trail', n: +m[1] });
   if ((m = /^daily-(.+)$/.exec(h)) && isDateId(m[1])) return start({ kind: 'daily', date: m[1] });
   if (h === 'daily') return start({ kind: 'daily', date: localDateId() });
@@ -313,6 +359,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 $('menu-btn').onclick = openHome;
+$('mute-btn').onclick = toggleMute;
 $('undo-btn').onclick = doUndo;
 $('hint-btn').onclick = () => showHint(true);
 $('restart-btn').onclick = restart;
@@ -349,7 +396,7 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === 'escape') {
     if (!$('levels').hidden) openHome();
-    else if (!$('home').hidden && game) show(null);
+    else if (!$('home').hidden && game?.status === 'playing') show(null);
     else openHome();
     return;
   }
