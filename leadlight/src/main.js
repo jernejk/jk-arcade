@@ -37,7 +37,6 @@ function persist() {
 function show(id) {
   for (const s of ['home', 'levels', 'result']) $(s).hidden = s !== id;
   const playing = id === null || id === 'result';
-  panes.hidden = id !== null || game?.status !== 'playing';
   $('hud').inert = $('controls').inert = id === 'result';
   $('hud').hidden = !playing;
   $('controls').hidden = !playing;
@@ -45,8 +44,13 @@ function show(id) {
   syncReserve();
 }
 
+function syncPaneVisibility() {
+  panes.hidden = game?.status !== 'playing' || !$('tip').hidden || !$('home').hidden || !$('levels').hidden;
+}
+
 function syncReserve() {
   const tip = $('tip');
+  syncPaneVisibility();
   renderer.reserve(tip.hidden ? 0 : tip.getBoundingClientRect().height + 12);
   sizePaneControls();
 }
@@ -180,7 +184,7 @@ function updatePaneControls() {
     return button;
   });
   panes.replaceChildren(...buttons);
-  panes.hidden = game.status !== 'playing' || !$('home').hidden || !$('levels').hidden;
+  syncPaneVisibility();
   const next = buttons.find((b) => b.dataset.id === active?.dataset.id)
     ?? buttons[Math.max(0, Math.min(index, buttons.length - 1))];
   if (next) {
@@ -338,8 +342,9 @@ function showHint(count = true) {
     return;
   }
   if (!count) game.hintsUsed--;
-  renderer.showHint(game.tiles.get(h.key));
-  $('move-status').textContent = `Hint: try the pane at ${h.key}.`;
+  const tile = game.tiles.get(h.key);
+  renderer.showHint(tile);
+  $('move-status').textContent = `Hint: try the ${tile.colour} pane at ${h.key}, pointing ${DIR_NAMES[tile.dir]}.`;
   if (count) audio.tick();
 }
 
@@ -358,6 +363,7 @@ function doUndo() {
 }
 
 function dismissTip() {
+  const fromTipButton = document.activeElement === $('tip-ok');
   const tips = $('tip').dataset.tip.split(',').filter(Boolean);
   $('tip').hidden = true;
   $('tip').dataset.tip = '';
@@ -366,6 +372,7 @@ function dismissTip() {
     else progress.seen = { ...progress.seen, [tip]: true };
   }
   syncReserve();
+  if (fromTipButton) panes.querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
   persist();
 }
 
@@ -473,11 +480,35 @@ function route() {
   openHome();
 }
 
-canvas.addEventListener('pointerdown', (e) => {
-  if (e.button > 0) return;
-  e.preventDefault();
-  const k = renderer.pick(e.clientX, e.clientY);
-  if (k) onTap(k);
+// A second contact anywhere cancels the candidate, even if it lands outside the canvas.
+let pendingTap = null;
+const TAP_SLOP = 8; // CSS pixels
+
+window.addEventListener('pointerdown', (e) => {
+  const canStart = !pendingTap && e.target === canvas && e.isPrimary && e.button === 0;
+  pendingTap = null;
+  if (!canStart) return;
+  const key = renderer.pick(e.clientX, e.clientY);
+  if (!game?.tiles.has(key)) return;
+  pendingTap = { id: e.pointerId, x: e.clientX, y: e.clientY, key, game };
+  canvas.setPointerCapture(e.pointerId);
+}, true);
+
+function cancelIfDragged(e) {
+  if (pendingTap?.id === e.pointerId &&
+      Math.hypot(e.clientX - pendingTap.x, e.clientY - pendingTap.y) > TAP_SLOP) pendingTap = null;
+}
+
+canvas.addEventListener('pointermove', cancelIfDragged);
+canvas.addEventListener('lostpointercapture', () => { pendingTap = null; });
+canvas.addEventListener('pointercancel', () => { pendingTap = null; });
+canvas.addEventListener('pointerup', (e) => {
+  cancelIfDragged(e);
+  if (pendingTap?.id !== e.pointerId) return;
+  const tap = pendingTap;
+  pendingTap = null;
+  if (tap.game === game && document.elementFromPoint(e.clientX, e.clientY) === canvas &&
+      renderer.pick(e.clientX, e.clientY) === tap.key) onTap(tap.key);
 });
 
 $('menu-btn').onclick = openHome;

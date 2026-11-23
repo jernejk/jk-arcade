@@ -129,7 +129,6 @@ button { font: inherit; color: inherit; }
   height: 100%;
   display: block;
   cursor: pointer;
-  touch-action: none;
 }
 
 .bar.bottom {

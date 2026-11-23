@@ -23,8 +23,8 @@ after(async () => {
 
 const PLAYED = { unlocked: 24, tipSeen: true, seen: { keystone: true, pair: true, weighted: true } };
 
-async function open(hash, { viewport = { width: 390, height: 844 }, progress = PLAYED } = {}) {
-  const page = await browser.newPage({ viewport, hasTouch: true });
+async function open(hash, { viewport = { width: 390, height: 844 }, progress = PLAYED, isMobile = false } = {}) {
+  const page = await browser.newPage({ viewport, hasTouch: true, isMobile });
   if (progress) {
     await page.addInitScript((data) => {
       if (!localStorage.getItem('leadlight-v1')) localStorage.setItem('leadlight-v1', data);
@@ -89,6 +89,12 @@ test('keyboard undo, hint and restart work', async (t) => {
   assert.equal(await page.evaluate((k) => window.__leadlight.game.tiles.has(k), first), true);
   await page.keyboard.press('h');
   assert.equal(await page.evaluate(() => window.__leadlight.game.hintsUsed), 1);
+  const hintText = await page.textContent('#move-status');
+  const match = /^Hint: try the (\w+) pane at ([-\d]+,[-\d]+), pointing ([\w-]+)\.$/.exec(hintText);
+  assert.ok(match, hintText);
+  const pane = page.locator(`#pane-controls button[data-key="${match[2]}"]`);
+  const label = await pane.getAttribute('aria-label');
+  assert.ok(label.startsWith(match[1]) && label.includes(`pointing ${match[3]}`), label);
   await page.keyboard.press('r');
   assert.equal(await page.evaluate(() => window.__leadlight.game.hintsUsed), 0);
   await page.keyboard.press('Escape');
@@ -305,4 +311,75 @@ test('a keyboard player can discover, select and clear every pane', async (t) =>
   assert.equal(await page.isVisible('#result-next'), true);
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+test('a single tap plays on release, a drag is ignored and a board pinch zooms without playing', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-1', { isMobile: true });
+  t.after(() => page.close());
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  const nextPoint = () => page.evaluate(() => {
+    const { level, game, pixelOf } = window.__leadlight;
+    return pixelOf(level.solution[game.history.length]);
+  });
+  const state = () => page.evaluate(() => {
+    const { game } = window.__leadlight;
+    return [game.history.length, game.tiles.size, game.cracks];
+  });
+  const initial = await state();
+  let point = await nextPoint();
+  await touch('touchStart', [point]);
+  assert.deepEqual(await state(), initial);
+  await touch('touchEnd', []);
+  const afterTap = [1, initial[1] - 1, 0];
+  assert.deepEqual(await state(), afterTap);
+
+  point = await nextPoint();
+  await touch('touchStart', [point]);
+  await touch('touchMove', [{ ...point, y: point.y + 40 }]);
+  await touch('touchMove', [point]);
+  await touch('touchEnd', []);
+  assert.deepEqual(await state(), afterTap);
+
+  await touch('touchStart', [point]);
+  await touch('touchCancel', []);
+  assert.deepEqual(await state(), afterTap);
+
+  // Start one finger on a playable pane, then spread two fingers around its left edge.
+  const finger = (x, id) => ({ x, y: point.y, id });
+  await touch('touchStart', [finger(point.x, 1)]);
+  await touch('touchStart', [finger(point.x, 1), finger(point.x - 60, 2)]);
+  for (let spread = 5; spread <= 50; spread += 5) {
+    await touch('touchMove', [finger(point.x + spread, 1), finger(point.x - 60 - spread, 2)]);
+  }
+  await touch('touchEnd', []);
+  await page.waitForFunction(() => visualViewport.scale > 1.2, null, { timeout: 3000 });
+  assert.deepEqual(await state(), afterTap);
+  assert.deepEqual(errors, []);
+});
+
+test('Window 23 keyboard entry dismisses the rule tip before a pane can take focus', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23', {
+    viewport: { width: 360, height: 640 },
+    progress: { unlocked: 24, tipSeen: true, seen: {} },
+  });
+  t.after(() => page.close());
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#tip-ok:focus').count(), 1);
+  assert.equal(await page.getByRole('toolbar').count(), 0);
+  await page.keyboard.press('Enter');
+  assert.equal(await page.isHidden('#tip'), true);
+  assert.equal(await page.locator('#pane-controls button:focus').count(), 1);
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#pane-controls button:last-child:focus').count(), 1);
+  assert.deepEqual(await page.evaluate(() => {
+    const { game } = window.__leadlight;
+    return [game.cracks, game.history.length];
+  }), [0, 0]);
+  assert.deepEqual(errors, []);
 });
