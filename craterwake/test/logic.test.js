@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { collapseDetached, stepShard, recoilTank } from '../src/destruction.js';
 import { World, SEA, M, settle } from '../src/world.js';
+import { SalvoEffects } from '../src/salvo-effects.js';
+import { Scene } from '../vendor/three.module.min.js';
 import { greedyMesh } from '../src/mesher.js';
 import {
   Match,
@@ -14,6 +16,7 @@ import {
   preview,
   launch,
   gridHit,
+  impactLabel,
   GRAVITY,
 } from '../src/duel.js';
 const fixed = () => makeRound(824);
@@ -91,8 +94,18 @@ test('flat Pebble hits the near cover row and splinters it before reaching Rivet
   assert.equal(s.hit, 'terrain');
   assert.equal(s.p.z, 44);
   const result = resolve(r, 0, 0, s);
+  assert.equal(impactLabel(s, result), 'Cover hit');
   assert.ok(result.debris.some((p) => [M.teal, M.brass].includes(p.m)));
   assert.equal(r.tanks[1].hp, 100);
+});
+test('an exposed basalt face reports terrain contact from the struck voxel', () => {
+  const r = fixed();
+  const aim = { ...freshAim(), angle: 5 };
+  const cover = fly(r, 0, aim);
+  r.world.set(Math.floor(cover.p.x), Math.floor(cover.p.y), 44, M.basalt);
+  const shot = fly(r, 0, aim);
+  assert.equal(shot.material, M.basalt);
+  assert.equal(impactLabel(shot, { blasts: [], debris: [] }), 'Terrain hit');
 });
 test('a Corkscrew cuts a continuous six-block bore through a thick barrier', () => {
   const r = fixed(),
@@ -131,6 +144,7 @@ test('water miss stops at the sea and leaves terrain and hulls intact', () => {
   assert.equal(s.p.y, SEA);
   const result = resolve(r, 0, 0, s);
   assert.deepEqual(result.damage, [0, 0]);
+  assert.equal(impactLabel(s, result), 'Water miss');
   assert.equal(r.world.checksum(), before);
 });
 test('a direct Pebble knocks 18 off the target hull', () => {
@@ -387,4 +401,19 @@ test('Skipper keeps one chase path through two surface rebounds and stops at a v
   assert.equal(s.hit, 'terrain');
   assert.deepEqual(fly(r, 0, a, false).p, s.p);
   assert.equal(fly(r, 0, { ...freshAim(), angle: 5, ammo: 3 }).skips.length, 0);
+});
+
+test('a stalled debris frame advances at most two collision steps', () => {
+  const round = fixed();
+  const shot = fly(round, 0, freshAim());
+  const result = resolve(round, 0, 0, shot);
+  const effects = new SalvoEffects(new Scene());
+  function positions(dt) {
+    effects.burst(round.world, shot, result);
+    effects.shardsFrame(round.world, dt, false, true, 0.4);
+    return effects.bodies.map(({ x, y, z }) => [x, y, z]);
+  }
+  const twoSteps = positions(2 / 60);
+  assert.notDeepEqual(positions(1 / 60), twoSteps);
+  assert.deepEqual(positions(0.1), twoSteps);
 });

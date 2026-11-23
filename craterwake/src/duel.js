@@ -1,5 +1,5 @@
 import { chainAndCollapse, recoilTank } from './destruction.js';
-import { World, random, clamp, SEA } from './world.js';
+import { World, random, clamp, SEA, M } from './world.js';
 
 export const DT = 1 / 120,
   GRAVITY = 22,
@@ -72,8 +72,15 @@ export function gridHit(world, a, b) {
   let tz = dz ? ((sz > 0 ? z + 1 : z) - a.z) / dz : Infinity;
   let t = 0;
   while (t <= 1) {
-    if (world.get(x, y, z))
-      return { t, x: a.x + t * dx, y: a.y + t * dy, z: a.z + t * dz };
+    const material = world.get(x, y, z);
+    if (material) {
+      return {
+        material, t,
+        x: a.x + t * dx,
+        y: a.y + t * dy,
+        z: a.z + t * dz,
+      };
+    }
     t = Math.min(tx, ty, tz);
     if (tx === t) {
       x += sx;
@@ -96,6 +103,7 @@ export function fly(round, shooter, aim, record = true) {
     wind = round.wind;
   let p = origin,
     hit = 'water',
+    material = M.air,
     direct = null;
   const path = record ? [p] : null;
   const skips = [];
@@ -111,6 +119,7 @@ export function fly(round, shooter, aim, record = true) {
     if (wall && wall.y >= SEA) {
       p = { x: wall.x, y: wall.y, z: wall.z };
       hit = 'terrain';
+      material = wall.material;
     } else if (
       Math.abs(next.x - target.x) <= 1.35 &&
       Math.abs(next.z - target.z) <= 1.55 &&
@@ -145,8 +154,25 @@ export function fly(round, shooter, aim, record = true) {
     if (record) path.push(p);
     break;
   }
-  return { p, path, hit, direct, skips, vector: norm(v) };
+  return { p, path, hit, material, direct, skips, vector: norm(v) };
 }
+// Use the struck voxel before the crater removes it, including hits on a block face.
+export function impactLabel(shot, result) {
+  if (shot.hit === 'terrain') {
+    return [M.teal, M.cream, M.rust, M.brass, M.spring].includes(shot.material)
+      ? 'Cover hit'
+      : 'Terrain hit';
+  }
+  if (shot.hit === 'tank') return 'Hull hit';
+  // Gull bombs can land ashore even when the targeting flare splashed down.
+  if (
+    result.blasts.some((p) => p.y > SEA) ||
+    result.debris.some((p) => p.y >= SEA)
+  )
+    return 'Terrain hit';
+  return result.damage.some(Boolean) ? 'Water impact' : 'Water miss';
+}
+
 export const windFor = (rng) => {
   const az = rng() * Math.PI * 2,
     strength = 0.5 + rng() * 4.5;

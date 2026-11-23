@@ -238,6 +238,7 @@ test('expiry fires the selected shot and a water miss gets a short splash', asyn
   assert.equal((await state(p)).phase, 'shell-cam');
   await advance(p, 5000);
   assert.equal(await p.locator('#beat').textContent(), 'Splash');
+  assert.match(await p.textContent('#feedback'), /^Water miss\b/);
   assert.equal((await state(p)).checksum, before);
   await advance(p, 820);
   assert.equal((await state(p)).phase, 'their-shot');
@@ -422,6 +423,7 @@ test('390 × 844 shows the complete opening and rival guides, then frames the st
     { polling: 50 },
   );
   await p.clock.runFor(750);
+  assert.match(await p.textContent('#feedback'), /Cover hit/);
   const bore = await p.evaluate(() => window.readBore());
   assert.ok(
     bore.alignment < -0.93,
@@ -450,6 +452,13 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
         field = this;
         return draw.apply(this, args);
       };
+      window.depthMatchesCrater = () => {
+        const { data, width } = field.depth.image;
+        return data.every((value, i) => {
+          const top = field.round.world.top(i % width, Math.floor(i / width));
+          return value === Math.round((top * 255) / 40);
+        });
+      };
       window.impactStats = () => {
         const e = field.effects;
         return {
@@ -477,6 +486,7 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
     await advance(p, 4000);
     await p.clock.runFor(360);
     const early = await p.evaluate(() => window.impactStats());
+    assert.ok(await p.evaluate(() => window.depthMatchesCrater()));
     assert.match(await p.textContent('#beat'), /chain ×2/i);
     if (reducedMotion === 'reduce') {
       assert.deepEqual(
@@ -487,9 +497,9 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
       assert.ok(early.waves >= 2 && early.waves <= 7);
       assert.ok(
         early.shards > 0 &&
-          early.shards <= 144 &&
+          early.shards <= 96 &&
           early.puffs > 0 &&
-          early.puffs <= 48,
+          early.puffs <= 36,
       );
       assert.ok(early.shake > 0 && early.shake <= 6);
       assert.ok((await state(p)).calls <= 70);

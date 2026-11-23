@@ -3,6 +3,7 @@ import {
   fly,
   resolve,
   gullTargets,
+  impactLabel,
   gunner,
   freshAim,
   adjust,
@@ -374,6 +375,8 @@ function fire() {
   const a = current();
   if (!match.round.tanks[actor].stock[a.ammo]) a.ammo = 0;
   match.round.tanks[actor].stock[a.ammo]--;
+  $('#hp0').classList.remove('hit');
+  $('#hp1').classList.remove('hit');
   shot = fly(match.round, actor, a);
   flightTime = 0;
   skipsSeen = 0;
@@ -405,7 +408,7 @@ function detonate() {
     a = current();
   result = resolve(r, actor, a.ammo, shot);
   if (shot.direct === 1 && actor === 0) match.medals.add('Bullseye');
-  if (r.world.dirty.size) field.sync();
+  if (r.world.dirty.size) field.sync(result.debris);
   if (!calm()) field.effects.burst(r.world, shot, result);
   else field.effects.clear();
   echoesPlayed = 0;
@@ -423,22 +426,19 @@ function detonate() {
     .filter(Boolean)
     .join(' · ');
   const name = actor ? 'Kettle' : 'Rivet';
-  feedback = target.sunk
+  const label = impactLabel(shot, result);
+  const damage = target.sunk
     ? name + ' sank!'
     : result.damage[1 - actor]
       ? name + ' −' + result.damage[1 - actor] + '%'
-      : (splash ? 'Water miss' : 'Landfall') + (where ? ' · ' + where : '');
+      : '';
+  feedback = [label, damage || where].filter(Boolean).join(' · ');
   if (result.echoes.length)
     feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
   if (!actor) lastSalvo = 'Last shot · ' + feedback;
   play(splash ? 'splash' : 'impact');
   result.damage.forEach((n, i) => {
-    const h = $('#hp' + i);
-    h.classList.remove('hit');
-    if (n) {
-      void h.offsetWidth;
-      h.classList.add('hit');
-    }
+    if (n) $('#hp' + i).classList.add('hit');
   });
   shake(splash ? 2 : 4);
   if (delayed) update();

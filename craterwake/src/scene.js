@@ -1,7 +1,7 @@
 import { SalvoEffects } from './salvo-effects.js';
 import * as T from '../vendor/three.module.min.js';
 import { greedyMesh } from './mesher.js';
-import { SEA, WIDTH, LENGTH, random, clamp } from './world.js';
+import { SEA, WIDTH, HEIGHT, LENGTH, random, clamp } from './world.js';
 import { RAD, DT, launch, preview } from './duel.js';
 import { Batch, makeToy, backdrop, islandProps } from './toys.js';
 
@@ -300,7 +300,7 @@ export class Battlefield {
     this.depth = new T.DataTexture(data, WIDTH, LENGTH, T.RedFormat);
     this.depth.magFilter = this.depth.minFilter = T.LinearFilter;
     this.water.material.uniforms.depthMap.value = this.depth;
-    this.sync(true);
+    this.sync();
     this.resetCamera = true;
   }
   replaceChunk(id, { positions, colors, materials, indices }) {
@@ -329,10 +329,10 @@ export class Battlefield {
     this.scene.add(mesh);
     this.chunks.set(id, mesh);
   }
-  sync(immediate = false) {
+  sync(removed) {
     const world = this.round.world,
       ids = [...world.dirty];
-    if (this.worker && !immediate) {
+    if (this.worker && removed) {
       const revision = ++this.revision,
         cells = world.cells.slice();
       for (const id of ids) this.pending.set(id, revision);
@@ -348,17 +348,26 @@ export class Battlefield {
       }
     }
     world.dirty.clear();
-    const columns = new Set(ids.map((id) => (id % 3) + 3 * Math.floor(id / 9)));
-    for (const c of columns) {
-      const left = (c % 3) * 16,
-        front = Math.floor(c / 3) * 16;
-      for (let z = front; z < front + 16; z++)
-        for (let x = left; x < left + 16; x++)
-          this.depth.image.data[z * WIDTH + x] = Math.round(
-            (world.top(x, z) * 255) / 40,
-          );
+    const depth = this.depth.image.data;
+    if (removed) {
+      // Only columns that lost their old top voxel can change the sea shading.
+      let changed = false;
+      for (const p of removed) {
+        const x = Math.floor(p.x),
+          z = Math.floor(p.z),
+          i = z * WIDTH + x,
+          oldTop = Math.floor(p.y) + 1;
+        if (depth[i] !== Math.round(oldTop * 255 / HEIGHT)) continue;
+        depth[i] = Math.round(world.top(x, z, oldTop - 1) * 255 / HEIGHT);
+        changed = true;
+      }
+      if (changed) this.depth.needsUpdate = true;
+    } else {
+      for (let z = 0; z < LENGTH; z++)
+        for (let x = 0; x < WIDTH; x++)
+          depth[z * WIDTH + x] = Math.round(world.top(x, z) * 255 / HEIGHT);
+      this.depth.needsUpdate = true;
     }
-    this.depth.needsUpdate = true;
   }
   resize(dt) {
     if (dt > 0.018) {
@@ -501,7 +510,8 @@ export class Battlefield {
     this.pips.visible =
       aiming && (phase !== 'their-shot' || calm || elapsed >= 0.6);
     this.effects.cloud.count = this.effects.waves.count = 0;
-    this.effects.shardsFrame(this.round.world, dt, calm, orbit);
+    const blastAge = orbit ? elapsed - (aim.ammo === 2 ? 0.58 : 0) : undefined;
+    this.effects.shardsFrame(this.round.world, dt, calm, orbit, blastAge);
     this.bombs.count = 0;
     this.birds.forEach((b) => (b.visible = false));
     if (flying) {
@@ -591,7 +601,6 @@ export class Battlefield {
             ),
           );
       }
-      const blastAge = elapsed - (aim.ammo === 2 ? 0.58 : 0);
       if (!calm && blastAge >= 0)
         this.effects.atmosphere(blastAge, this.round.wind, result.settles);
       if (aim.ammo === 2)
