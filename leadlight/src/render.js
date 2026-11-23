@@ -683,8 +683,10 @@ export function createRenderer(canvas) {
       const to = px(bq, br);
       const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
       fx.bumps.set(k, { tile, t0: now, v: { x: (to.x - from.x) / len, y: (to.y - from.y) / len } });
-      fx.shakes.set(blockerKey, now + 90);
-      if (!calm) fx.shake = { t0: now, mag: view.size * 0.12 };
+      if (!calm) {
+        fx.shakes.set(blockerKey, now + 90);
+        fx.shake = { t0: now, mag: view.size * 0.12 };
+      }
     },
     nudge(k) {
       fx.shakes.set(k, performance.now());
@@ -710,6 +712,7 @@ export function createRenderer(canvas) {
       if (blockerKey) fx.shakes.set(blockerKey, performance.now());
     },
     appear(k) {
+      fx.flying = fx.flying.filter(({ tile }) => key(tile.q, tile.r) !== k);
       fx.appear.set(k, performance.now());
     },
     showHint(tile) {
@@ -772,7 +775,7 @@ export function createRenderer(canvas) {
         if (sh !== undefined) {
           const t = (now - sh) / 320;
           if (t >= 1) fx.shakes.delete(k);
-          else if (t > 0) {
+          else if (!calm && t > 0) {
             const v = dirVector(tile.dir);
             const amp = view.size * 0.07 * (1 - t) * Math.sin(t * 38);
             x += -v.y * amp;

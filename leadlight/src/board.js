@@ -79,8 +79,9 @@ export function analyseMove(bounds, mask, tiles, k) {
   if (t.weighted) {
     const stop = weightedStop(bounds, mask, tiles, t);
     if (stop) return { type: 'slide', from: k, to: stop };
-    const b = firstBlocker(bounds, tiles, t.q, t.r, t.dir);
-    if (b) return { type: 'bump', key: b, reason: 'path', from: k };
+    const [dq, dr] = DIRS[t.dir];
+    const b = key(t.q + dq, t.r + dr);
+    if (mask.has(b) && tiles.has(b)) return { type: 'bump', key: b, reason: 'path', from: k };
     return { type: 'remove', keys: [k] };
   }
   const block = moveBlocker(bounds, tiles, k);

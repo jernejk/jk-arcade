@@ -18,7 +18,7 @@ export function startServer() {
       const url = new URL(req.url, 'http://127.0.0.1');
       const rel = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
       const file = path.join(root, rel);
-      if (!file.startsWith(root) || rel.includes('node_modules')) throw new Error('forbidden');
+      if (!file.startsWith(root + path.sep) || rel.includes('node_modules')) throw new Error('forbidden');
       const body = await readFile(file);
       res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
       res.end(body);

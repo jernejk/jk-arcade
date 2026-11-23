@@ -1,3 +1,4 @@
+import { DIR_NAMES, toPixel } from './hex.js';
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from './levels.js';
 import { createGame, tap, undo, hint, cracksLeft, grade, solveFrom } from './game.js';
 import { createRenderer, PIGMENT_COLOURS } from './render.js';
@@ -7,6 +8,7 @@ import { loadProgress, saveProgress, recordWin, isUnlocked } from './storage.js'
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
 const renderer = createRenderer(canvas);
+const panes = $('pane-controls');
 const audio = createAudio();
 const progress = loadProgress();
 const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -35,6 +37,8 @@ function persist() {
 function show(id) {
   for (const s of ['home', 'levels', 'result']) $(s).hidden = s !== id;
   const playing = id === null || id === 'result';
+  panes.hidden = id !== null || game?.status !== 'playing';
+  $('hud').inert = $('controls').inert = id === 'result';
   $('hud').hidden = !playing;
   $('controls').hidden = !playing;
   $('tip').hidden = id !== null || !$('tip').dataset.tip;
@@ -44,6 +48,7 @@ function show(id) {
 function syncReserve() {
   const tip = $('tip');
   renderer.reserve(tip.hidden ? 0 : tip.getBoundingClientRect().height + 12);
+  sizePaneControls();
 }
 
 function toast(text, { ms = 1600, low = false } = {}) {
@@ -75,13 +80,13 @@ const TIPS = {
   intro: '<strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.',
   keystone: '<strong>Keystones</strong> wear a gold-leaded ring. A keystone only leaves once every pane touching it has gone, so clear around it first.',
   pair: '<strong>Leaded pairs</strong> are joined by a lead bar and leave together. Both arrows need a clear run, or the pair bumps.',
-  weighted: '<strong>Weighted panes</strong> (lead band and weight) slide until they hit a pane or the rim, then lift out with a second tap. Slide one too early and it can wall others in.',
+  weighted: '<strong>Weighted panes</strong> (lead band and weight) stop before the next pane. Clear the way, slide to the rim, then tap to lift out. Slide one too early and it can wall others in.',
 };
 
 const SHORT_TIPS = {
   keystone: '<strong>Keystones</strong> (gold ring) leave only once nothing touches them.',
   pair: '<strong>Leaded pairs</strong> leave together, so both arrows need a clear run.',
-  weighted: '<strong>Weighted panes</strong> slide until they hit something, then lift out from the rim.',
+  weighted: '<strong>Weighted panes</strong> stop before blockers. Clear the way to the rim, then tap there to lift out.',
 };
 
 function tipsFor(lv) {
@@ -109,6 +114,9 @@ function start(spec) {
     level.kind === 'campaign' ? `Window ${level.number}/${CAMPAIGN_SIZE}` : level.kind === 'trail' ? `Trail · ${level.number}` : `Today · ${prettyDate(level.date)}`;
   $('level-name').textContent = level.name;
   renderer.setLevel(level);
+  sizePaneControls();
+  $('move-status').textContent = '';
+  updatePaneControls();
   updateHud();
   const current = game;
   if (tips[0] === 'intro') later(() => current === game && showHint(false), 700);
@@ -145,6 +153,56 @@ function updateHud(hitIndex = -1) {
   $('undo-btn').disabled = !game.history.length || game.status !== 'playing';
 }
 
+function sizePaneControls() {
+  const { ox, oy, size } = renderer.view;
+  panes.style.left = `${ox}px`;
+  panes.style.top = `${oy}px`;
+  panes.style.fontSize = `${size}px`;
+}
+
+function updatePaneControls() {
+  const active = panes.querySelector('[tabindex="0"]');
+  const focused = active && document.activeElement === active;
+  const index = Array.from(panes.children).indexOf(active);
+  const buttons = [...game.tiles.values()].sort((a, b) => a.r - b.r || a.q - b.q).map((tile) => {
+    const button = document.createElement('button');
+    const k = `${tile.q},${tile.r}`;
+    const kind = tile.keystone ? ' keystone' : tile.weighted ? ' weighted pane' : ' pane';
+    const pair = tile.pair ? `, paired with ${tile.pair}` : '';
+    button.setAttribute('aria-label', `${tile.colour}${kind} at ${k}, pointing ${DIR_NAMES[tile.dir]}${pair}`);
+    button.dataset.id = tile.id;
+    button.dataset.key = k;
+    button.tabIndex = -1;
+    button.onclick = () => onTap(k);
+    const { x, y } = toPixel(tile.q, tile.r);
+    button.style.left = `${x}em`;
+    button.style.top = `${y}em`;
+    return button;
+  });
+  panes.replaceChildren(...buttons);
+  panes.hidden = game.status !== 'playing' || !$('home').hidden || !$('levels').hidden;
+  const next = buttons.find((b) => b.dataset.id === active?.dataset.id)
+    ?? buttons[Math.max(0, Math.min(index, buttons.length - 1))];
+  if (next) {
+    next.tabIndex = 0;
+    if (focused && !panes.hidden) next.focus({ preventScroll: true });
+  }
+}
+
+panes.addEventListener('keydown', (e) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const buttons = Array.from(panes.children);
+  const i = buttons.indexOf(e.target);
+  const step = e.key === 'ArrowRight' ? 1 : -1;
+  let next = buttons[(i + step + buttons.length) % buttons.length];
+  if (e.key === 'Home') next = buttons[0];
+  if (e.key === 'End') next = buttons.at(-1);
+  e.target.tabIndex = -1;
+  next.tabIndex = 0;
+  next.focus();
+});
+
 function onTap(k) {
   if (!game || game.status !== 'playing') return;
   audio.unlock();
@@ -180,6 +238,11 @@ function onTap(k) {
     audio.crack();
     navigator.vibrate?.([20, 40, 30]);
   }
+  if (res.type !== 'bump' || game.status === 'lost') updatePaneControls();
+  const status = $('move-status');
+  if (res.type === 'bump') status.textContent = `Blocked by ${res.blocker}. ${cracksLeft(game)} cracks left.`;
+  else if (res.type === 'slide') status.textContent = `Pane parked at ${res.to}.`;
+  else status.textContent = `${game.tiles.size} panes left.`;
   updateHud(res.type === 'bump' ? cracksLeft(game) : -1);
   if (game.status === 'won') finishWin();
   else if (game.status === 'lost') finishLoss();
@@ -276,6 +339,7 @@ function showHint(count = true) {
   }
   if (!count) game.hintsUsed--;
   renderer.showHint(game.tiles.get(h.key));
+  $('move-status').textContent = `Hint: try the pane at ${h.key}.`;
   if (count) audio.tick();
 }
 
@@ -287,6 +351,8 @@ function doUndo() {
   else for (const k of res.keys) renderer.appear(k);
   audio.tick();
   combo = 0;
+  updatePaneControls();
+  $('move-status').textContent = `Restored ${res.keys.join(' and ')}.`;
   updateHud();
   if ($('undo-btn').classList.contains('glow')) checkStuck();
 }
@@ -467,7 +533,10 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('hashchange', route);
-new ResizeObserver(() => renderer.resize()).observe($('stage'));
+new ResizeObserver(() => {
+  renderer.resize();
+  sizePaneControls();
+}).observe($('stage'));
 
 function frame(now) {
   renderer.draw(now, game, calm());

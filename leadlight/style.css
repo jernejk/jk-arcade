@@ -410,3 +410,47 @@ body.calm *, body.calm *::before, body.calm *::after { animation: none !importan
   .name { font-size: 22px; }
   .btn.tool { min-height: 62px; font-size: 14px; }
 }
+
+#pane-controls {
+  position: absolute;
+  pointer-events: none;
+}
+
+#pane-controls button {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: inherit;
+  width: 1.5em;
+  height: 1.5em;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+}
+
+#pane-controls button:focus-visible {
+  outline: 3px solid white;
+  box-shadow: 0 0 0 6px #151219;
+}
+
+.stage:has(#pane-controls button:focus-visible)::after {
+  content: "← → Select pane · Enter or Space to move";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+  padding: 2px 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}

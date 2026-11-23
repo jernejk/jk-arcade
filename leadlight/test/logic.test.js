@@ -8,7 +8,8 @@ import { makeRng } from '../src/rng.js';
 import { shapeCells, SHAPE_NAMES } from '../src/shapes.js';
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from '../src/levels.js';
 import { createGame, tap, undo, hint, isFree, grade, solveFrom } from '../src/game.js';
-import { defaultProgress, recordWin, isUnlocked } from '../src/storage.js';
+import { createRenderer } from '../src/render.js';
+import { loadProgress, saveProgress, defaultProgress, recordWin, isUnlocked } from '../src/storage.js';
 import { neighbourKeys } from '../src/board.js';
 
 function line(dirs) {
@@ -398,4 +399,60 @@ test('winning a window unlocks only the next one, in order', () => {
   p.unlocked = 24;
   recordWin(p, { kind: 'campaign', number: 24 }, 3, 24);
   assert.equal(p.unlocked, 24);
+});
+
+test('a weighted pane at a gap leaves even when the mask resumes beyond it', () => {
+  const game = createGame({
+    cells: [[0, 0], [0, 1], [1, 1], [2, 0]],
+    tiles: [{ q: 0, r: 0, dir: 0, weighted: true }, { q: 2, r: 0, dir: 3 }],
+    cracks: 3,
+  });
+  assert.equal(tap(game, '0,0').type, 'fly');
+  assert.equal(tap(game, '2,0').status, 'won');
+  assert.equal(game.cracks, 0);
+});
+
+test('undo cancels only the restored outgoing panes, including a pair', () => {
+  const renderer = createRenderer({ getContext: () => null });
+  const pair = [{ q: 0, r: 0 }, { q: 1, r: 0 }];
+  renderer.fly([{ q: 2, r: 0 }], false);
+  renderer.fly(pair, false);
+  for (const tile of pair) renderer.appear(key(tile.q, tile.r));
+  assert.equal(renderer.busy(), true);
+  renderer.appear('2,0');
+  assert.equal(renderer.busy(), false);
+  renderer.fly(pair, false);
+  renderer.appear('0,0');
+  assert.equal(renderer.busy(), true);
+  renderer.appear('1,0');
+  assert.equal(renderer.busy(), false);
+});
+
+test('progress survives a denied localStorage getter and honours injected stores', (t) => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw new Error('Storage denied'); },
+  });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else delete globalThis.localStorage;
+  });
+  assert.deepEqual(loadProgress(), defaultProgress());
+  saveProgress(defaultProgress());
+  let saved;
+  const store = { setItem: (_, json) => { saved = json; }, getItem: () => saved };
+  const progress = { ...defaultProgress(), muted: true };
+  saveProgress(progress, store);
+  assert.deepEqual(loadProgress(store), progress);
+});
+
+test('invalid saved fields fall back independently and valid records survive', () => {
+  const read = (data) => loadProgress({ getItem: () => JSON.stringify(data) });
+  const empty = read({ best: null, daily: [], seen: false, unlocked: -4, muted: 'yes', trail: 1.2, calm: [] });
+  assert.deepEqual(empty, defaultProgress());
+  recordWin(empty, { kind: 'campaign', number: 1 }, 3, CAMPAIGN_SIZE);
+  assert.equal(empty.best[1], 3);
+  const mixed = read({ unlocked: 3, best: { 1: 3, 2: 'bad' }, daily: { '2026-11-24': 1, bad: 3 }, seen: { pair: true, weighted: 'no' } });
+  assert.deepEqual(mixed, { ...defaultProgress(), unlocked: 3, best: { 1: 3 }, daily: { '2026-11-24': 1 }, seen: { pair: true } });
 });

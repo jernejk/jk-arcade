@@ -72,6 +72,10 @@ test('tapping panes clears a window and shows the result', async (t) => {
   assert.match(await page.textContent('#result-title'), /Window clear/);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('leadlight-v1')));
   assert.equal(saved.best[3], 2);
+  await page.click('#result-menu');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible('#continue-btn'), true);
+  assert.equal(await page.isHidden('#pane-controls'), true);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -243,6 +247,10 @@ test('a tip open at the moment of losing hides behind the loss card', async (t) 
   await page.waitForSelector('#result:not([hidden])', { timeout: 4000 });
   assert.equal(await page.isHidden('#tip'), true);
   assert.match(await page.textContent('#result-text'), /^Too many bumps/);
+  await page.click('#result-menu');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible('#continue-btn'), true);
+  assert.equal(await page.isHidden('#pane-controls'), true);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -274,3 +282,27 @@ for (const viewport of [{ width: 360, height: 640 }, { width: 390, height: 844 }
     await page.close();
   });
 }
+
+test('a keyboard player can discover, select and clear every pane', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-1');
+  const solution = await page.evaluate(() => window.__leadlight.level.solution);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  const focused = page.locator('#pane-controls button:focus');
+  for (const [i, key] of solution.entries()) {
+    const count = await page.locator('#pane-controls button').count();
+    assert.equal(count, solution.length - i);
+    for (let n = 0; n < count && await focused.getAttribute('data-key') !== key; n++) {
+      await page.keyboard.press('ArrowRight');
+    }
+    assert.equal(await focused.getAttribute('data-key'), key);
+    assert.match(await focused.getAttribute('aria-label'), /pane at .+, pointing /);
+    await page.keyboard.press(i % 2 ? 'Space' : 'Enter');
+  }
+  await page.waitForSelector('#result:not([hidden])');
+  assert.equal(await page.isVisible('#result-next'), true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
