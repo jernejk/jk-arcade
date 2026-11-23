@@ -527,3 +527,114 @@ test('reviewing Rules from the pause menu preserves the live window and seen tip
   assert.equal(await page.evaluate(() => localStorage.getItem('leadlight-v1')), saved);
   assert.deepEqual(errors, []);
 });
+
+test('inspection stays steady through selection, disclosure and consecutive explicit commits', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-12', { viewport: { width: 360, height: 640 } });
+  t.after(() => page.close());
+  const centres = () => page.evaluate(() => {
+    const { level, pixelOf } = window.__leadlight;
+    return level.cells.map(([q, r]) => pixelOf(`${q},${r}`));
+  });
+  await page.click('#inspect-btn');
+  const initial = await centres();
+  await tapKey(page, '0,0');
+  assert.deepEqual(await centres(), initial);
+  await page.locator('#inspect-neighbours summary').click();
+  assert.deepEqual(await centres(), initial);
+  await page.click('#inspect-move');
+  assert.equal(await page.getAttribute('#inspect-btn', 'aria-pressed'), 'true');
+  assert.equal(await page.isHidden('#inspect-move'), true);
+  assert.deepEqual(await centres(), initial);
+  const afterFirst = await boardState(page);
+  assert.equal(afterFirst.history.length, 1);
+  await tapKey(page, '0,-1');
+  assert.match(await page.textContent('#inspect-summary'), /Would bump against 0,-2/);
+  assert.deepEqual(await boardState(page), afterFirst);
+  assert.deepEqual(await centres(), initial);
+  await page.click('#inspect-move');
+  assert.equal((await boardState(page)).cracks, afterFirst.cracks + 1);
+  assert.equal(await page.getAttribute('#inspect-btn', 'aria-pressed'), 'true');
+  assert.deepEqual(errors, []);
+});
+
+for (const outcome of ['win', 'loss', 'daily win']) {
+  test(`Tab stays inside the ${outcome} result in both directions`, async (t) => {
+    if (skip) return t.skip(skip);
+    const daily = outcome === 'daily win';
+    const loss = outcome === 'loss';
+    const { page, errors } = await open(daily ? '#daily-2026-11-24' : '#window-1');
+    t.after(() => page.close());
+    await page.evaluate((lose) => {
+      const { game, level, tapKey } = window.__leadlight;
+      if (lose) {
+        for (let n = 0; n < game.maxCracks; n++) tapKey('0,0');
+      } else {
+        level.solution.forEach(tapKey);
+      }
+    }, loss);
+    await page.waitForSelector('#result:not([hidden])');
+    const ids = loss ? ['result-again', 'result-menu'] : ['result-next', ...(daily ? ['result-share'] : []), 'result-again', 'result-menu'];
+    const focused = () => page.evaluate(() => document.activeElement.id);
+    assert.equal(await focused(), ids[0]);
+    for (const id of [...ids.slice(1), ids[0]]) {
+      await page.keyboard.press('Tab');
+      assert.equal(await focused(), id);
+    }
+    for (const id of [...ids].reverse()) {
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await focused(), id);
+    }
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('reload preserves a weighted board, inspection, counters and usable Undo while playing or paused', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-12');
+  t.after(() => page.close());
+  await tapKey(page, '0,0');
+  await tapKey(page, '0,-1');
+  await page.keyboard.press('h');
+  await page.click('#inspect-btn');
+  await tapKey(page, '0,-1');
+  const before = await boardState(page);
+  const preview = await page.textContent('#inspect-summary');
+  assert.deepEqual([before.history.length, before.cracks, before.hints], [1, 1, 1]);
+  await page.reload();
+  assert.deepEqual(await boardState(page), before);
+  assert.equal(await page.getAttribute('#inspect-btn', 'aria-pressed'), 'true');
+  assert.equal(await page.textContent('#inspect-summary'), preview);
+
+  await page.click('#menu-btn');
+  await page.reload();
+  await page.getByRole('button', { name: 'Continue window 12' }).click();
+  assert.deepEqual(await boardState(page), before);
+  await page.click('#undo-btn');
+  const undone = await boardState(page);
+  assert.equal(undone.history.length, 0);
+  assert.ok(undone.tiles.some(([k, tile]) => k === '0,0' && tile.weighted));
+  await page.reload();
+  assert.deepEqual(await boardState(page), undone);
+  await page.click('#restart-btn');
+  await page.reload();
+  const fresh = await boardState(page);
+  assert.deepEqual([fresh.history.length, fresh.cracks, fresh.hints], [0, 0, 0]);
+  assert.deepEqual(errors, []);
+});
+
+test('a finished window discards its previous reload checkpoint', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-1');
+  t.after(() => page.close());
+  const solution = await page.evaluate(() => window.__leadlight.level.solution);
+  await tapKey(page, solution[0]);
+  await page.reload();
+  for (const k of solution.slice(1)) await tapKey(page, k);
+  await page.waitForSelector('#result:not([hidden])');
+  await page.click('#result-menu');
+  await page.reload();
+  assert.equal(await page.isVisible('#home'), true);
+  assert.equal(await page.evaluate(() => window.__leadlight.game), null);
+  assert.deepEqual(errors, []);
+});

@@ -1,5 +1,7 @@
 import { CAMPAIGN_SIZE, isDateId } from './levels.js';
+import { createGame, tap } from './game.js';
 
+const WINDOW_KEY = 'leadlight-active-v1';
 export const STORAGE_KEY = 'leadlight-v1';
 
 export function defaultProgress() {
@@ -59,4 +61,55 @@ export function recordWin(progress, level, grade, campaignSize) {
     progress.daily[level.date] = Math.max(progress.daily[level.date] || 0, grade);
   }
   return progress;
+}
+
+// A reload belongs to this tab. Campaign progress and grades remain in localStorage.
+export function saveActiveWindow(hash, game, inspect, selected) {
+  try {
+    const store = globalThis.sessionStorage;
+    if (game?.status !== 'playing') {
+      store.removeItem(WINDOW_KEY);
+      return;
+    }
+    const moves = game.history.map(record => {
+      if (record.kind === 'slide') return record.from;
+      const { q, r } = record.tiles[0];
+      return `${q},${r}`;
+    });
+    store.setItem(WINDOW_KEY, JSON.stringify({
+      hash, moves, keys: [...game.tiles.keys()], cracks: game.cracks, hints: game.hintsUsed, inspect, selected,
+    }));
+  } catch {}
+}
+
+export function loadActiveWindow() {
+  try {
+    const saved = JSON.parse(globalThis.sessionStorage.getItem(WINDOW_KEY));
+    return typeof saved?.hash === 'string' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+export function replayActiveWindow(level, saved) {
+  if (!saved || !Array.isArray(saved.moves) || !Array.isArray(saved.keys) ||
+      !Number.isInteger(saved.cracks) || saved.cracks < 0 || saved.cracks >= level.cracks ||
+      !Number.isSafeInteger(saved.hints) || saved.hints < 0) return null;
+  const restored = createGame(level);
+  for (const k of saved.moves) {
+    const move = tap(restored, k);
+    if (move.type !== 'slide' && move.type !== 'fly') return null;
+  }
+  // Undo can reinsert tiles at the end. Preserve their order for subsequent searches.
+  if (restored.status !== 'playing' || saved.keys.length !== restored.tiles.size) return null;
+  const ordered = new Map();
+  for (const k of saved.keys) {
+    if (!restored.tiles.has(k)) return null;
+    ordered.set(k, restored.tiles.get(k));
+  }
+  if (ordered.size !== restored.tiles.size) return null;
+  restored.tiles = ordered;
+  restored.cracks = restored.bumps = saved.cracks;
+  restored.hintsUsed = saved.hints;
+  return restored;
 }

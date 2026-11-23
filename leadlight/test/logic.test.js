@@ -9,7 +9,7 @@ import { shapeCells, SHAPE_NAMES } from '../src/shapes.js';
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from '../src/levels.js';
 import { createGame, tap, undo, hint, isFree, grade, solveFrom } from '../src/game.js';
 import { createRenderer } from '../src/render.js';
-import { loadProgress, saveProgress, defaultProgress, recordWin, isUnlocked } from '../src/storage.js';
+import { replayActiveWindow, loadProgress, saveProgress, defaultProgress, recordWin, isUnlocked } from '../src/storage.js';
 import { neighbourKeys } from '../src/board.js';
 
 function line(dirs) {
@@ -455,4 +455,12 @@ test('invalid saved fields fall back independently and valid records survive', (
   assert.equal(empty.best[1], 3);
   const mixed = read({ unlocked: 3, best: { 1: 3, 2: 'bad' }, daily: { '2026-11-24': 1, bad: 3 }, seen: { pair: true, weighted: 'no' } });
   assert.deepEqual(mixed, { ...defaultProgress(), unlocked: 3, best: { 1: 3 }, daily: { '2026-11-24': 1 }, seen: { pair: true } });
+});
+
+test('an invalid saved move or wrong set of pane keys cannot partially restore a game', () => {
+  const level = campaignLevel(1);
+  const snapshot = { moves: [], keys: [...createGame(level).tiles.keys()], cracks: 0, hints: 0 };
+  assert.equal(replayActiveWindow(level, { ...snapshot, moves: [...level.solution.slice(0, 1), '99,99'] }), null);
+  assert.equal(replayActiveWindow(level, { ...snapshot, keys: snapshot.keys.slice(1) }), null);
+  assert.equal(replayActiveWindow(level, { ...snapshot, cracks: level.cracks }), null);
 });

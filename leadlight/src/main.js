@@ -4,7 +4,7 @@ import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDa
 import { createGame, tap, undo, hint, cracksLeft, grade, solveFrom } from './game.js';
 import { createRenderer, PIGMENT_COLOURS } from './render.js';
 import { createAudio } from './audio.js';
-import { loadProgress, saveProgress, recordWin, isUnlocked } from './storage.js';
+import { loadProgress, saveProgress, recordWin, isUnlocked, loadActiveWindow, saveActiveWindow, replayActiveWindow } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -113,14 +113,15 @@ function focusGame() {
   control?.focus({ preventScroll: true });
 }
 
-function start(spec, reset = false) {
+function start(spec, { reset = false, saved = null } = {}) {
   if (!reset && game?.status === 'playing' && level.kind === spec.kind &&
       (spec.kind === 'daily' ? level.date === spec.date : level.number === spec.n)) return resume();
   closeInspection();
   const enteringFromControl = document.activeElement !== document.body;
   clearTimers();
   level = levelFor(spec);
-  game = createGame(level);
+  const restored = saved?.hash === hashFor(level) ? replayActiveWindow(level, saved) : null;
+  game = restored ?? createGame(level);
   combo = 0;
   setStuck(false);
   const tips = tipsFor(level);
@@ -133,11 +134,17 @@ function start(spec, reset = false) {
   $('level-name').textContent = level.name;
   panes.setAttribute('aria-label', `${$('level-kicker').textContent}, ${level.name}. Window panes. Left and right read across rows. Up and down select the nearest pane in the next row. I toggles inspection. N reads neighbours while inspecting. Enter or Space activates.`);
   renderer.setLevel(level);
+  for (let i = 1; i <= game.cracks; i++) renderer.crack(`${level.id}/crack/${i}`);
   sizePaneControls();
   $('move-status').textContent = '';
   panes.replaceChildren();
   updatePaneControls();
   updateHud();
+  if (restored && game.history.length) checkStuck();
+  if (restored && saved.inspect && $('tip').hidden) {
+    toggleInspection();
+    if (game.tiles.has(saved.selected)) selectForInspection(saved.selected);
+  }
   if (enteringFromControl) focusGame();
   const current = game;
   if (tips[0] === 'intro') later(() => current === game && showHint(false), 700);
@@ -146,7 +153,7 @@ function start(spec, reset = false) {
 function restart() {
   if (!level) return;
   clearTimers();
-  start(specOf(level), true);
+  start(specOf(level), { reset: true });
   audio.tick();
 }
 
@@ -247,9 +254,16 @@ panes.addEventListener('keydown', (e) => {
   next.focus();
 });
 
-function closeInspection() {
+function clearInspectionSelection() {
   inspection = null;
   inspectedKey = null;
+  $('inspect-move').hidden = $('inspect-neighbours').hidden = true;
+  $('inspect-summary').textContent = 'Select a pane to preview its move.';
+  $('inspect-info').scrollTop = 0;
+}
+
+function closeInspection() {
+  clearInspectionSelection();
   $('inspection').hidden = true;
   $('inspect-btn').setAttribute('aria-pressed', 'false');
   $('inspect-neighbours').open = false;
@@ -265,8 +279,6 @@ function toggleInspection() {
   }
   $('inspection').hidden = false;
   $('inspect-btn').setAttribute('aria-pressed', 'true');
-  $('inspect-move').hidden = $('inspect-neighbours').hidden = true;
-  $('inspect-summary').textContent = 'Select a pane to preview its move.';
   syncBoardLayout();
   if (panes.contains(document.activeElement)) selectForInspection(document.activeElement.dataset.key);
   else $('move-status').textContent = $('inspect-summary').textContent;
@@ -566,19 +578,19 @@ async function shareDaily() {
   } catch {}
 }
 
-function route() {
-  const h = location.hash.slice(1);
+function route(hash = location.hash, saved = null) {
+  const h = hash.slice(1);
   let m;
   if ((m = /^window-(\d+)$/.exec(h)) && +m[1] >= 1 && +m[1] <= CAMPAIGN_SIZE) {
-    if (isUnlocked(progress, +m[1])) return start({ kind: 'campaign', n: +m[1] });
+    if (isUnlocked(progress, +m[1])) return start({ kind: 'campaign', n: +m[1] }, { saved });
     history.replaceState(null, '', location.pathname + location.search);
     openLevels();
     toast(`Window ${m[1]} is still locked`, { low: true });
     return;
   }
-  if ((m = /^trail-(\d+)$/.exec(h)) && +m[1] >= 1) return start({ kind: 'trail', n: +m[1] });
-  if ((m = /^daily-(.+)$/.exec(h)) && isDateId(m[1])) return start({ kind: 'daily', date: m[1] });
-  if (h === 'daily') return start({ kind: 'daily', date: localDateId() });
+  if ((m = /^trail-(\d+)$/.exec(h)) && +m[1] >= 1) return start({ kind: 'trail', n: +m[1] }, { saved });
+  if ((m = /^daily-(.+)$/.exec(h)) && isDateId(m[1])) return start({ kind: 'daily', date: m[1] }, { saved });
+  if (h === 'daily') return start({ kind: 'daily', date: localDateId() }, { saved });
   openHome();
 }
 
@@ -616,10 +628,11 @@ canvas.addEventListener('pointerup', (e) => {
 $('inspect-btn').onclick = toggleInspection;
 $('inspect-move').onclick = () => {
   const k = inspectedKey;
-  closeInspection();
-  syncBoardLayout();
+  if (!k || game?.status !== 'playing') return;
   panes.querySelector(`[data-key="${k}"]`)?.focus({ preventScroll: true });
   onTap(k);
+  if (game.status === 'playing') clearInspectionSelection();
+  else closeInspection();
 };
 $('menu-btn').onclick = openHome;
 $('mute-btn').onclick = toggleMute;
@@ -662,6 +675,16 @@ $('result-again').onclick = restart;
 $('result-menu').onclick = openHome;
 $('result-share').onclick = shareDaily;
 
+$('result').addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return;
+  const actions = $('result').querySelectorAll('button:not([hidden]):enabled');
+  const first = actions[0];
+  const last = actions[actions.length - 1];
+  if (event.target !== (event.shiftKey ? first : last)) return;
+  event.preventDefault();
+  (event.shiftKey ? last : first).focus();
+});
+
 window.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
@@ -690,7 +713,10 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'r') restart();
 });
 
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => route());
+window.addEventListener('pagehide', () => {
+  saveActiveWindow(level && hashFor(level), game, !$('inspection').hidden, inspectedKey);
+});
 new ResizeObserver(() => {
   renderer.resize();
   sizePaneControls();
@@ -702,7 +728,10 @@ function frame(now) {
 }
 
 syncToggles();
-route();
+const snapshot = loadActiveWindow();
+const paused = !location.hash && snapshot;
+route(location.hash || snapshot?.hash || '', snapshot);
+if (paused) openHome();
 requestAnimationFrame(frame);
 
 globalThis.__leadlight = {

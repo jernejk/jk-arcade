@@ -428,7 +428,8 @@ body.calm *, body.calm *::before, body.calm *::after { animation: none !importan
   box-shadow: 0 0 0 6px #151219;
 }
 
-#app:has(#pane-controls button:focus-visible) #dock::before {
+#app:has(#pane-controls button:focus-visible) #dock::before,
+#dock:has(#inspection:not([hidden]))::before {
   content: "Arrows select · I inspects · Enter to activate";
   display: block;
   text-align: center;
@@ -447,14 +448,18 @@ body.calm *, body.calm *::before, body.calm *::after { animation: none !importan
 #dock { min-width: 0; }
 #inspection {
   margin: 0 12px;
-  max-height: 28dvh;
-  overflow-y: auto;
+  height: min(10rem, 28dvh);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px;
   padding: 8px 12px;
   border: 1px solid rgba(243, 210, 122, 0.4);
   border-radius: 12px;
   background: var(--bg);
   font-size: 14px;
 }
+#inspect-info { overflow-y: auto; }
+#inspect-move { justify-self: start; }
 #inspection p { margin: 0 0 4px; }
 #inspection summary { cursor: pointer; color: var(--gold); padding: 4px 0; }
 #inspect-btn[aria-pressed="true"] { outline: 2px solid var(--gold); }
