@@ -325,6 +325,13 @@ export class Battlefield {
     this.lastSize = '';
     this.sizeObserver.observe(canvas);
   }
+  dispose() {
+    this.sizeObserver.disconnect();
+    this.worker?.terminate();
+    this.renderer.dispose();
+    // Release the old drawing context before the next document starts a duel.
+    this.renderer.forceContextLoss();
+  }
   load(round) {
     this.round = round;
     this.coreResult = this.breach = null;

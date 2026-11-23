@@ -286,6 +286,43 @@ test('a complete best-of-three via turn expiry reaches a real results card and p
     s.score[1] === 2 ? 'Corkscrew 3' : 'Corkscrew 2',
   );
 });
+test('a reload releases the outgoing WebGL context while a cacheable pagehide retains it', async (t) => {
+  if (skip) return t.skip(skip);
+  const p = await open(t);
+  await begin(p);
+  await p.waitForFunction(() => window.__craterwake?.calls > 0);
+  const retained = await p.evaluate(() => {
+    const canvas = document.querySelector('#sea');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    window.dispatchEvent(
+      new PageTransitionEvent('pagehide', { persisted: true }),
+    );
+    window.addEventListener(
+      'pagehide',
+      (e) => {
+        sessionStorage.setItem(
+          'reload-check',
+          JSON.stringify([e.persisted, gl.isContextLost()]),
+        );
+      },
+      { once: true },
+    );
+    return !gl.isContextLost();
+  });
+  assert.ok(retained);
+  await p.reload();
+  assert.deepEqual(
+    await p.evaluate(() => JSON.parse(sessionStorage.getItem('reload-check'))),
+    [false, true],
+  );
+  await begin(p);
+  await p.keyboard.press('Space');
+  await phaseIs(p, 'impact');
+  const s = await state(p);
+  assert.deepEqual(s.hp, [100, 99]);
+  assert.equal(s.checksum, '5c000090');
+});
+
 test('a cached cabinet reloads offline and plays with local storage denied', async (t) => {
   if (skip) return t.skip(skip);
   const p = await open(t, { denied: true });

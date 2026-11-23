@@ -645,6 +645,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && match && !panel.open) pause();
   last = performance.now();
 });
+window.addEventListener('pagehide', (event) => {
+  // A document in the back/forward cache will resume with this same battlefield.
+  if (event.persisted) return;
+  cancelAnimationFrame(frame);
+  field?.dispose();
+});
 window.addEventListener('blur', stopHold);
 document.addEventListener('keydown', (e) => {
   if (e.altKey || e.ctrlKey || e.metaKey) return;

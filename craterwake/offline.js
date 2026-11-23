@@ -1,5 +1,5 @@
 // Keep a visited cabinet playable when the harbour goes offline.
-const CACHE = 'craterwake-static-v2-8';
+const CACHE = 'craterwake-static-v2-9';
 const ROOT = new URL('./', self.location.href);
 const FILES = [
   './',

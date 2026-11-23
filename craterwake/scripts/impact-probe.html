@@ -22,29 +22,18 @@
       padding: 12px;
     }
   </style>
-  <button id="run">Measure cold and warm impacts</button>
+  <button id="run">Measure flight and impact</button>
   <pre id="report" aria-live="polite">390 × 844 · Seed 824 · Full motion</pre>
   <script type="module">
+    import { measureSalvo, summarize } from './salvo-timing.js';
     const button = document.querySelector('#run'),
       report = document.querySelector('#report');
     const scenarios = ['chain', 'armour'];
     function summary(samples) {
-      const sorted = samples.slice().sort((a, b) => a - b);
-      const q = (fraction) =>
-        sorted[Math.ceil(sorted.length * fraction) - 1].toFixed(1);
-      return (
-        sorted.length +
-        ' frames · p50 ' +
-        q(0.5) +
-        ' · p95 ' +
-        q(0.95) +
-        ' · max ' +
-        q(1) +
-        ' ms · >33.5 ms: ' +
-        sorted.filter((dt) => dt > 33.5).length
-      );
+      const { frames, p50, p95, max, over } = summarize(samples);
+      return `${frames} frames · p50 ${p50.toFixed(1)} · p95 ${p95.toFixed(1)} · max ${max.toFixed(1)} ms · >33.5 ms: ${over}`;
     }
-    async function replayPair(scenario) {
+    async function replaySequence(scenario) {
       const frame = document.createElement('iframe');
       frame.title = 'Seeded ' + scenario + ' replay';
       frame.src = '../?seed=824';
@@ -63,16 +52,29 @@
           );
         if (win.matchMedia('(prefers-reduced-motion: reduce)').matches)
           throw Error('Full motion is required to measure the debris spray.');
-        const cold = await replay(win, doc, scenario);
-        const warm = await replay(win, doc, scenario);
-        return { cold, warm };
+        const fresh = await replay(win, doc, scenario);
+        const restarted = await replay(win, doc, scenario);
+        const loaded = new Promise((resolve) => (frame.onload = resolve));
+        win.location.reload();
+        await loaded;
+        const reloaded = await replay(
+          frame.contentWindow,
+          frame.contentDocument,
+          scenario,
+        );
+        return {
+          fresh,
+          'in-session restart': restarted,
+          'frame reload': reloaded,
+        };
       } finally {
         frame.remove();
       }
     }
     async function replay(win, doc, scenario) {
       doc.querySelector('#start').click();
-      await new Promise((r) => win.setTimeout(r, 600));
+      const measurement = measureSalvo(win, scenario);
+      await new Promise((r) => win.setTimeout(r, 400));
       if (scenario === 'armour') {
         for (let i = 0; i < 8; i++)
           doc.dispatchEvent(
@@ -82,51 +84,8 @@
         power.value = '75';
         power.dispatchEvent(new win.Event('input'));
       }
-      const samples = [],
-        hud = doc.querySelector('#hud');
-      let last,
-        wasImpact = false,
-        verified = false;
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(Error('Impact replay timed out')),
-          20000,
-        );
-        doc.querySelector('#fire').click();
-        function sample(t) {
-          const impact = hud.dataset.phase === 'impact';
-          if (last !== undefined && (impact || wasImpact))
-            samples.push(t - last);
-          if (impact && !wasImpact) {
-            const message = doc.querySelector('#feedback').textContent;
-            verified =
-              message.includes(
-                scenario === 'chain' ? 'Spring crate ×2' : 'Turret hit',
-              ) &&
-              (scenario !== 'armour' ||
-                doc.querySelector('#hp1 strong').textContent === '82%');
-          }
-          if (!impact && wasImpact) {
-            clearTimeout(timeout);
-            return verified
-              ? resolve()
-              : reject(Error('Unexpected shot outcome'));
-          }
-          last = t;
-          wasImpact = impact;
-          win.requestAnimationFrame(sample);
-        }
-        win.requestAnimationFrame(sample);
-      });
-      const state = win.__craterwake;
-      const expected = scenario === 'chain' ? '5c000090' : '7ad1eb4e';
-      if (
-        state.checksum() !== expected ||
-        state.hp[0] !== 100 ||
-        state.hp[1] !== (scenario === 'chain' ? 99 : 82)
-      )
-        throw Error('Unexpected terrain or armour checksum');
-      return samples;
+      doc.querySelector('#fire').click();
+      return measurement;
     }
     button.onclick = async () => {
       button.disabled = true;
@@ -135,27 +94,29 @@
       try {
         for (let run = 1; run <= 3; run++) {
           for (const scenario of scenarios) {
-            const pair = await replayPair(scenario);
-            for (const [temperature, samples] of Object.entries(pair)) {
-              const name = scenario + ' ' + temperature;
-              if (!pooled.has(name)) pooled.set(name, []);
-              pooled.get(name).push(...samples);
-              const peak = samples.indexOf(Math.max(...samples));
-              lines.push(
-                name +
-                  ' ' +
-                  run +
-                  ' · ' +
-                  summary(samples) +
-                  ' · peak at interval ' +
-                  (peak + 1) +
-                  ' · first four ' +
-                  samples
-                    .slice(0, 4)
-                    .map((ms) => ms.toFixed(1))
-                    .join('/') +
-                  ' ms',
-              );
+            const sequence = await replaySequence(scenario);
+            for (const [mode, phases] of Object.entries(sequence)) {
+              for (const [phase, samples] of Object.entries(phases)) {
+                const name = [scenario, mode, phase].join(' · ');
+                if (!pooled.has(name)) pooled.set(name, []);
+                pooled.get(name).push(...samples);
+                const peak = samples.indexOf(Math.max(...samples)) + 1;
+                lines.push(
+                  name +
+                    ' ' +
+                    run +
+                    ' · ' +
+                    summary(samples) +
+                    ' · peak at interval ' +
+                    peak +
+                    ' · first four ' +
+                    samples
+                      .slice(0, 4)
+                      .map((ms) => ms.toFixed(1))
+                      .join('/') +
+                    ' ms',
+                );
+              }
             }
             report.textContent = lines.join('\n');
           }
