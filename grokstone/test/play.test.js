@@ -65,7 +65,7 @@ function launchOptions() {
   return { args, channel: "chrome" };
 }
 
-test("phone and desktop play a keep without page errors", async () => {
+test("phone and desktop play a keep without page errors", async (t) => {
   const server = await startServer();
   let browser;
   try {
@@ -127,6 +127,16 @@ test("phone and desktop play a keep without page errors", async () => {
       const blurb = await row.locator("small").boundingBox();
       assert.ok(blurb.y >= name.y + name.height - 1, `yard row name and blurb share a line at ${size.width}px`);
     }
+    await page.setViewportSize({ width: 360, height: 640 });
+    const next = await page.locator("#next-siege").boundingBox();
+    t.diagnostic(`Next siege at 360×640: y=${next.y}, height=${next.height}`);
+    assert.ok(next.y >= 0 && next.y + next.height <= 640, "Next siege is below the fold");
+    const x = next.x + next.width / 2;
+    for (const y of [next.y + 2, next.y + next.height - 2]) {
+      assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id, [x, y]), "next-siege");
+    }
+    await page.mouse.click(x, next.y + next.height / 2);
+    assert.equal(await page.evaluate(() => window.__grokstone.screen), "battle");
     assert.deepEqual(errors, []);
     await page.close();
 
@@ -291,7 +301,7 @@ test("battle framing enlarges the stones and keeps both walls in reach", async (
   let browser;
   try {
     browser = await chromium.launch(launchOptions());
-    const page = await browser.newPage({ hasTouch: true });
+    const page = await browser.newPage({ hasTouch: true, reducedMotion: "reduce" });
     const blocks = layoutByNumber(1, defaultSave()).blocks;
     await page.goto(`http://127.0.0.1:${server.address().port}/?test=1`);
     await page.locator("#continue").click();
@@ -320,6 +330,18 @@ test("battle framing enlarges the stones and keeps both walls in reach", async (
         const foot = game.feet()[0];
         return [game.clientFor("cannon"), game.clientFor(foot), foot];
       });
+      // With ambient motion reduced, the canvas includes the exact cannon angle
+      // and dotted shot path, independently of the DOM pause overlay.
+      const canvasPixels = () => page.locator("#view").evaluate(canvas => canvas.toDataURL());
+      const before = await canvasPixels();
+      for (const button of ["#pause", "#resume"]) {
+        await page.locator(button).click();
+        await nextFrames(page, 2);
+        assert.deepEqual(await page.locator("#hud").boundingBox(), hud);
+        assert.deepEqual(await page.evaluate(() => window.__grokstone.clientFor("cannon")), from);
+        assert.deepEqual(await page.evaluate(id => window.__grokstone.clientFor(id), foot), to);
+        assert.ok(await canvasPixels() === before, `battle painting moved after ${button} at ${width}px`);
+      }
       assert.equal(await touchDrag(page, from, to), foot);
     }
     await page.close();

@@ -130,7 +130,7 @@ function show(screen) {
   ui.pause.hidden = screen !== "pause";
   const battle = screen === "battle" || screen === "pause";
   ui.hud.hidden = !battle;
-  ui.tray.hidden = screen !== "battle";
+  ui.tray.hidden = !battle;
   document.body.dataset.screen = screen;
   resize();
 }
@@ -456,7 +456,7 @@ function resize() {
   if (canvas.height !== nextH) canvas.height = nextH;
   const battle = state.screen === "battle" || state.screen === "pause";
   const top = battle ? ui.hud.getBoundingClientRect().height : 0;
-  const bottom = state.screen === "battle" ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
+  const bottom = battle ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
   const bandH = Math.max(120, rect.height - top - bottom);
   const frame = battle ? state.battleFrame : { left: 0, top: 100, width: WORLD.w, height: WORLD.h - 100 };
   const scale = Math.min(rect.width / frame.width, bandH / frame.height);
@@ -972,7 +972,8 @@ function drawWorld(blocks, cannons, pred) {
     else drawBlock(block);
   }
   if (cannons) {
-    drawCannon(cannons.player, state.screen === "battle" && state.phase !== "enemy" ? state.angle : -0.4, state.simFor === "player" ? state.recoil : 0);
+    const aiming = state.screen === "battle" || state.screen === "pause";
+    drawCannon(cannons.player, aiming && state.phase !== "enemy" ? state.angle : -0.4, state.simFor === "player" ? state.recoil : 0);
     const enemyAngle = state.enemyPlan ? state.enemyPlan.angle : Math.PI + 0.55;
     drawCannon(cannons.enemy, enemyAngle, state.simFor === "enemy" ? state.recoil : 0);
     if (state.phase === "enemy" && state.enemyPlan) {
@@ -987,7 +988,7 @@ function drawWorld(blocks, cannons, pred) {
       }
     }
   }
-  if (pred && state.screen === "battle" && state.phase === "aim") drawTrajectory(pred);
+  if (pred) drawTrajectory(pred);
   for (const p of state.particles) {
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1244,6 +1245,7 @@ function bind() {
 }
 
 function pause() {
+  if (state.paused) return;
   state.dragging = false;
   state.paused = true;
   state.pausedAt = performance.now();
