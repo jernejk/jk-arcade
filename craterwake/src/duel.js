@@ -120,34 +120,36 @@ export function fly(round, shooter, aim, record = true) {
     v.z += wind.z * DT;
     const wall = gridHit(round.world, p, next);
     const contact = tankHit(target, p, next);
+    let surface;
     if (contact && (!wall || wall.y < SEA || contact.t < wall.t)) {
       p = {
         x: p.x + contact.t * (next.x - p.x),
         y: p.y + contact.t * (next.y - p.y),
         z: p.z + contact.t * (next.z - p.z),
       };
-      hit = 'tank';
+      surface = 'tank';
       part = contact.part;
       direct = 1 - shooter;
     } else if (wall && wall.y >= SEA) {
       p = { x: wall.x, y: wall.y, z: wall.z };
-      hit = 'terrain';
-      material = wall.material;
+      surface = 'terrain';
     } else if (next.y <= SEA) {
       p = { ...next, y: SEA };
+      surface = 'water';
     } else {
       p = next;
       if (record) path.push(p);
       continue;
     }
-    const flatTop = hit === 'terrain' && Math.abs(p.y - Math.round(p.y)) < 1e-6;
+    const flatTop =
+      surface === 'terrain' && Math.abs(p.y - Math.round(p.y)) < 1e-6;
     if (
       aim.ammo === 3 &&
       v.y < 0 &&
       skips.length < 2 &&
-      (hit === 'water' || flatTop)
+      (surface === 'water' || flatTop)
     ) {
-      skips.push({ p: { ...p }, step: i + 1 });
+      skips.push({ p: { ...p }, step: i + 1, surface });
       p = { ...p, y: p.y + 0.035 };
       v.x *= 0.83;
       v.z *= 0.83;
@@ -155,6 +157,8 @@ export function fly(round, shooter, aim, record = true) {
       if (record) path.push(p);
       continue;
     }
+    hit = surface;
+    material = surface === 'terrain' ? wall.material : M.air;
     if (record) path.push(p);
     break;
   }
@@ -242,9 +246,9 @@ function cutTerrain(round, ammo, shot) {
   return { debris, drill, blasts, echoes };
 }
 
-// Flight is already solved at launch. Cut a private snapshot for the mesher;
-// the live grid, crate fuses and tanks stay intact until the shell detonates.
-export function prepareCrater(round, ammo, shot) {
+// Solve against a private snapshot while the shell is airborne. The worker can
+// take the grid buffer; detonation only needs the edit log and final tank poses.
+export function prepareImpact(round, shooter, ammo, shot) {
   if (shot.hit === 'water' && ammo !== 2) return null;
   const world = Object.assign(Object.create(World.prototype), {
     cells: round.world.cells.slice(),
@@ -252,24 +256,40 @@ export function prepareCrater(round, ammo, shot) {
     dirty: new Set(),
     edits: [],
   });
-  return { world, cuts: cutTerrain({ ...round, world }, ammo, shot) };
+  // Inherit the live pose and HP getter. Recoil writes its own pose on the copy.
+  const tanks = round.tanks.map((tank) =>
+    Object.assign(Object.create(tank), { cells: new Set(tank.cells) }),
+  );
+  const forecast = { ...round, world, tanks };
+  const result = resolve(forecast, shooter, ammo, shot);
+  return { world, tanks, result, lastDrift: forecast.lastDrift };
 }
 
 export function resolve(round, shooter, ammo, shot, prepared) {
+  if (prepared) {
+    const { world } = round;
+    for (const edit of prepared.world.edits)
+      world.cells[edit >>> 8] = edit & 255;
+    for (const id of prepared.world.dirty) world.dirty.add(id);
+    for (const [i, crate] of prepared.world.charges.entries())
+      world.charges[i].spent = crate.spent;
+    prepared.tanks.forEach(({ x, y, z, sunk, cells }, i) => {
+      const tank = round.tanks[i];
+      Object.assign(tank, { x, y, z, sunk });
+      if (cells.size !== tank.cells.size)
+        for (const cell of tank.cells)
+          if (!cells.has(cell)) tank.cells.delete(cell);
+    });
+    if (shooter === 1) round.lastDrift = prepared.lastDrift;
+    return prepared.result;
+  }
   const { world, tanks } = round;
   const before = tanks.map((t) => t.hp),
     tankDebris = [],
     settles = [];
   let cuts = { debris: [], drill: [], blasts: [], echoes: [] };
   if (shot.hit !== 'water' || ammo === 2) {
-    if (prepared) {
-      for (const edit of prepared.world.edits)
-        world.cells[edit >>> 8] = edit & 255;
-      for (const id of prepared.world.dirty) world.dirty.add(id);
-      for (const [i, crate] of prepared.world.charges.entries())
-        world.charges[i].spent = crate.spent;
-      cuts = prepared.cuts;
-    } else cuts = cutTerrain(round, ammo, shot);
+    cuts = cutTerrain(round, ammo, shot);
     const { blasts, echoes } = cuts;
     if (shot.direct !== null && ammo !== 2)
       tanks[shot.direct].chip(shot.p, hitDamage[ammo], tankDebris);
@@ -320,7 +340,7 @@ export function resolve(round, shooter, ammo, shot, prepared) {
 const gaussian = (rng) =>
   Math.sqrt(-2 * Math.log(Math.max(0.00001, rng()))) *
   Math.cos(2 * Math.PI * rng());
-export function gunner(round) {
+export function* planAim(round) {
   const [enemy, self] = round.tanks,
     { rng } = round,
     turn = round.aiTurns++;
@@ -365,6 +385,7 @@ export function gunner(round) {
       best = aim;
       score = value;
     }
+    if (i % 4 === 3 && i < 63) yield;
   }
   const shrink = 0.65 ** turn;
   for (const [key, base, floor] of [
@@ -395,6 +416,13 @@ export function gunner(round) {
     best.ammo = 2;
   round.previous = { ...best };
   return best;
+}
+export function gunner(round) {
+  const plan = planAim(round);
+  let step;
+  do step = plan.next();
+  while (!step.done);
+  return step.value;
 }
 export class Match {
   constructor(seed, bonus = false) {

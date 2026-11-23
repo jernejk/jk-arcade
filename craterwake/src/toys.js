@@ -92,14 +92,22 @@ function armourStamps(v, side) {
   }
   stamp(0, 0, 0, w * 0.965, h * 0.965, d * 0.965, cellColor(v, side));
   if (v.paint === 'core') {
-    // A dark gasket and warm ceramic centre read on any exposed face.
+    // The square keyhole and narrow stem match the core badge on the HP plate.
+    const dimensions = [w, h, d];
     for (const axis of [0, 1, 2]) {
-      const gasket = [w * 0.78, h * 0.78, d * 0.78];
-      const insert = [w * 0.5, h * 0.5, d * 0.5];
-      gasket[axis] = [w, h, d][axis] * 0.98;
-      insert[axis] = [w, h, d][axis] * 0.995;
-      stamp(0, 0, 0, ...gasket, 0x423727);
-      stamp(0, 0, 0, ...insert, 0xffeb97);
+      const up = axis === 1 ? 2 : 1;
+      function face(width, height, level, offset, color) {
+        const size = dimensions.map(
+          (d, i) => d * (i === axis ? level : i === up ? height : width),
+        );
+        const centre = [0, 0, 0];
+        centre[up] = dimensions[up] * offset;
+        stamp(...centre, ...size, color);
+      }
+      face(0.84, 0.84, 0.978, 0, 0x493c32);
+      face(0.71, 0.71, 0.988, 0, 0xffdd75);
+      face(0.33, 0.28, 0.997, 0.07, 0x332c30);
+      face(0.14, 0.18, 0.997, -0.15, 0x332c30);
     }
   } else if (v.part === 'track') {
     const outer = Math.sign(x) * w * 0.5;

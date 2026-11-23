@@ -2,10 +2,10 @@ import {
   Match,
   fly,
   resolve,
-  prepareCrater,
+  prepareImpact,
   gullTargets,
   impactLabel,
-  gunner,
+  planAim,
   freshAim,
   adjust,
   AMMO,
@@ -33,7 +33,10 @@ let field,
   aims = [],
   elapsed = 0,
   shot,
-  crater,
+  forecast,
+  spray,
+  rivalPlan,
+  rivalAim,
   result,
   remaining = 20,
   flightTime = 0,
@@ -190,6 +193,7 @@ function beginRound() {
   field.load(match.round);
   aims = [freshAim(), freshAim()];
   actor = 0;
+  rivalPlan = null;
   result = shot = null;
   remaining = lastTick = 20;
   lastSalvo = '';
@@ -237,7 +241,8 @@ function update() {
   r.tanks.forEach((t, i) => {
     const plate = $('#hp' + i);
     plate.querySelector('strong').textContent = t.hp + '%';
-    plate.querySelector('em').style.width = t.hp + '%';
+    plate.querySelector('em').style.transform = 'scaleX(' + t.hp / 100 + ')';
+    plate.querySelector('.core-status').hidden = !t.coreExposed;
   });
   if (phase === 'impact') {
     updateBeat(a);
@@ -389,7 +394,7 @@ function fire() {
   match.round.tanks[actor].heading = a.heading;
   match.round.tanks[actor].angle = a.angle;
   shot = fly(match.round, actor, a);
-  crater = undefined;
+  forecast = spray = undefined;
   flightTime = 0;
   skipsSeen = 0;
   result = null;
@@ -418,41 +423,52 @@ function detonate() {
   gullPending = false;
   const r = match.round,
     a = current();
-  result = resolve(r, actor, a.ammo, shot, crater);
-  crater = undefined;
+  result = resolve(r, actor, a.ammo, shot, forecast);
+  forecast = undefined;
+  if (!actor && result.winner === null) rivalPlan = planAim(r);
   if (shot.direct === 1 && actor === 0) match.medals.add('Bullseye');
   if (r.world.dirty.size) field.sync(result.debris);
-  if (!calm()) field.effects.burst(r.world, shot, result);
+  if (!calm()) field.effects.burst(r.world, shot, result, spray);
   else field.effects.clear();
+  spray = undefined;
   echoesPlayed = 0;
   const splash = shot.hit === 'water' && a.ammo !== 2;
-  impactLength =
-    (splash ? 0.8 : result.settles.some((s) => s.tipped) ? 2.3 : 1.75) +
-    (delayed ? 0.58 : 0);
   const target = r.tanks[1 - actor],
     dz = Math.round((shot.p.z - target.z) * r.tanks[actor].side),
     dx = Math.round((shot.p.x - target.x) * -r.tanks[actor].side);
+  const breach = target.coreExposed && result.damage[1 - actor];
+  impactLength = splash ? 0.8 : 1.75;
+  if (result.settles.some((s) => s.tipped)) impactLength = 2.3;
+  if (breach) impactLength = 2.65;
+  if (delayed) impactLength += 0.58;
   const where = [
     dz ? Math.abs(dz) + (dz > 0 ? ' long' : ' short') : '',
     dx ? Math.abs(dx) + (dx > 0 ? ' right' : ' left') : '',
   ]
     .filter(Boolean)
     .join(' · ');
-  const name = actor ? 'Kettle' : 'Rivet';
-  const label = impactLabel(shot, result);
-  const damage = target.sunk
-    ? name + ' sank!'
-    : !target.hp
-      ? name + ' core destroyed!'
-      : result.damage[1 - actor]
-        ? name + ' −' + result.damage[1 - actor] + '%'
-        : '';
-  feedback = [label, damage || where].filter(Boolean).join(' · ');
-  if (target.coreExposed && result.damage[1 - actor])
-    feedback += ' · Core exposed';
+  const parts = [impactLabel(shot, result)];
+  if (shot.skips.length)
+    parts.push(
+      shot.skips.length + (shot.skips.length === 1 ? ' skip' : ' skips'),
+    );
+  for (const i of [1 - actor, actor]) {
+    if (!result.damage[i]) continue;
+    const t = r.tanks[i],
+      name = i ? 'Rivet' : 'Kettle';
+    if (t.sunk) parts.push(name + ' sank!');
+    else if (!t.hp) parts.push(name + ' core destroyed!');
+    else parts.push(name + ' −' + result.damage[i] + '%');
+  }
+  if (breach) parts.push('Core exposed');
+  if (!result.damage[1 - actor] && where) parts.push(where);
+  feedback = parts.join(' · ');
   if (result.echoes.length)
     feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
-  if (!actor) lastSalvo = 'Last shot · ' + feedback;
+  if (!actor) {
+    const heading = (a.heading > 0 ? '+' : '') + a.heading;
+    lastSalvo = `Last shot · ${feedback} · Heading ${heading}° · Angle ${a.angle}° · Power ${a.power}`;
+  }
   play(splash ? 'splash' : 'impact');
   result.damage.forEach((n, i) => {
     if (n) $('#hp' + i).classList.add('hit');
@@ -516,7 +532,9 @@ function endImpact() {
   result = null;
   shot = null;
   if (actor) {
-    aims[1] = gunner(match.round);
+    // A skipped orbit or backgrounded frame may leave candidates to finish.
+    while (rivalPlan) planRivalStep();
+    aims[1] = rivalAim;
     feedback = '';
     enter('their-shot');
   } else {
@@ -525,6 +543,13 @@ function endImpact() {
     feedback = lastSalvo;
     enter('aim');
     $('#fire').focus({ preventScroll: true });
+  }
+}
+function planRivalStep() {
+  const step = rivalPlan.next();
+  if (step.done) {
+    rivalAim = step.value;
+    rivalPlan = null;
   }
 }
 function skipImpact() {
@@ -542,9 +567,17 @@ function loop(stamp) {
       if (!remaining) fire();
     } else if (phase === 'their-shot' && elapsed >= 1.35) fire();
     else if (phase === 'shell-cam') {
-      if (crater === undefined) {
-        crater = prepareCrater(match.round, current().ammo, shot);
-        if (crater) field.prepareChunks(crater.world);
+      if (forecast === undefined) {
+        forecast = prepareImpact(match.round, actor, current().ammo, shot);
+        if (forecast) {
+          if (!calm())
+            spray = field.effects.prepare(
+              forecast.world,
+              shot,
+              forecast.result,
+            );
+          field.prepareChunks(forecast.world);
+        }
       }
       flightTime += dt * 1.15;
       if (
@@ -560,6 +593,7 @@ function loop(stamp) {
     } else if (phase === 'impact') {
       if (gullPending && elapsed >= 0.58) detonate();
       const age = elapsed - (current().ammo === 2 ? 0.58 : 0);
+      if (rivalPlan && age >= 0.35) planRivalStep();
       const due = Math.min(
         result.echoes?.length || 0,
         Math.floor(Math.max(0, age) / 0.16),

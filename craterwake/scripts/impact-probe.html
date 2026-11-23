@@ -22,7 +22,7 @@
       padding: 12px;
     }
   </style>
-  <button id="run">Measure five crate chains and five armour hits</button>
+  <button id="run">Measure cold and warm impacts</button>
   <pre id="report" aria-live="polite">390 × 844 · Seed 824 · Full motion</pre>
   <script type="module">
     const button = document.querySelector('#run'),
@@ -40,10 +40,11 @@
         q(0.95) +
         ' · max ' +
         q(1) +
-        ' ms'
+        ' ms · >33.5 ms: ' +
+        sorted.filter((dt) => dt > 33.5).length
       );
     }
-    async function replay(scenario) {
+    async function replayPair(scenario) {
       const frame = document.createElement('iframe');
       frame.title = 'Seeded ' + scenario + ' replay';
       frame.src = '../?seed=824';
@@ -62,74 +63,106 @@
           );
         if (win.matchMedia('(prefers-reduced-motion: reduce)').matches)
           throw Error('Full motion is required to measure the debris spray.');
-        doc.querySelector('#start').click();
-        await new Promise((r) => win.setTimeout(r, 600));
-        if (scenario === 'armour') {
-          for (let i = 0; i < 8; i++)
-            doc.dispatchEvent(
-              new win.KeyboardEvent('keydown', { key: 'd', bubbles: true }),
-            );
-          const power = doc.querySelector('#throttle');
-          power.value = '75';
-          power.dispatchEvent(new win.Event('input'));
-        }
-        const samples = [],
-          hud = doc.querySelector('#hud');
-        let last,
-          wasImpact = false,
-          verified = false;
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(
-            () => reject(Error('Impact replay timed out')),
-            20000,
-          );
-          doc.querySelector('#fire').click();
-          function sample(t) {
-            const impact = hud.dataset.phase === 'impact';
-            if (last !== undefined && (impact || wasImpact))
-              samples.push(t - last);
-            if (impact && !wasImpact) {
-              const message = doc.querySelector('#feedback').textContent;
-              verified =
-                message.includes(
-                  scenario === 'chain' ? 'Spring crate ×2' : 'Turret hit',
-                ) &&
-                (scenario !== 'armour' ||
-                  doc.querySelector('#hp1 strong').textContent === '82%');
-            }
-            if (!impact && wasImpact) {
-              clearTimeout(timeout);
-              return verified
-                ? resolve()
-                : reject(Error('Unexpected shot outcome'));
-            }
-            last = t;
-            wasImpact = impact;
-            win.requestAnimationFrame(sample);
-          }
-          win.requestAnimationFrame(sample);
-        });
-        return samples;
+        const cold = await replay(win, doc, scenario);
+        const warm = await replay(win, doc, scenario);
+        return { cold, warm };
       } finally {
         frame.remove();
       }
     }
+    async function replay(win, doc, scenario) {
+      doc.querySelector('#start').click();
+      await new Promise((r) => win.setTimeout(r, 600));
+      if (scenario === 'armour') {
+        for (let i = 0; i < 8; i++)
+          doc.dispatchEvent(
+            new win.KeyboardEvent('keydown', { key: 'd', bubbles: true }),
+          );
+        const power = doc.querySelector('#throttle');
+        power.value = '75';
+        power.dispatchEvent(new win.Event('input'));
+      }
+      const samples = [],
+        hud = doc.querySelector('#hud');
+      let last,
+        wasImpact = false,
+        verified = false;
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(Error('Impact replay timed out')),
+          20000,
+        );
+        doc.querySelector('#fire').click();
+        function sample(t) {
+          const impact = hud.dataset.phase === 'impact';
+          if (last !== undefined && (impact || wasImpact))
+            samples.push(t - last);
+          if (impact && !wasImpact) {
+            const message = doc.querySelector('#feedback').textContent;
+            verified =
+              message.includes(
+                scenario === 'chain' ? 'Spring crate ×2' : 'Turret hit',
+              ) &&
+              (scenario !== 'armour' ||
+                doc.querySelector('#hp1 strong').textContent === '82%');
+          }
+          if (!impact && wasImpact) {
+            clearTimeout(timeout);
+            return verified
+              ? resolve()
+              : reject(Error('Unexpected shot outcome'));
+          }
+          last = t;
+          wasImpact = impact;
+          win.requestAnimationFrame(sample);
+        }
+        win.requestAnimationFrame(sample);
+      });
+      const state = win.__craterwake;
+      const expected = scenario === 'chain' ? '5c000090' : '7ad1eb4e';
+      if (
+        state.checksum() !== expected ||
+        state.hp[0] !== 100 ||
+        state.hp[1] !== (scenario === 'chain' ? 99 : 82)
+      )
+        throw Error('Unexpected terrain or armour checksum');
+      return samples;
+    }
     button.onclick = async () => {
       button.disabled = true;
       const lines = [],
-        pooled = { chain: [], armour: [] };
+        pooled = new Map();
       try {
-        for (let run = 1; run <= 5; run++) {
+        for (let run = 1; run <= 3; run++) {
           for (const scenario of scenarios) {
-            const samples = await replay(scenario);
-            pooled[scenario].push(...samples);
-            lines.push(scenario + ' ' + run + ' · ' + summary(samples));
+            const pair = await replayPair(scenario);
+            for (const [temperature, samples] of Object.entries(pair)) {
+              const name = scenario + ' ' + temperature;
+              if (!pooled.has(name)) pooled.set(name, []);
+              pooled.get(name).push(...samples);
+              const peak = samples.indexOf(Math.max(...samples));
+              lines.push(
+                name +
+                  ' ' +
+                  run +
+                  ' · ' +
+                  summary(samples) +
+                  ' · peak at interval ' +
+                  (peak + 1) +
+                  ' · first four ' +
+                  samples
+                    .slice(0, 4)
+                    .map((ms) => ms.toFixed(1))
+                    .join('/') +
+                  ' ms',
+              );
+            }
             report.textContent = lines.join('\n');
           }
         }
         report.textContent =
-          scenarios
-            .map((k) => k + ' total · ' + summary(pooled[k]))
+          [...pooled]
+            .map(([name, all]) => name + ' total · ' + summary(all))
             .join('\n') +
           '\n\n' +
           lines.join('\n');

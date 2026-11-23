@@ -26,7 +26,7 @@ Use `/craterwake/?seed=824` for a repeatable arena. The results card shows the s
 
 On a fresh seed 824, fire the opening Pebble to set off both spring crates beneath the signal beam. For a knockback hit on Rivet, start fresh and fire a Pebble at +8° heading, 43° elevation and 75 power. For a double water skip, select Skipper at +12°, 23° and 43 power.
 
-At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For repeatable portrait timing, open `/craterwake/scripts/impact-probe.html` in Safari and run it in the foreground with full motion. It alternates five crate chains and five direct armour hits at 390 × 844, verifies each result, and reports animation-frame intervals from impact entry through exit. For a physical-device check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
+At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For repeatable portrait timing, open `/craterwake/scripts/impact-probe.html` in Safari and run it in the foreground with full motion. At 390 × 844 it runs three pairs per shot: an opening crate chain or an armour break in a fresh renderer, then the same shot in the warmed renderer. It verifies HP and terrain checksums and reports p50, p95, maximum and the count above 33.5 ms from impact entry through exit. For a physical-device check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
 
 ## Tests
 
@@ -41,6 +41,6 @@ The deterministic simulation tests need only Node. Browser checks use Playwright
 
 ## Implementation and credits
 
-The simulation advances shots at 120 Hz against a 48 × 40 × 112 voxel volume. The renderer greedily meshes exposed faces in 16-block chunks. A module worker rebuilds dirty chunks after a blast and discards obsolete results. Browsers without module workers rebuild those chunks on the main thread. The sea, scenery, tanks, ammunition and particles use local geometry and materials. No real-time shadow or post-processing passes run.
+The simulation advances shots at 120 Hz against a 48 × 40 × 112 voxel volume. The renderer greedily meshes exposed faces in 16-block chunks. During flight a private snapshot supplies the crater, tank damage and debris poses. A module worker builds the affected chunks for upload before contact. Detonation applies the saved changes to the live world. Browsers without module workers rebuild the chunks on the main thread. The sea, scenery, tanks, ammunition and particles use local geometry and materials. No real-time shadow or post-processing passes run.
 
 Craterwake, its tanks, setting, artwork and game copy are original. Title, launcher and ammunition art come from JK’s Craterwake v2 concept pack. The live HUD and battlefield are rendered by the game. Three.js r160 is vendored under its MIT licence in `vendor/THREE-LICENSE.txt`. Bungee uses the arcade’s existing SIL Open Font License in `../fonts/OFL-Bungee.txt`.

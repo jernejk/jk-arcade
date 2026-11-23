@@ -13,7 +13,7 @@ import {
   freshAim,
   fly,
   resolve,
-  prepareCrater,
+  prepareImpact,
   adjust,
   preview,
   launch,
@@ -416,6 +416,13 @@ test('Skipper keeps one chase path through two surface rebounds and stops at a v
   assert.equal(s.hit, 'terrain');
   assert.deepEqual(fly(r, 0, a, false).p, s.p);
   assert.equal(fly(r, 0, { ...freshAim(), angle: 5, ammo: 3 }).skips.length, 0);
+  const splash = fly(r, 0, { heading: 30, angle: 5, power: 11, ammo: 3 });
+  assert.deepEqual(
+    splash.skips.map((s) => s.surface),
+    ['terrain', 'water'],
+  );
+  assert.equal(splash.hit, 'water');
+  assert.equal(splash.material, M.air);
 });
 
 test('a stalled debris frame advances at most two collision steps', () => {
@@ -431,6 +438,12 @@ test('a stalled debris frame advances at most two collision steps', () => {
   const twoSteps = positions(2 / 60);
   assert.notDeepEqual(positions(1 / 60), twoSteps);
   assert.deepEqual(positions(0.1), twoSteps);
+  const resting = effects.bodies.map((b) => ({ ...b }));
+  const upcoming = effects.prepare(round.world, shot, result);
+  assert.deepEqual(effects.bodies, resting);
+  effects.burst(round.world, shot, result, upcoming);
+  assert.deepEqual(effects.bodies, upcoming.bodies);
+  assert.ok(effects.bodies.every((b) => b.bounces === 0));
 });
 
 test('track, hull and turret damage opens a hole exactly where a shell contacts the plate', () => {
@@ -498,7 +511,7 @@ test('preparing crate, armour and Gull impacts during flight leaves live state i
       reference = fixed();
     const shot = fly(round, 0, aim),
       before = round.world.checksum();
-    const prepared = prepareCrater(round, aim.ammo, shot);
+    const prepared = prepareImpact(round, 0, aim.ammo, shot);
     assert.equal(round.world.checksum(), before);
     assert.ok(round.world.charges.every((crate) => !crate.spent));
     assert.deepEqual(
@@ -511,6 +524,14 @@ test('preparing crate, armour and Gull impacts during flight leaves live state i
     });
     const actual = resolve(round, 0, aim.ammo, shot, prepared);
     assert.deepEqual(actual, resolve(reference, 0, aim.ammo, shot));
+    for (const [i, tank] of round.tanks.entries()) {
+      const other = reference.tanks[i];
+      assert.deepEqual(tank.cells, other.cells);
+      assert.deepEqual(
+        [tank.x, tank.y, tank.z, tank.hp],
+        [other.x, other.y, other.z, other.hp],
+      );
+    }
     assert.deepEqual(round.world.cells, reference.world.cells);
     assert.deepEqual(round.world.charges, reference.world.charges);
   }

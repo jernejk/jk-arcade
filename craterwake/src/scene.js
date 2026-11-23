@@ -172,8 +172,8 @@ function ocean() {
 function breachView(world, tank, shot, from) {
   const focus = vec(tank).add(core.centre);
   const entry = Math.atan2(shot.p.x - from.x, shot.p.z - from.z);
-  for (const lift of [10.5, 3.5]) {
-    const distance = Math.sqrt(132 - lift * lift);
+  for (const lift of [8.4, 2.8]) {
+    const distance = Math.sqrt(85 - lift * lift);
     for (const offset of [0, -0.72, 0.72, -1.55, 1.55, Math.PI]) {
       const a = entry + offset;
       const eye = focus
@@ -204,6 +204,9 @@ export class Battlefield {
     this.scene.fog = fog;
     this.camera = new T.PerspectiveCamera(58, 1, 0.09, 290);
     this.look = v();
+    this.orbitEye = v();
+    this.orbitLook = v();
+    this.pinPosition = v();
     this.sky = sky();
     this.water = ocean();
     this.scene.add(
@@ -417,13 +420,16 @@ export class Battlefield {
     }
     const props = this.props,
       indices = props.geometry.index;
+    let stripped = false;
     for (const a of props.userData.anchors) {
       if (!a.gone && !world.get(a.x, a.y, a.z)) {
         indices.array.fill(0, a.first, a.end);
-        indices.needsUpdate = true;
+        indices.addUpdateRange(a.first, a.end - a.first);
+        stripped = true;
         a.gone = true;
       }
     }
+    if (stripped) indices.needsUpdate = true;
     world.dirty.clear();
     const depth = this.depth.image.data;
     if (removed) {
@@ -554,7 +560,8 @@ export class Battlefield {
   draw(view, dt) {
     const { phase, actor, aim, elapsed, shot, flightTime, result, calm } = view;
     // Release old GPU buffers after the hit flash, one per frame.
-    if (phase !== 'impact' || elapsed > 0.12) this.retiredGeometry.pop()?.dispose();
+    if (phase !== 'impact' || elapsed > 0.12)
+      this.retiredGeometry.pop()?.dispose();
     // Upload one future chunk per flight frame without drawing any of its faces.
     // At impact a prepared crater only needs to switch the active meshes.
     if (this.staged?.chunks.length) {
@@ -587,19 +594,15 @@ export class Battlefield {
     const yaw = (actor ? Math.PI : 0) - aim.heading * RAD,
       dir = v(Math.sin(yaw), 0, Math.cos(yaw)),
       right = v(-dir.z, 0, dir.x);
-    const base = vec(tank);
     const previous = view.aims;
     for (let i = 0; i < 2; i++) {
       const toy = this.toys[i],
         t = tanks[i],
         a = previous[i];
-      const p = vec(t),
+      const p = toy.group.position.copy(t),
         s = result?.settles[i];
       if (s && orbit && !calm) {
-        p.copy(vec(s.from)).lerp(
-          vec(s.to),
-          smooth(clamp((elapsed - 0.16) / 0.67, 0, 1)),
-        );
+        p.copy(s.from).lerp(s.to, smooth(clamp((elapsed - 0.16) / 0.67, 0, 1)));
       }
       const hop =
         s?.kick && orbit && !calm
@@ -607,7 +610,6 @@ export class Battlefield {
             Math.min(0.6, s.kick * 0.45)
           : 0;
       p.y += hop;
-      toy.group.position.copy(p);
       toy.group.visible = p.y + 1 > SEA - 0.2;
       toy.sync(t);
       const bearing = i ? Math.PI : 0;
@@ -625,9 +627,15 @@ export class Battlefield {
       this.shadows[i].position.y += 0.015;
       this.shadows[i].visible = toy.group.visible;
     }
-    const shoulder = this.shoulder(tank, aim, dir, right);
-    let { eye, look } = shoulder;
-    const fov = aiming ? shoulder.fov : 58;
+    let eye,
+      look,
+      fov = 58;
+    if (aiming || (flying && !calm && elapsed < 0.15)) {
+      const shoulder = this.shoulder(tank, aim, dir, right);
+      eye = shoulder.eye;
+      look = shoulder.look;
+      if (aiming) fov = shoulder.fov;
+    }
     if (this.camera.fov !== fov) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -653,12 +661,10 @@ export class Battlefield {
       this.shell.position.copy(p);
       this.shell.quaternion.setFromUnitVectors(v(0, 0, 1), velocity);
       if (calm) {
-        eye = base
-          .clone()
+        eye = vec(tank)
           .add(v(17, 13, 0))
           .addScaledVector(dir, 15);
-        look = base
-          .clone()
+        look = vec(tank)
           .addScaledVector(dir, 24)
           .add(v(0, 5, 0));
       } else if (elapsed >= 0.15) {
@@ -703,11 +709,13 @@ export class Battlefield {
       }
     }
     if (orbit) {
-      const centre = vec(
+      const centre = this.orbitLook.copy(
         result?.blasts[Math.floor(result.blasts.length / 2)] || shot.p,
       );
       const a = yaw + (0.19 + (calm ? 0 : 0.436 * clamp(elapsed / 1.6, 0, 1)));
-      eye = centre.clone().add(v(-Math.sin(a) * 14, 18, -Math.cos(a) * 14));
+      eye = this.orbitEye
+        .set(-Math.sin(a) * 14, 18, -Math.cos(a) * 14)
+        .add(centre);
       look = centre;
       if (result?.drill?.length && Math.abs(shot.vector.y) < 0.4) {
         // Stay on the entry side of the tunnel. Keep its mouth and broken
@@ -745,7 +753,7 @@ export class Battlefield {
         if (this.breach) {
           const blend = calm ? 1 : smooth(clamp((blastAge - 0.28) / 0.6, 0, 1));
           eye.lerp(this.breach.eye, blend);
-          look = look.clone().lerp(this.breach.focus, blend);
+          look.lerp(this.breach.focus, blend);
         }
       }
       if (!calm && blastAge >= 0)
@@ -825,8 +833,8 @@ export class Battlefield {
           0;
       this.warmEffects = false;
     }
-    const pin = vec(enemy)
-      .add(v(0, 3.35, 0))
+    const pin = this.pinPosition
+      .set(enemy.x, enemy.y + 3.35, enemy.z)
       .project(this.camera);
     return {
       pin,
