@@ -24,18 +24,18 @@
         <span class="name" id="level-name">First Light</span>
       </div>
       <div class="status">
-        <div class="cracks" id="cracks" aria-label="Frame strength"></div>
+        <div class="cracks" id="cracks" role="img" aria-label="Frame strength"></div>
         <span class="panes" id="panes-left">0 panes</span>
       </div>
     </header>
 
     <main class="stage" id="stage">
       <canvas id="board" aria-hidden="true"></canvas>
-      <div id="pane-controls" role="toolbar" aria-label="Window panes. Left and right arrows select a pane. Enter or Space moves it." hidden></div>
+      <div id="pane-controls" role="toolbar" hidden></div>
       <span id="move-status" class="sr-only" role="status"></span>
       <div class="tip" id="tip" hidden>
         <p id="tip-text"></p>
-        <button class="btn small" id="tip-ok" aria-describedby="tip-text">Got it</button>
+        <button class="btn small" id="tip-ok" aria-describedby="level-kicker level-name tip-text">Got it</button>
       </div>
     </main>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -82,16 +82,16 @@
           <button class="icon-btn" id="levels-back" aria-label="Back">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
           </button>
-          <h2>Windows</h2>
+          <h2 id="windows-title" tabindex="-1">Windows</h2>
           <span class="spacer"></span>
         </div>
-        <ol class="level-grid" id="level-grid"></ol>
+        <ol class="level-grid" id="level-grid" aria-labelledby="windows-title"></ol>
       </div>
     </section>
 
-    <section class="sheet result" id="result" hidden>
+    <section class="sheet result" id="result" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-text" hidden>
       <div class="card">
-        <div class="grade" id="result-grade"></div>
+        <div class="grade" id="result-grade" aria-hidden="true"></div>
         <h2 id="result-title">Window clear</h2>
         <p id="result-text"></p>
         <div class="menu">

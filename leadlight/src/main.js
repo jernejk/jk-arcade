@@ -37,6 +37,7 @@ function persist() {
 function show(id) {
   for (const s of ['home', 'levels', 'result']) $(s).hidden = s !== id;
   const playing = id === null || id === 'result';
+  $('stage').inert = id !== null;
   $('hud').inert = $('controls').inert = id === 'result';
   $('hud').hidden = !playing;
   $('controls').hidden = !playing;
@@ -103,7 +104,13 @@ function tipHtml(rules) {
   return rules.map((r) => SHORT_TIPS[r]).join(' ');
 }
 
+function focusGame() {
+  const control = $('tip').hidden ? panes.querySelector('[tabindex="0"]') : $('tip-ok');
+  control?.focus({ preventScroll: true });
+}
+
 function start(spec) {
+  const enteringFromControl = document.activeElement !== document.body;
   clearTimers();
   level = levelFor(spec);
   game = createGame(level);
@@ -117,11 +124,14 @@ function start(spec) {
   $('level-kicker').textContent =
     level.kind === 'campaign' ? `Window ${level.number}/${CAMPAIGN_SIZE}` : level.kind === 'trail' ? `Trail · ${level.number}` : `Today · ${prettyDate(level.date)}`;
   $('level-name').textContent = level.name;
+  panes.setAttribute('aria-label', `${$('level-kicker').textContent}, ${level.name}. Window panes. Left and right arrows select a pane. Enter or Space moves it.`);
   renderer.setLevel(level);
   sizePaneControls();
   $('move-status').textContent = '';
+  panes.replaceChildren();
   updatePaneControls();
   updateHud();
+  if (enteringFromControl) focusGame();
   const current = game;
   if (tips[0] === 'intro') later(() => current === game && showHint(false), 700);
 }
@@ -193,6 +203,13 @@ function updatePaneControls() {
   }
 }
 
+// A screen reader can focus a pane directly without using the toolbar arrows.
+panes.addEventListener('focusin', (e) => {
+  const previous = panes.querySelector('[tabindex="0"]');
+  if (previous) previous.tabIndex = -1;
+  e.target.tabIndex = 0;
+});
+
 panes.addEventListener('keydown', (e) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
   e.preventDefault();
@@ -202,8 +219,6 @@ panes.addEventListener('keydown', (e) => {
   let next = buttons[(i + step + buttons.length) % buttons.length];
   if (e.key === 'Home') next = buttons[0];
   if (e.key === 'End') next = buttons.at(-1);
-  e.target.tabIndex = -1;
-  next.tabIndex = 0;
   next.focus();
 });
 
@@ -244,9 +259,11 @@ function onTap(k) {
   }
   if (res.type !== 'bump' || game.status === 'lost') updatePaneControls();
   const status = $('move-status');
-  if (res.type === 'bump') status.textContent = `Blocked by ${res.blocker}. ${cracksLeft(game)} cracks left.`;
-  else if (res.type === 'slide') status.textContent = `Pane parked at ${res.to}.`;
-  else status.textContent = `${game.tiles.size} panes left.`;
+  if (res.type === 'bump') {
+    const left = cracksLeft(game);
+    status.textContent = `Blocked by ${res.blocker}. ${left} crack${left === 1 ? '' : 's'} left.`;
+  } else if (res.type === 'slide') status.textContent = `Pane parked at ${res.to}.`;
+  else status.textContent = `${game.tiles.size} pane${game.tiles.size === 1 ? '' : 's'} left.`;
   updateHud(res.type === 'bump' ? cracksLeft(game) : -1);
   if (game.status === 'won') finishWin();
   else if (game.status === 'lost') finishLoss();
@@ -298,7 +315,7 @@ function showResult(current, won, g) {
   share.hidden = !(won && level.kind === 'daily');
   if (won) {
     $('result-title').textContent = g === 3 ? 'Flawless window' : 'Window clear';
-    const bits = [];
+    const bits = [`${g} of 3 gems.`];
     bits.push(game.cracks === 0 ? 'Not a single crack in the frame.' : `${game.cracks} crack${game.cracks === 1 ? '' : 's'} in the frame.`);
     if (game.hintsUsed) bits.push(`${game.hintsUsed} hint${game.hintsUsed === 1 ? '' : 's'}.`);
     if (g < 3) bits.push('Clear it without cracks or hints for all three gems.');
@@ -344,12 +361,15 @@ function showHint(count = true) {
   if (!count) game.hintsUsed--;
   const tile = game.tiles.get(h.key);
   renderer.showHint(tile);
-  $('move-status').textContent = `Hint: try the ${tile.colour} pane at ${h.key}, pointing ${DIR_NAMES[tile.dir]}.`;
-  if (count) audio.tick();
+  if (count) {
+    $('move-status').textContent = `Hint ${game.hintsUsed}: try the ${tile.colour} pane at ${h.key}, pointing ${DIR_NAMES[tile.dir]}.`;
+    audio.tick();
+  }
 }
 
 function doUndo() {
   if (!game) return;
+  const fromUndoButton = document.activeElement === $('undo-btn');
   const res = undo(game);
   if (!res) return;
   if (res.kind === 'slide') renderer.slide(res.from, res.key, calm());
@@ -357,8 +377,12 @@ function doUndo() {
   audio.tick();
   combo = 0;
   updatePaneControls();
-  $('move-status').textContent = `Restored ${res.keys.join(' and ')}.`;
   updateHud();
+  if (fromUndoButton && $('undo-btn').disabled) {
+    const restored = panes.querySelector(`[data-key="${res.key}"]`);
+    (panes.hidden ? $('tip-ok') : restored)?.focus({ preventScroll: true });
+  }
+  $('move-status').textContent = `Restored ${res.keys.join(' and ')}.`;
   if ($('undo-btn').classList.contains('glow')) checkStuck();
 }
 
@@ -422,6 +446,7 @@ function openLevels() {
     grid.append(li);
   }
   show('levels');
+  $('windows-title').focus({ preventScroll: true });
 }
 
 function syncToggles() {
@@ -552,7 +577,10 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === 'escape') {
     if (!$('levels').hidden) openHome();
-    else if (!$('home').hidden && game?.status === 'playing') show(null);
+    else if (!$('home').hidden && game?.status === 'playing') {
+      show(null);
+      focusGame();
+    }
     else openHome();
     return;
   }

@@ -53,7 +53,9 @@ test('home loads with no errors and no sideways scroll on a small phone', async 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360);
   await page.click('#windows-btn');
   await page.waitForSelector('#levels:not([hidden])');
-  assert.equal(await page.locator('#level-grid button').count(), 24);
+  assert.equal(await page.getByRole('list', { name: 'Windows' }).getByRole('button').count(), 24);
+  assert.equal(await page.locator('#windows-title:focus').count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Window 2, locked' }).isDisabled(), true);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -69,7 +71,9 @@ test('tapping panes clears a window and shows the result', async (t) => {
   assert.equal(afterBump.left, solution.length);
   for (const k of solution) await tapKey(page, k);
   await page.waitForSelector('#result:not([hidden])', { timeout: 5000 });
-  assert.match(await page.textContent('#result-title'), /Window clear/);
+  const result = page.getByRole('dialog', { name: 'Window clear' });
+  assert.equal(await result.isVisible(), true);
+  assert.match(await result.ariaSnapshot(), /2 of 3 gems/);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('leadlight-v1')));
   assert.equal(saved.best[3], 2);
   await page.click('#result-menu');
@@ -90,11 +94,13 @@ test('keyboard undo, hint and restart work', async (t) => {
   await page.keyboard.press('h');
   assert.equal(await page.evaluate(() => window.__leadlight.game.hintsUsed), 1);
   const hintText = await page.textContent('#move-status');
-  const match = /^Hint: try the (\w+) pane at ([-\d]+,[-\d]+), pointing ([\w-]+)\.$/.exec(hintText);
+  const match = /^Hint 1: try the (\w+) pane at ([-\d]+,[-\d]+), pointing ([\w-]+)\.$/.exec(hintText);
   assert.ok(match, hintText);
   const pane = page.locator(`#pane-controls button[data-key="${match[2]}"]`);
   const label = await pane.getAttribute('aria-label');
   assert.ok(label.startsWith(match[1]) && label.includes(`pointing ${match[3]}`), label);
+  await page.keyboard.press('h');
+  assert.equal(await page.textContent('#move-status'), hintText.replace('Hint 1:', 'Hint 2:'));
   await page.keyboard.press('r');
   assert.equal(await page.evaluate(() => window.__leadlight.game.hintsUsed), 0);
   await page.keyboard.press('Escape');
@@ -252,6 +258,7 @@ test('a tip open at the moment of losing hides behind the loss card', async (t) 
   assert.equal(await page.evaluate(() => window.__leadlight.game.status), 'lost');
   await page.waitForSelector('#result:not([hidden])', { timeout: 4000 });
   assert.equal(await page.isHidden('#tip'), true);
+  assert.equal(await page.getByRole('dialog', { name: 'The frame gave way' }).isVisible(), true);
   assert.match(await page.textContent('#result-text'), /^Too many bumps/);
   await page.click('#result-menu');
   await page.keyboard.press('Escape');
@@ -381,5 +388,24 @@ test('Window 23 keyboard entry dismisses the rule tip before a pane can take foc
     const { game } = window.__leadlight;
     return [game.cracks, game.history.length];
   }), [0, 0]);
+  assert.deepEqual(errors, []);
+});
+
+test('a pane chosen directly by assistive technology retains a keyboard path through move and undo', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-1');
+  t.after(() => page.close());
+  const board = page.getByRole('toolbar', { name: /Window 1.*First Light/ });
+  const key = await page.evaluate(() => window.__leadlight.level.solution[0]);
+  const chosen = board.locator(`button[data-key="${key}"]`);
+  assert.equal(await chosen.getAttribute('tabindex'), '-1');
+  await chosen.focus();
+  assert.equal(await chosen.getAttribute('tabindex'), '0');
+  await page.keyboard.press('Enter');
+  assert.equal(await board.locator('button:focus').count(), 1);
+  await page.getByRole('button', { name: 'Undo (U)' }).focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await chosen.evaluate((b) => document.activeElement === b), true);
+  assert.equal(await page.textContent('#move-status'), `Restored ${key}.`);
   assert.deepEqual(errors, []);
 });
