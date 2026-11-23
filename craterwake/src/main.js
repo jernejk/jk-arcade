@@ -2,6 +2,7 @@ import {
   Match,
   fly,
   resolve,
+  prepareCrater,
   gullTargets,
   impactLabel,
   gunner,
@@ -32,6 +33,7 @@ let field,
   aims = [],
   elapsed = 0,
   shot,
+  crater,
   result,
   remaining = 20,
   flightTime = 0,
@@ -237,6 +239,10 @@ function update() {
     plate.querySelector('strong').textContent = t.hp + '%';
     plate.querySelector('em').style.width = t.hp + '%';
   });
+  if (phase === 'impact') {
+    updateBeat(a);
+    return;
+  }
   $('#bearing').textContent = (a.heading > 0 ? '+' : '') + a.heading + '°';
   $('#notch').style.left = 50 + (a.heading / 60) * 100 + '%';
   const wind = r.wind,
@@ -271,6 +277,10 @@ function update() {
     b.setAttribute('aria-pressed', String(i === a.ammo));
     b.lastChild.textContent = AMMO[i] + ' ' + count(stock[i]);
   });
+  updateBeat(a);
+  timerUI();
+}
+function updateBeat(a) {
   $('#beat').textContent =
     phase === 'their-shot'
       ? 'Rivet aiming'
@@ -289,7 +299,6 @@ function update() {
           : '';
   $('#feedback').textContent = feedback;
   $('#skip').hidden = true;
-  timerUI();
 }
 function timerUI() {
   const t = Math.ceil(remaining);
@@ -380,6 +389,7 @@ function fire() {
   match.round.tanks[actor].heading = a.heading;
   match.round.tanks[actor].angle = a.angle;
   shot = fly(match.round, actor, a);
+  crater = undefined;
   flightTime = 0;
   skipsSeen = 0;
   result = null;
@@ -408,7 +418,8 @@ function detonate() {
   gullPending = false;
   const r = match.round,
     a = current();
-  result = resolve(r, actor, a.ammo, shot);
+  result = resolve(r, actor, a.ammo, shot, crater);
+  crater = undefined;
   if (shot.direct === 1 && actor === 0) match.medals.add('Bullseye');
   if (r.world.dirty.size) field.sync(result.debris);
   if (!calm()) field.effects.burst(r.world, shot, result);
@@ -437,6 +448,8 @@ function detonate() {
         ? name + ' −' + result.damage[1 - actor] + '%'
         : '';
   feedback = [label, damage || where].filter(Boolean).join(' · ');
+  if (target.coreExposed && result.damage[1 - actor])
+    feedback += ' · Core exposed';
   if (result.echoes.length)
     feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
   if (!actor) lastSalvo = 'Last shot · ' + feedback;
@@ -444,35 +457,16 @@ function detonate() {
   result.damage.forEach((n, i) => {
     if (n) $('#hp' + i).classList.add('hit');
   });
-  shake(splash ? 2 : 4);
+  if (!calm()) field.kick(splash ? 2 : 4);
   if (delayed) update();
   else enter('impact');
 }
-let shaking;
 motion.addEventListener('change', () => {
   if (calm()) {
-    shaking?.cancel();
+    field?.kick(0);
     field?.effects.clear();
   }
 });
-function shake(strength) {
-  if (calm()) return;
-  shaking?.cancel();
-  // The largest translation is sqrt(5² + 2.25²), below six CSS pixels.
-  shaking = canvas.animate(
-    [
-      { transform: 'none' },
-      { transform: 'translate(' + strength + 'px,' + -strength * 0.45 + 'px)' },
-      {
-        transform:
-          'translate(' + -strength * 0.6 + 'px,' + strength * 0.3 + 'px)',
-      },
-      { transform: 'translate(' + strength * 0.24 + 'px,0)' },
-      { transform: 'none' },
-    ],
-    { duration: 190, easing: 'ease-out' },
-  );
-}
 function finishRound(winner) {
   const final = match.finish(winner),
     r = match.round;
@@ -548,6 +542,10 @@ function loop(stamp) {
       if (!remaining) fire();
     } else if (phase === 'their-shot' && elapsed >= 1.35) fire();
     else if (phase === 'shell-cam') {
+      if (crater === undefined) {
+        crater = prepareCrater(match.round, current().ammo, shot);
+        if (crater) field.prepareChunks(crater.world);
+      }
       flightTime += dt * 1.15;
       if (
         skipsSeen < shot.skips.length &&
@@ -570,7 +568,7 @@ function loop(stamp) {
         echoesPlayed = due;
         $('#beat').textContent = 'Spring chain ×' + due;
         play('spring');
-        shake(5);
+        if (!calm()) field.kick(5);
       }
       $('#skip').hidden = elapsed < 0.8;
       if (elapsed >= impactLength) endImpact();
@@ -601,7 +599,9 @@ function loop(stamp) {
         pin.style.top = 50 - p.y * 50 + '%';
         const [a, b] = match.round.tanks;
         pin.lastChild.textContent =
-          Math.round(Math.hypot(a.x - b.x, a.z - b.z)) + ' vx';
+          (match.round.tanks[1 - actor].coreExposed ? 'Core exposed · ' : '') +
+          Math.round(Math.hypot(a.x - b.x, a.z - b.z)) +
+          ' vx';
       }
     }
   }

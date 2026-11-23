@@ -222,31 +222,55 @@ export function gullTargets(round, shot) {
   });
 }
 
-export function resolve(round, shooter, ammo, shot) {
+function cutTerrain(round, ammo, shot) {
+  const world = round.world,
+    debris = [],
+    drill = [],
+    blasts = [];
+  let centre = shot.p;
+  if (ammo === 1) {
+    for (let step = 0; step <= 12; step++) {
+      centre = offset(shot.p, shot.vector, step * 0.5);
+      drill.push(centre);
+      debris.push(...world.carve(centre, 0.86, false));
+    }
+  }
+  if (ammo === 2) blasts.push(...gullTargets(round, shot));
+  else blasts.push(centre);
+  for (const b of blasts) debris.push(...world.carve(b, craterRadius[ammo]));
+  const echoes = chainAndCollapse(world, debris);
+  return { debris, drill, blasts, echoes };
+}
+
+// Flight is already solved at launch. Cut a private snapshot for the mesher;
+// the live grid, crate fuses and tanks stay intact until the shell detonates.
+export function prepareCrater(round, ammo, shot) {
+  if (shot.hit === 'water' && ammo !== 2) return null;
+  const world = Object.assign(Object.create(World.prototype), {
+    cells: round.world.cells.slice(),
+    charges: round.world.charges.map((crate) => ({ ...crate })),
+    dirty: new Set(),
+    edits: [],
+  });
+  return { world, cuts: cutTerrain({ ...round, world }, ammo, shot) };
+}
+
+export function resolve(round, shooter, ammo, shot, prepared) {
   const { world, tanks } = round;
-  const debris = [],
-    blasts = [],
+  const before = tanks.map((t) => t.hp),
     tankDebris = [],
-    before = tanks.map((t) => t.hp);
-  let echoes = [];
-  const drill = [],
     settles = [];
+  let cuts = { debris: [], drill: [], blasts: [], echoes: [] };
   if (shot.hit !== 'water' || ammo === 2) {
-    let centre = { ...shot.p };
-    if (ammo === 1) {
-      for (let step = 0; step <= 12; step++) {
-        centre = offset(shot.p, shot.vector, step * 0.5);
-        drill.push(centre);
-        debris.push(...world.carve(centre, 0.86, false));
-      }
-    }
-    if (ammo === 2) {
-      blasts.push(...gullTargets(round, shot));
-    } else blasts.push(centre);
-    for (const b of blasts) {
-      debris.push(...world.carve(b, craterRadius[ammo]));
-    }
-    echoes = chainAndCollapse(world, debris);
+    if (prepared) {
+      for (const edit of prepared.world.edits)
+        world.cells[edit >>> 8] = edit & 255;
+      for (const id of prepared.world.dirty) world.dirty.add(id);
+      for (const [i, crate] of prepared.world.charges.entries())
+        world.charges[i].spent = crate.spent;
+      cuts = prepared.cuts;
+    } else cuts = cutTerrain(round, ammo, shot);
+    const { blasts, echoes } = cuts;
     if (shot.direct !== null && ammo !== 2)
       tanks[shot.direct].chip(shot.p, hitDamage[ammo], tankDebris);
     const centres = [...blasts, ...echoes];
@@ -284,11 +308,8 @@ export function resolve(round, shooter, ammo, shot) {
       ? shooter
       : null;
   return {
-    debris,
+    ...cuts,
     tankDebris,
-    blasts,
-    drill,
-    echoes,
     settles,
     winner,
     direct: shot.direct,

@@ -26,7 +26,7 @@ Use `/craterwake/?seed=824` for a repeatable arena. The results card shows the s
 
 On a fresh seed 824, fire the opening Pebble to set off both spring crates beneath the signal beam. For a knockback hit on Rivet, start fresh and fire a Pebble at +8° heading, 43° elevation and 75 power. For a double water skip, select Skipper at +12°, 23° and 43 power.
 
-At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For the physical-device performance check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
+At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For repeatable portrait timing, open `/craterwake/scripts/impact-probe.html` in Safari and run it in the foreground with full motion. It alternates five crate chains and five direct armour hits at 390 × 844, verifies each result, and reports animation-frame intervals from impact entry through exit. For a physical-device check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
 
 ## Tests
 

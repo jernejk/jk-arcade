@@ -148,11 +148,18 @@ export class World {
   }
   set(x, y, z, material) {
     if (!inside(x, y, z) || this.get(x, y, z) === material) return;
-    this.cells[index(x, y, z)] = material;
-    for (const [dx, dy, dz] of NEIGHBOURS) {
-      if (inside(x + dx, y + dy, z + dz))
-        this.dirty.add(chunkId(x + dx, y + dy, z + dz));
-    }
+    const at = index(x, y, z);
+    this.cells[at] = material;
+    this.edits?.push((at << 8) | material);
+    const id = chunkId(x, y, z);
+    this.dirty.add(id);
+    // Adjacent meshes only share a face with cuts on a chunk boundary.
+    if ((x & 15) === 0 && x > 0) this.dirty.add(id - 1);
+    if ((x & 15) === 15 && x + 1 < WIDTH) this.dirty.add(id + 1);
+    if ((y & 15) === 0 && y > 0) this.dirty.add(id - 3);
+    if ((y & 15) === 15 && y + 1 < HEIGHT) this.dirty.add(id + 3);
+    if ((z & 15) === 0 && z > 0) this.dirty.add(id - 9);
+    if ((z & 15) === 15 && z + 1 < LENGTH) this.dirty.add(id + 9);
   }
   top(x, z, ceiling = HEIGHT) {
     x = Math.floor(x);
@@ -193,16 +200,6 @@ export class World {
     return removed;
   }
 }
-const NEIGHBOURS = [
-  [0, 0, 0],
-  [1, 0, 0],
-  [-1, 0, 0],
-  [0, 1, 0],
-  [0, -1, 0],
-  [0, 0, 1],
-  [0, 0, -1],
-];
-
 export function settle(world, tank, fragments = []) {
   const from = { x: tank.x, y: tank.y, z: tank.z };
   let tipped = false;

@@ -67,6 +67,13 @@ const phaseIs = (p, name) =>
 async function range(p, id, value) {
   await p.locator(id).fill(String(value));
 }
+async function finishChunkUploads(p) {
+  for (let i = 0; i < 24; i++) {
+    if (await p.evaluate(() => window.__craterwake.meshesPending === 0)) return;
+    await p.clock.runFor(16);
+  }
+  assert.fail('dirty chunk uploads did not finish within 24 frames');
+}
 for (const [name, viewport] of [
   ['phone', { width: 390, height: 844 }],
   ['desktop', { width: 1366, height: 900 }],
@@ -306,11 +313,7 @@ test('Gull Strike releases its three bombs before the ground changes and the reb
   assert.equal((await state(p)).checksum, terrain);
   await advance(p, 640);
   assert.notEqual((await state(p)).checksum, terrain);
-  await p.waitForFunction(
-    () => window.__craterwake.meshesPending === 0,
-    undefined,
-    { polling: 50 },
-  );
+  await finishChunkUploads(p);
   await advance(p, 250);
   await p.locator('#skip').press('Enter');
   assert.equal((await state(p)).phase, 'their-shot');
@@ -417,11 +420,7 @@ test('390 × 844 shows the complete opening and rival guides, then frames the st
   await p.keyboard.press('2');
   await p.keyboard.press('Space');
   await advance(p, 5000);
-  await p.waitForFunction(
-    () => window.__craterwake.meshesPending === 0,
-    undefined,
-    { polling: 50 },
-  );
+  await finishChunkUploads(p);
   await p.clock.runFor(750);
   assert.match(await p.textContent('#feedback'), /Cover hit/);
   const bore = await p.evaluate(() => window.readBore());
@@ -467,16 +466,9 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
           waves: e.waves.count,
           bounces: e.bodies.filter((b) => b.bounces).length,
           settled: e.bodies.filter((b) => b.asleep).length,
-          shake: document
-            .querySelector('canvas')
-            .getAnimations()
-            .flatMap((a) => a.effect.getKeyframes())
-            .reduce((max, f) => {
-              const m = new DOMMatrix(
-                f.transform === 'none' ? undefined : f.transform,
-              );
-              return Math.max(max, Math.hypot(m.e, m.f));
-            }, 0),
+          shake: field.camera.view?.enabled
+            ? Math.hypot(field.camera.view.offsetX, field.camera.view.offsetY)
+            : 0,
         };
       };
     });
@@ -539,11 +531,36 @@ test('a direct turret hit leaves identical missing plates in Calm with the debri
     const p = await open(t, { clock: true, reducedMotion });
     await p.evaluate(async () => {
       const { Battlefield } = await import('./src/scene.js');
-      const { armour } = await import('./src/tank.js');
+      const { armour, core } = await import('./src/tank.js');
+      const { Raycaster } = await import('./vendor/three.module.min.js');
       const draw = Battlefield.prototype.draw;
       Battlefield.prototype.draw = function (...args) {
         const stats = draw.apply(this, args);
         const target = this.round.tanks[1];
+        window.inspectCore = () => {
+          const group = this.toys[1].group,
+            cam = this.camera;
+          const point = group.localToWorld(core.centre.clone());
+          const ray = new Raycaster(
+            cam.position,
+            point.clone().sub(cam.position).normalize(),
+          );
+          const first = ray.intersectObjects(
+            [group, ...this.chunks.values()],
+            true,
+          )[0];
+          const local = first && group.worldToLocal(first.point.clone());
+          const width =
+            (core.size.x * this.canvas.clientHeight) /
+            (2 *
+              cam.position.distanceTo(point) *
+              Math.tan((cam.fov * Math.PI) / 360));
+          return {
+            clear: local && core.box.containsPoint(local),
+            width,
+            puffs: this.effects.cloud.count,
+          };
+        };
         window.readTank = () => ({
           missing: armour.flatMap((v, i) => (target.cells.has(v) ? [] : [i])),
           turretInstances: this.toys[1].turret.children.find(
@@ -564,7 +581,10 @@ test('a direct turret hit leaves identical missing plates in Calm with the debri
     await advance(p, 5000);
     await p.clock.runFor(150);
     const hit = await p.evaluate(() => window.readTank());
-    assert.match(await p.textContent('#feedback'), /Turret hit.*Rivet −18%/);
+    assert.match(
+      await p.textContent('#feedback'),
+      /Turret hit.*Rivet −18%.*Core exposed/,
+    );
     assert.equal(await p.textContent('#hp1 strong'), '82%');
     assert.equal(hit.missing.length, 18);
     assert.ok(hit.turretInstances < fresh.turretInstances);
@@ -573,6 +593,10 @@ test('a direct turret hit leaves identical missing plates in Calm with the debri
     } else {
       assert.ok(hit.bodies >= 12 && hit.shards <= 96);
     }
+    await p.clock.runFor(1000);
+    const core = await p.evaluate(() => window.inspectCore());
+    assert.ok(core.clear && core.width >= 24, JSON.stringify(core));
+    assert.equal(core.puffs, 0);
     wrecks.push([hit.missing, hit.turretInstances]);
   }
   assert.deepEqual(wrecks[0], wrecks[1]);

@@ -2,8 +2,8 @@ import { SalvoEffects } from './salvo-effects.js';
 import * as T from '../vendor/three.module.min.js';
 import { greedyMesh } from './mesher.js';
 import { SEA, WIDTH, HEIGHT, LENGTH, random, clamp } from './world.js';
-import { RAD, DT, launch, preview } from './duel.js';
-import { chassisYaw } from './tank.js';
+import { RAD, DT, gridHit, launch, preview } from './duel.js';
+import { chassisYaw, core, tankHit } from './tank.js';
 import { Batch, makeToy, backdrop, islandProps } from './toys.js';
 
 const v = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
@@ -167,6 +167,28 @@ function ocean() {
   return mesh;
 }
 
+// Prefer the entry side. A breach in a side plate may need a lower angle than
+// a missing turret plate. Keep terrain and surviving armour in the depth test.
+function breachView(world, tank, shot, from) {
+  const focus = vec(tank).add(core.centre);
+  const entry = Math.atan2(shot.p.x - from.x, shot.p.z - from.z);
+  for (const lift of [10.5, 3.5]) {
+    const distance = Math.sqrt(132 - lift * lift);
+    for (const offset of [0, -0.72, 0.72, -1.55, 1.55, Math.PI]) {
+      const a = entry + offset;
+      const eye = focus
+        .clone()
+        .add(v(Math.sin(a) * distance, lift, Math.cos(a) * distance));
+      if (
+        tankHit(tank, eye, focus)?.cell === core &&
+        !gridHit(world, eye, focus)
+      )
+        return { eye, focus };
+    }
+  }
+  return null;
+}
+
 export class Battlefield {
   constructor(canvas) {
     this.canvas = canvas;
@@ -195,25 +217,35 @@ export class Battlefield {
     this.scene.add(key);
     this.material = terrainPaint();
     this.chunks = new Map();
+    this.retiredGeometry = [];
     this.pending = new Map();
+    this.readyChunks = new Map();
     this.revision = 0;
     try {
       this.worker = new Worker(new URL('./mesh-worker.js', import.meta.url), {
         type: 'module',
       });
       this.worker.onmessage = ({ data: { chunks, revision } }) => {
+        if (this.staged?.revision === revision) {
+          this.staged.chunks = chunks;
+          return;
+        }
         for (const { id, mesh } of chunks) {
           if (this.pending.get(id) !== revision) continue;
-          this.replaceChunk(id, mesh);
-          this.pending.delete(id);
+          this.readyChunks.set(id, { mesh, revision });
         }
       };
       this.worker.onerror = () => {
         this.worker.terminate();
         this.worker = null;
+        this.discardStaged();
         for (const id of this.pending.keys())
-          this.replaceChunk(id, greedyMesh(this.round.world, id));
+          this.mountChunk(
+            id,
+            this.buildChunk(id, greedyMesh(this.round.world, id)),
+          );
         this.pending.clear();
+        this.readyChunks.clear();
       };
     } catch {
       this.worker = null;
@@ -276,15 +308,29 @@ export class Battlefield {
     this.pips.frustumCulled = false;
     this.scene.add(this.shell, this.pips);
     this.scale = 1;
+    this.pixelRatioLimit = matchMedia('(pointer: coarse)').matches ? 1.75 : 2;
+    this.warmEffects = true;
     this.slow = 0;
     this.time = 0;
     this.resetCamera = true;
+    this.width = canvas.clientWidth;
+    this.height = canvas.clientHeight;
+    this.sizeObserver = new ResizeObserver(([entry]) => {
+      this.width = Math.round(entry.contentRect.width);
+      this.height = Math.round(entry.contentRect.height);
+    });
     this.lastSize = '';
+    this.sizeObserver.observe(canvas);
   }
   load(round) {
     this.round = round;
+    this.coreResult = this.breach = null;
+    this.discardStaged();
+    for (const geometry of this.retiredGeometry) geometry.dispose();
+    this.retiredGeometry.length = 0;
     this.effects.clear();
     this.pending.clear();
+    this.readyChunks.clear();
     for (const mesh of this.chunks.values()) {
       this.scene.remove(mesh);
       mesh.geometry.dispose();
@@ -304,14 +350,8 @@ export class Battlefield {
     this.sync();
     this.resetCamera = true;
   }
-  replaceChunk(id, { positions, colors, materials, indices }) {
-    const previous = this.chunks.get(id);
-    if (previous) {
-      this.scene.remove(previous);
-      previous.geometry.dispose();
-      this.chunks.delete(id);
-    }
-    if (!indices.length) return;
+  buildChunk(id, { positions, colors, materials, indices }) {
+    if (!indices.length) return null;
     const geo = new T.BufferGeometry();
     const attribute = (data, size, Type) =>
       new T.BufferAttribute(data instanceof Type ? data : new Type(data), size);
@@ -326,19 +366,55 @@ export class Battlefield {
       Math.floor(id / 9) * 16 + 8,
     );
     geo.boundingSphere = new T.Sphere(centre, Math.sqrt(3) * 8);
-    const mesh = new T.Mesh(geo, this.material);
-    this.scene.add(mesh);
+    return new T.Mesh(geo, this.material);
+  }
+  mountChunk(id, mesh) {
+    const previous = this.chunks.get(id);
+    if (previous) {
+      this.scene.remove(previous);
+      this.retiredGeometry.push(previous.geometry);
+      this.chunks.delete(id);
+    }
+    if (!mesh) return;
+    mesh.geometry.setDrawRange(0, Infinity);
+    mesh.frustumCulled = true;
+    if (!mesh.parent) this.scene.add(mesh);
     this.chunks.set(id, mesh);
+  }
+  discardStaged() {
+    for (const mesh of this.staged?.uploaded.values() || []) {
+      if (!mesh) continue;
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+    }
+    this.staged = null;
+  }
+  prepareChunks(world) {
+    if (!this.worker || !world.dirty.size) return;
+    const revision = ++this.revision;
+    this.staged = { revision, chunks: [], uploaded: new Map() };
+    const cells = world.cells;
+    this.worker.postMessage({ ids: [...world.dirty], cells, revision }, [
+      cells.buffer,
+    ]);
   }
   sync(removed) {
     const world = this.round.world,
       ids = [...world.dirty];
-    if (this.worker && removed) {
-      const revision = ++this.revision,
-        cells = world.cells.slice();
+    if (removed && this.staged) {
+      const { revision, chunks, uploaded } = this.staged;
+      this.staged = null;
       for (const id of ids) this.pending.set(id, revision);
-      this.worker.postMessage({ ids, cells, revision }, [cells.buffer]);
-    } else for (const id of ids) this.replaceChunk(id, greedyMesh(world, id));
+      for (const [id, mesh] of uploaded) {
+        this.mountChunk(id, mesh);
+        this.pending.delete(id);
+      }
+      for (const { id, mesh } of chunks)
+        this.readyChunks.set(id, { mesh, revision });
+    } else {
+      for (const id of ids)
+        this.mountChunk(id, this.buildChunk(id, greedyMesh(world, id)));
+    }
     const props = this.props,
       indices = props.geometry.index;
     for (const a of props.userData.anchors) {
@@ -370,18 +446,42 @@ export class Battlefield {
       this.depth.needsUpdate = true;
     }
   }
+  kick(strength) {
+    this.kickStrength = strength;
+    this.kickStart = performance.now();
+  }
+  applyKick(calm) {
+    // Move the projection inside the existing WebGL surface. Moving the canvas
+    // itself makes Safari composite a full portrait layer on the hit frame.
+    if (this.kickStrength && !calm) {
+      const t = (performance.now() - this.kickStart) / 190;
+      if (t < 1) {
+        const x = Math.sin(t * 3 * Math.PI) * (1 - t) * this.kickStrength;
+        this.camera.setViewOffset(
+          this.width,
+          this.height,
+          -x,
+          x * 0.45,
+          this.width,
+          this.height,
+        );
+        return;
+      }
+    }
+    this.kickStrength = 0;
+    if (this.camera.view?.enabled) this.camera.clearViewOffset();
+  }
   resize(dt) {
     if (dt > 0.018) {
       if (++this.slow >= 3) this.scale = 0.8;
     } else this.slow = 0;
-    const w = this.canvas.clientWidth,
-      h = this.canvas.clientHeight,
-      dpr = Math.min(2, devicePixelRatio) * this.scale;
+    const w = this.width,
+      h = this.height,
+      dpr = Math.min(this.pixelRatioLimit, devicePixelRatio) * this.scale;
     const size = [w, h, dpr].join('/');
     if (this.lastSize !== size) {
       this.lastSize = size;
-      this.renderer.setPixelRatio(dpr);
-      this.renderer.setSize(w, h, false);
+      this.renderer.setDrawingBufferSize(w, h, dpr);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
     }
@@ -453,6 +553,29 @@ export class Battlefield {
   }
   draw(view, dt) {
     const { phase, actor, aim, elapsed, shot, flightTime, result, calm } = view;
+    // Release old GPU buffers after the hit flash, one per frame.
+    if (phase !== 'impact' || elapsed > 0.12) this.retiredGeometry.pop()?.dispose();
+    // Upload one future chunk per flight frame without drawing any of its faces.
+    // At impact a prepared crater only needs to switch the active meshes.
+    if (this.staged?.chunks.length) {
+      const { id, mesh: data } = this.staged.chunks.pop();
+      const mesh = this.buildChunk(id, data);
+      if (mesh) {
+        mesh.geometry.setDrawRange(0, 0);
+        mesh.frustumCulled = false;
+        this.scene.add(mesh);
+      }
+      this.staged.uploaded.set(id, mesh);
+    }
+    // A point-blank shot can beat the worker. Bound late uploads as well.
+    let applied = 0;
+    for (const [id, { mesh, revision }] of this.readyChunks) {
+      this.readyChunks.delete(id);
+      if (this.pending.get(id) !== revision) continue;
+      this.mountChunk(id, this.buildChunk(id, mesh));
+      this.pending.delete(id);
+      if (++applied === 2) break;
+    }
     this.resize(dt);
     if (!calm) this.time += dt;
     const tanks = this.round.tanks,
@@ -604,8 +727,34 @@ export class Battlefield {
             ),
           );
       }
+      const showCore = result?.damage?.[1 - actor] && enemy.coreExposed;
+      if (
+        showCore &&
+        (calm || blastAge >= 0.28) &&
+        (!result.drill.length || shot.direct === 1 - actor)
+      ) {
+        if (this.coreResult !== result) {
+          this.coreResult = result;
+          this.breach = breachView(
+            this.round.world,
+            enemy,
+            shot,
+            result.settles[1 - actor].from,
+          );
+        }
+        if (this.breach) {
+          const blend = calm ? 1 : smooth(clamp((blastAge - 0.28) / 0.6, 0, 1));
+          eye.lerp(this.breach.eye, blend);
+          look = look.clone().lerp(this.breach.focus, blend);
+        }
+      }
       if (!calm && blastAge >= 0)
-        this.effects.atmosphere(blastAge, this.round.wind, result.settles);
+        this.effects.atmosphere(
+          blastAge,
+          this.round.wind,
+          result.settles,
+          showCore,
+        );
       if (aim.ammo === 2)
         this.birds.forEach((b, i) => {
           b.visible = elapsed < 1.45;
@@ -657,9 +806,25 @@ export class Battlefield {
     this.resetCamera = false;
     this.lastPhase = phase;
     this.camera.lookAt(this.look);
+    this.applyKick(calm);
     this.sky.position.copy(this.camera.position);
     this.water.material.uniforms.time.value = this.time;
+    // Submit one buried instance per impact material on the first aim frame.
+    // Safari can defer native pipeline creation until the first non-empty draw.
+    if (this.warmEffects) {
+      this.effects.shards.count =
+        this.effects.cloud.count =
+        this.effects.waves.count =
+          1;
+    }
     this.renderer.render(this.scene, this.camera);
+    if (this.warmEffects) {
+      this.effects.shards.count =
+        this.effects.cloud.count =
+        this.effects.waves.count =
+          0;
+      this.warmEffects = false;
+    }
     const pin = vec(enemy)
       .add(v(0, 3.35, 0))
       .project(this.camera);

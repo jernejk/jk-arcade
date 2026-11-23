@@ -91,7 +91,17 @@ function armourStamps(v, side) {
     });
   }
   stamp(0, 0, 0, w * 0.965, h * 0.965, d * 0.965, cellColor(v, side));
-  if (v.part === 'track') {
+  if (v.paint === 'core') {
+    // A dark gasket and warm ceramic centre read on any exposed face.
+    for (const axis of [0, 1, 2]) {
+      const gasket = [w * 0.78, h * 0.78, d * 0.78];
+      const insert = [w * 0.5, h * 0.5, d * 0.5];
+      gasket[axis] = [w, h, d][axis] * 0.98;
+      insert[axis] = [w, h, d][axis] * 0.995;
+      stamp(0, 0, 0, ...gasket, 0x423727);
+      stamp(0, 0, 0, ...insert, 0xffeb97);
+    }
+  } else if (v.part === 'track') {
     const outer = Math.sign(x) * w * 0.5;
     if (y > 0.43 && v.paint === 'brass') {
       stamp(outer, 0, 0, 0.06, 0.27, 0.27, charcoal);

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Craterwake impact timing</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      background: #182c34;
+      color: white;
+      font: 16px system-ui;
+    }
+    iframe {
+      display: block;
+      width: 390px;
+      height: 844px;
+      border: 0;
+    }
+    pre {
+      white-space: pre-wrap;
+      padding: 12px;
+    }
+  </style>
+  <button id="run">Measure five crate chains and five armour hits</button>
+  <pre id="report" aria-live="polite">390 × 844 · Seed 824 · Full motion</pre>
+  <script type="module">
+    const button = document.querySelector('#run'),
+      report = document.querySelector('#report');
+    const scenarios = ['chain', 'armour'];
+    function summary(samples) {
+      const sorted = samples.slice().sort((a, b) => a - b);
+      const q = (fraction) =>
+        sorted[Math.ceil(sorted.length * fraction) - 1].toFixed(1);
+      return (
+        sorted.length +
+        ' frames · p50 ' +
+        q(0.5) +
+        ' · p95 ' +
+        q(0.95) +
+        ' · max ' +
+        q(1) +
+        ' ms'
+      );
+    }
+    async function replay(scenario) {
+      const frame = document.createElement('iframe');
+      frame.title = 'Seeded ' + scenario + ' replay';
+      frame.src = '../?seed=824';
+      const ready = new Promise((resolve) => (frame.onload = resolve));
+      document.body.prepend(frame);
+      try {
+        await ready;
+        const win = frame.contentWindow,
+          doc = win.document;
+        if (win.innerWidth !== 390 || win.innerHeight !== 844)
+          throw Error(
+            'Expected 390 × 844, got ' +
+              win.innerWidth +
+              ' × ' +
+              win.innerHeight,
+          );
+        if (win.matchMedia('(prefers-reduced-motion: reduce)').matches)
+          throw Error('Full motion is required to measure the debris spray.');
+        doc.querySelector('#start').click();
+        await new Promise((r) => win.setTimeout(r, 600));
+        if (scenario === 'armour') {
+          for (let i = 0; i < 8; i++)
+            doc.dispatchEvent(
+              new win.KeyboardEvent('keydown', { key: 'd', bubbles: true }),
+            );
+          const power = doc.querySelector('#throttle');
+          power.value = '75';
+          power.dispatchEvent(new win.Event('input'));
+        }
+        const samples = [],
+          hud = doc.querySelector('#hud');
+        let last,
+          wasImpact = false,
+          verified = false;
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(Error('Impact replay timed out')),
+            20000,
+          );
+          doc.querySelector('#fire').click();
+          function sample(t) {
+            const impact = hud.dataset.phase === 'impact';
+            if (last !== undefined && (impact || wasImpact))
+              samples.push(t - last);
+            if (impact && !wasImpact) {
+              const message = doc.querySelector('#feedback').textContent;
+              verified =
+                message.includes(
+                  scenario === 'chain' ? 'Spring crate ×2' : 'Turret hit',
+                ) &&
+                (scenario !== 'armour' ||
+                  doc.querySelector('#hp1 strong').textContent === '82%');
+            }
+            if (!impact && wasImpact) {
+              clearTimeout(timeout);
+              return verified
+                ? resolve()
+                : reject(Error('Unexpected shot outcome'));
+            }
+            last = t;
+            wasImpact = impact;
+            win.requestAnimationFrame(sample);
+          }
+          win.requestAnimationFrame(sample);
+        });
+        return samples;
+      } finally {
+        frame.remove();
+      }
+    }
+    button.onclick = async () => {
+      button.disabled = true;
+      const lines = [],
+        pooled = { chain: [], armour: [] };
+      try {
+        for (let run = 1; run <= 5; run++) {
+          for (const scenario of scenarios) {
+            const samples = await replay(scenario);
+            pooled[scenario].push(...samples);
+            lines.push(scenario + ' ' + run + ' · ' + summary(samples));
+            report.textContent = lines.join('\n');
+          }
+        }
+        report.textContent =
+          scenarios
+            .map((k) => k + ' total · ' + summary(pooled[k]))
+            .join('\n') +
+          '\n\n' +
+          lines.join('\n');
+      } catch (e) {
+        report.textContent += '\n' + e.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+  </script>
+</html>

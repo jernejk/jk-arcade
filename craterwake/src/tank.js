@@ -152,7 +152,7 @@ export function tankHit(tank, a, b) {
       }
     }
   }
-  return struck ? { t: best, part: struck.part } : null;
+  return struck ? { t: best, part: struck.part, cell: struck } : null;
 }
 
 export function makeTank(x, y, z, side, stock) {
@@ -166,6 +166,9 @@ export function makeTank(x, y, z, side, stock) {
     angle: 43,
     sunk: false,
     cells: new Set(armour),
+    get coreExposed() {
+      return Boolean(this.hp) && !guards.every((v) => this.cells.has(v));
+    },
     get hp() {
       return this.sunk || !this.cells.has(core) ? 0 : this.cells.size;
     },
@@ -184,7 +187,7 @@ const nearestFirst = (a, b) => distances[a.id] - distances[b.id];
 function chipTank(tank, point, count, fragments) {
   if (!count || !tank.hp) return;
   orient(tank);
-  const shielded = guards.every((v) => tank.cells.has(v));
+  const shielded = !tank.coreExposed;
   candidates.length = 0;
   for (const [i, cells] of mounted.entries()) {
     inverse.copy(rotations[i]).invert();

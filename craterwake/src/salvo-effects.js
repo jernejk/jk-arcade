@@ -53,7 +53,7 @@ export class SalvoEffects {
       scene,
       new T.RingGeometry(0.88, 1, 32),
       new T.MeshBasicMaterial({
-        side: T.DoubleSide,
+        side: T.FrontSide,
         transparent: true,
         opacity: 0.86,
         depthWrite: false,
@@ -204,7 +204,7 @@ export class SalvoEffects {
     this.shards.instanceMatrix.needsUpdate = true;
     this.settled = this.bodies.every((b) => b.asleep || b.sunk);
   }
-  atmosphere(age, wind, settles) {
+  atmosphere(age, wind, settles, showCore) {
     // Reserve a little of the cloud batch for a sinking hull's spray.
     const perFront = Math.min(16, Math.floor((PUFFS - 8) / this.fronts.length));
     for (const f of this.fronts) {
@@ -227,7 +227,7 @@ export class SalvoEffects {
         const smoke = i % 3 === 0,
           a = i * 2.39996 + f.phase,
           band = (i % 5) / 5;
-        const life = smoke ? 1.5 : 1.0;
+        const life = showCore ? (smoke ? 0.85 : 0.7) : smoke ? 1.5 : 1;
         if (t >= life) continue;
         const u = t / life,
           fade = 1 - u * u;

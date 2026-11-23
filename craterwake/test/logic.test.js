@@ -13,6 +13,7 @@ import {
   freshAim,
   fly,
   resolve,
+  prepareCrater,
   adjust,
   preview,
   launch,
@@ -484,4 +485,33 @@ test('repeated shots through armour reach the core and win with surviving wrecka
   assert.ok(target.cells.size > 0);
   assert.equal(target.hp, 0);
   assert.equal(winner, 0);
+});
+
+test('preparing crate, armour and Gull impacts during flight leaves live state intact until detonation', () => {
+  for (const aim of [
+    freshAim(),
+    { ...freshAim(), heading: 8, power: 75 },
+    { ...freshAim(), ammo: 2 },
+    { ...freshAim(), angle: 5, ammo: 1 },
+  ]) {
+    const round = fixed(),
+      reference = fixed();
+    const shot = fly(round, 0, aim),
+      before = round.world.checksum();
+    const prepared = prepareCrater(round, aim.ammo, shot);
+    assert.equal(round.world.checksum(), before);
+    assert.ok(round.world.charges.every((crate) => !crate.spent));
+    assert.deepEqual(
+      round.tanks.map((t) => t.hp),
+      [100, 100],
+    );
+    // The renderer transfers this snapshot to its worker during shell flight.
+    structuredClone(prepared.world.cells, {
+      transfer: [prepared.world.cells.buffer],
+    });
+    const actual = resolve(round, 0, aim.ammo, shot, prepared);
+    assert.deepEqual(actual, resolve(reference, 0, aim.ammo, shot));
+    assert.deepEqual(round.world.cells, reference.world.cells);
+    assert.deepEqual(round.world.charges, reference.world.charges);
+  }
 });
