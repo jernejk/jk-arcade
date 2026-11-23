@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#183b41" />
+    <title>Craterwake · JK Arcade</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main id="cabinet" aria-label="Craterwake">
+      <canvas
+        id="sea"
+        aria-label="Saltpan Twins battlefield. Drag horizontally to turn the turret."
+        tabindex="-1"
+      ></canvas>
+      <section id="home" class="screen">
+        <div class="home-nav"><a href="../">‹ Arcade</a></div>
+        <div class="cover-copy">
+          <p class="location">Saltpan Twins</p>
+          <h1>Craterwake</h1>
+          <p class="pitch">
+            Wind up your tank. Read the wind.<br />Drop their island into the
+            sea.
+          </p>
+          <button id="start" class="primary">
+            Start duel <span aria-hidden="true">➜</span>
+          </button>
+          <button id="instructions" class="text-button">How to play</button>
+        </div>
+      </section>
+      <section id="hud" aria-label="Duel controls" hidden>
+        <header>
+          <div class="strip">
+            <button id="pause" aria-label="Pause duel">Ⅱ</button
+            ><span>Saltpan Twins</span><span id="round-no"></span>
+          </div>
+          <div class="plates">
+            <div class="hp" id="hp0">
+              <div><b>Kettle</b><strong>100%</strong></div>
+              <i><em></em></i>
+            </div>
+            <div class="hp rival" id="hp1">
+              <div><b>Rivet</b><strong>100%</strong></div>
+              <i><em></em></i>
+            </div>
+          </div>
+          <div class="compass">
+            <div class="ticks"><i id="notch"></i></div>
+            <b id="bearing">0°</b><small id="wind"></small>
+          </div>
+        </header>
+        <div id="pin" aria-hidden="true"><i></i><span></span></div>
+        <div id="beat" aria-live="polite"></div>
+        <div id="angle" class="control">
+          <label for="elevation">Angle</label><output for="elevation"></output
+          ><input
+            type="range"
+            id="elevation"
+            min="5"
+            max="80"
+            value="43"
+            aria-label="Barrel angle"
+          />
+        </div>
+        <div id="power" class="control">
+          <label for="throttle">Power</label
+          ><input
+            type="range"
+            id="throttle"
+            min="10"
+            max="100"
+            value="72"
+            aria-label="Shot power"
+          /><button id="plus" aria-label="Increase power">▲</button
+          ><output for="throttle"></output
+          ><button id="minus" aria-label="Decrease power">▼</button>
+        </div>
+        <div id="feedback" role="status"></div>
+        <footer>
+          <div id="tray" aria-label="Choose ammunition" hidden></div>
+          <button id="ammo" aria-expanded="false" aria-controls="tray">
+            <img alt="" width="38" height="38" /><span
+              ><small>Ammo ▴</small><b></b
+            ></span>
+          </button>
+          <button id="fire" aria-label="Fire">
+            <span>Fire</span><small>20 s</small>
+          </button>
+        </footer>
+        <button id="skip" hidden>Skip impact ›</button>
+      </section>
+      <dialog id="panel">
+        <div class="panel-body">
+          <p id="panel-kicker" class="location"></p>
+          <h2 id="panel-title"></h2>
+          <div id="panel-copy"></div>
+          <div id="panel-actions"></div>
+        </div>
+      </dialog>
+      <button id="sound" aria-label="Mute sound" aria-pressed="true">♪</button>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
