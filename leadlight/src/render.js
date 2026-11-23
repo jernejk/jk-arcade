@@ -10,7 +10,6 @@ export const PIGMENT_COLOURS = {
   amethyst: ['#e6bcff', '#8d43d4', '#330c57'],
 };
 
-const MIN_PANE = 36;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
 const easeOut = (t) => 1 - (1 - t) ** 3;
@@ -220,7 +219,6 @@ export function createRenderer(canvas) {
   let centre = { x: 0, y: 0, reach: 1 };
   let sprites = new Map();
   let light = 0;
-  let reserveBottom = 0;
   let stars = [];
   const fx = {
     flying: [],
@@ -289,13 +287,9 @@ export function createRenderer(canvas) {
       maxY = Math.max(maxY, p.y + 1);
     }
     const pad = 0.6;
-    const fit = (h) => Math.min(64, (view.w - 8) / (maxX - minX + pad * 2), (h - 8) / (maxY - minY + pad * 2));
-    const above = reserveBottom ? fit(view.h - reserveBottom) : 0;
-    const roomAbove = above * SQRT3 >= MIN_PANE;
-    view.size = roomAbove ? above : fit(view.h);
-    const usable = roomAbove ? view.h - reserveBottom : view.h;
+    view.size = Math.min(64, (view.w - 8) / (maxX - minX + pad * 2), (view.h - 8) / (maxY - minY + pad * 2));
     view.ox = view.w / 2 - ((minX + maxX) / 2) * view.size;
-    view.oy = usable / 2 - ((minY + maxY) / 2) * view.size;
+    view.oy = view.h / 2 - ((minY + maxY) / 2) * view.size;
     cells = level.cells.map(([q, r]) => ({ q, r, k: key(q, r), ...px(q, r) }));
     let cx = 0, cy = 0;
     for (const c of cells) {
@@ -494,6 +488,46 @@ export function createRenderer(canvas) {
     ctx.restore();
   }
 
+  function drawInspection(inspection) {
+    if (!inspection) return;
+    const point = (k) => px(...k.split(',').map(Number));
+    ctx.save();
+    ctx.strokeStyle = '#fff3bc';
+    ctx.lineWidth = Math.max(2, view.size * 0.11);
+    for (const { cells } of inspection.paths) {
+      const start = point(cells[0]);
+      hexPath(ctx, start.x, start.y, view.size * 0.93);
+      ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      for (const k of cells.slice(1)) {
+        const { x, y } = point(k);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (inspection.landing) {
+      const { x, y } = point(inspection.landing);
+      ctx.beginPath();
+      ctx.arc(x, y, view.size * 0.34, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (inspection.blocker) {
+      const { x, y } = point(inspection.blocker);
+      const d = view.size * 0.28;
+      ctx.strokeStyle = '#ffada6';
+      ctx.beginPath();
+      ctx.moveTo(x - d, y - d);
+      ctx.lineTo(x + d, y + d);
+      ctx.moveTo(x + d, y - d);
+      ctx.lineTo(x - d, y + d);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawHint(now) {
     const h = fx.hint;
     if (!h) return;
@@ -648,11 +682,6 @@ export function createRenderer(canvas) {
       layout();
     },
     resize: layout,
-    reserve(px) {
-      if (px === reserveBottom) return;
-      reserveBottom = px;
-      layout();
-    },
     reset() {
       fx.flying = [];
       fx.bumps.clear();
@@ -742,7 +771,7 @@ export function createRenderer(canvas) {
       const k = key(q, r);
       return mask.has(k) ? k : null;
     },
-    draw(now, game, calm) {
+    draw(now, game, calm, inspection) {
       const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016);
       last = now;
       ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
@@ -805,6 +834,7 @@ export function createRenderer(canvas) {
         drawBar(a.x, a.y, b.x, b.y);
       }
       drawHint(now);
+      drawInspection(inspection);
 
       for (const [k, b] of fx.bumps) {
         const t = (now - b.t0) / 340;

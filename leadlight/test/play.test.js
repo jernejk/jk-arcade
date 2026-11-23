@@ -409,3 +409,121 @@ test('a pane chosen directly by assistive technology retains a keyboard path thr
   assert.equal(await page.textContent('#move-status'), `Restored ${key}.`);
   assert.deepEqual(errors, []);
 });
+
+const boardState = (page) => page.evaluate(() => {
+  const { game } = window.__leadlight;
+  return { tiles: [...game.tiles], history: game.history, cracks: game.cracks, hints: game.hintsUsed };
+});
+
+test('Continue resumes the actual Window 23 position, counters, URL and undo history', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23', { viewport: { width: 360, height: 640 } });
+  t.after(() => page.close());
+  const moves = await page.evaluate(() => window.__leadlight.level.solution.slice(0, 11));
+  for (const k of moves) await tapKey(page, k);
+  await page.keyboard.press('h');
+  const blocked = await page.evaluate(async () => {
+    const { analyseMove } = await import('/src/board.js');
+    const { game } = window.__leadlight;
+    return [...game.tiles.keys()].find(k => analyseMove(game.bounds, game.mask, game.tiles, k).type === 'bump');
+  });
+  await tapKey(page, blocked);
+  const before = await boardState(page);
+  assert.deepEqual([before.tiles.length, before.history.length, before.cracks, before.hints], [57, 11, 1, 1]);
+  await page.click('#menu-btn');
+  await page.getByRole('button', { name: 'Continue window 23' }).click();
+  assert.equal(new URL(page.url()).hash, '#window-23');
+  assert.deepEqual(await boardState(page), before);
+  await page.click('#undo-btn');
+  assert.equal((await boardState(page)).history.length, 10);
+  assert.deepEqual(errors, []);
+});
+
+test('every Window 23 pane and its focus ring fit clear of the combined rule tip at 360px', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23', {
+    viewport: { width: 360, height: 640 }, progress: { unlocked: 24, tipSeen: true, seen: {} },
+  });
+  t.after(() => page.close());
+  const geometry = await page.evaluate(() => {
+    const { game, pixelOf, paneSize } = window.__leadlight;
+    const radius = 0.75 * paneSize() / Math.sqrt(3) + 6;
+    const board = document.querySelector('#board').getBoundingClientRect();
+    const tip = document.querySelector('#tip').getBoundingClientRect();
+    const clear = [...game.tiles.keys()].filter(k => {
+      const { x, y } = pixelOf(k);
+      return document.elementFromPoint(x, y)?.id === 'board' && y + radius <= tip.top &&
+        x - radius >= board.left && x + radius <= board.right && y - radius >= board.top;
+    });
+    return [clear.length, game.tiles.size, document.documentElement.scrollWidth];
+  });
+  assert.deepEqual(geometry, [68, 68, 360]);
+  assert.deepEqual(errors, []);
+});
+
+test('free inspection previews the Window 12 weighted stop before committing', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-12', { viewport: { width: 360, height: 640 } });
+  t.after(() => page.close());
+  const before = await boardState(page);
+  await page.click('#inspect-btn');
+  await tapKey(page, '0,0');
+  const report = await page.textContent('#inspect-summary');
+  assert.match(report, /Parks at 0,-1 because 0,-2 is occupied/);
+  assert.match(report, /north-west: 0,-1 → 0,-2/);
+  await page.locator('#inspect-neighbours summary').click();
+  assert.match(await page.textContent('#neighbour-text'), /north-west 0,-1: empty/);
+  assert.deepEqual(await boardState(page), before);
+  await page.click('#inspect-move');
+  const after = await boardState(page);
+  assert.equal(after.history.at(-1).to, '0,-1');
+  assert.deepEqual([after.history.length, after.hints, after.cracks], [1, 0, 0]);
+  assert.deepEqual(errors, []);
+});
+
+test('Up and Down select the closest pane in the next occupied row and update inspection', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-23');
+  t.after(() => page.close());
+  const board = page.getByRole('toolbar');
+  await board.locator('[tabindex="0"]').focus();
+  await page.keyboard.press('i');
+  const before = await boardState(page);
+  for (const direction of ['ArrowDown', 'ArrowDown', 'ArrowUp']) {
+    const expected = await board.evaluate((el, down) => {
+      const active = document.activeElement.getBoundingClientRect();
+      return [...el.children].map(b => ({ key: b.dataset.key, rect: b.getBoundingClientRect() }))
+        .filter(b => down ? b.rect.y > active.y + 1 : b.rect.y < active.y - 1)
+        .sort((a, b) => {
+          const row = Math.abs(a.rect.y - active.y) - Math.abs(b.rect.y - active.y);
+          const distance = Math.abs(a.rect.x - active.x) - Math.abs(b.rect.x - active.x);
+          if (Math.abs(row) > 0.1) return row;
+          return Math.abs(distance) > 0.1 ? distance : a.rect.x - b.rect.x;
+        })[0].key;
+    }, direction === 'ArrowDown');
+    await page.keyboard.press(direction);
+    assert.equal(await board.locator(':focus').getAttribute('data-key'), expected);
+    assert.ok((await page.textContent('#inspect-summary')).includes(`at ${expected}.`));
+  }
+  assert.deepEqual(await boardState(page), before);
+  assert.deepEqual(errors, []);
+});
+
+test('reviewing Rules from the pause menu preserves the live window and seen tips', async (t) => {
+  if (skip) return t.skip(skip);
+  const { page, errors } = await open('#window-12');
+  t.after(() => page.close());
+  await tapKey(page, '0,0');
+  const before = await boardState(page);
+  const saved = await page.evaluate(() => localStorage.getItem('leadlight-v1'));
+  await page.click('#menu-btn');
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  assert.equal(await page.locator('#rules-title:focus').count(), 1);
+  assert.match(await page.locator('#rules-text').innerText(), /Weighted panes/);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#rules-btn:focus').count(), 1);
+  await page.click('#continue-btn');
+  assert.deepEqual(await boardState(page), before);
+  assert.equal(await page.evaluate(() => localStorage.getItem('leadlight-v1')), saved);
+  assert.deepEqual(errors, []);
+});

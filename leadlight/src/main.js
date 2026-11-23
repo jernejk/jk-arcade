@@ -1,3 +1,4 @@
+import { inspectPane } from './inspect.js';
 import { DIR_NAMES, toPixel } from './hex.js';
 import { campaignLevel, CAMPAIGN_SIZE, trailLevel, dailyLevel, localDateId, isDateId } from './levels.js';
 import { createGame, tap, undo, hint, cracksLeft, grade, solveFrom } from './game.js';
@@ -17,6 +18,8 @@ let game = null;
 let level = null;
 let combo = 0;
 let lastFly = 0;
+let inspection = null;
+let inspectedKey = null;
 let timers = [];
 let toastTimer = 0;
 
@@ -35,24 +38,25 @@ function persist() {
 }
 
 function show(id) {
-  for (const s of ['home', 'levels', 'result']) $(s).hidden = s !== id;
+  if (id !== null) closeInspection();
+  for (const s of ['home', 'levels', 'rules', 'result']) $(s).hidden = s !== id;
   const playing = id === null || id === 'result';
-  $('stage').inert = id !== null;
+  $('stage').inert = $('dock').inert = id !== null;
   $('hud').inert = $('controls').inert = id === 'result';
   $('hud').hidden = !playing;
-  $('controls').hidden = !playing;
   $('tip').hidden = id !== null || !$('tip').dataset.tip;
-  syncReserve();
+  syncBoardLayout();
 }
 
 function syncPaneVisibility() {
-  panes.hidden = game?.status !== 'playing' || !$('tip').hidden || !$('home').hidden || !$('levels').hidden;
+  panes.hidden = game?.status !== 'playing' || !$('tip').hidden || $('stage').inert;
 }
 
-function syncReserve() {
-  const tip = $('tip');
+function syncBoardLayout() {
+  $('controls').hidden = $('hud').hidden || !$('tip').hidden;
   syncPaneVisibility();
-  renderer.reserve(tip.hidden ? 0 : tip.getBoundingClientRect().height + 12);
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width !== renderer.view.w || rect.height !== renderer.view.h) renderer.resize();
   sizePaneControls();
 }
 
@@ -85,7 +89,7 @@ const TIPS = {
   intro: '<strong>Tap a pane</strong> whose arrow has a clear run to the edge of the window. It slides out. If another pane is in the way, it bumps and the frame cracks.',
   keystone: '<strong>Keystones</strong> wear a gold-leaded ring. A keystone only leaves once every pane touching it has gone, so clear around it first.',
   pair: '<strong>Leaded pairs</strong> are joined by a lead bar and leave together. Both arrows need a clear run, or the pair bumps.',
-  weighted: '<strong>Weighted panes</strong> (lead band and weight) stop before the next pane. Clear the way, slide to the rim, then tap to lift out. Slide one too early and it can wall others in.',
+  weighted: '<strong>Weighted panes</strong> wear a lead band. They park before blockers. Clear the path, slide to the rim, then tap to lift out.',
 };
 
 const SHORT_TIPS = {
@@ -109,7 +113,10 @@ function focusGame() {
   control?.focus({ preventScroll: true });
 }
 
-function start(spec) {
+function start(spec, reset = false) {
+  if (!reset && game?.status === 'playing' && level.kind === spec.kind &&
+      (spec.kind === 'daily' ? level.date === spec.date : level.number === spec.n)) return resume();
+  closeInspection();
   const enteringFromControl = document.activeElement !== document.body;
   clearTimers();
   level = levelFor(spec);
@@ -124,7 +131,7 @@ function start(spec) {
   $('level-kicker').textContent =
     level.kind === 'campaign' ? `Window ${level.number}/${CAMPAIGN_SIZE}` : level.kind === 'trail' ? `Trail · ${level.number}` : `Today · ${prettyDate(level.date)}`;
   $('level-name').textContent = level.name;
-  panes.setAttribute('aria-label', `${$('level-kicker').textContent}, ${level.name}. Window panes. Left and right arrows select a pane. Enter or Space moves it.`);
+  panes.setAttribute('aria-label', `${$('level-kicker').textContent}, ${level.name}. Window panes. Left and right read across rows. Up and down select the nearest pane in the next row. I toggles inspection. N reads neighbours while inspecting. Enter or Space activates.`);
   renderer.setLevel(level);
   sizePaneControls();
   $('move-status').textContent = '';
@@ -139,7 +146,7 @@ function start(spec) {
 function restart() {
   if (!level) return;
   clearTimers();
-  start(specOf(level));
+  start(specOf(level), true);
   audio.tick();
 }
 
@@ -187,7 +194,7 @@ function updatePaneControls() {
     button.dataset.id = tile.id;
     button.dataset.key = k;
     button.tabIndex = -1;
-    button.onclick = () => onTap(k);
+    button.onclick = () => activatePane(k);
     const { x, y } = toPixel(tile.q, tile.r);
     button.style.left = `${x}em`;
     button.style.top = `${y}em`;
@@ -208,19 +215,77 @@ panes.addEventListener('focusin', (e) => {
   const previous = panes.querySelector('[tabindex="0"]');
   if (previous) previous.tabIndex = -1;
   e.target.tabIndex = 0;
+  if (!$('inspection').hidden) selectForInspection(e.target.dataset.key);
 });
 
 panes.addEventListener('keydown', (e) => {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
   e.preventDefault();
   const buttons = Array.from(panes.children);
   const i = buttons.indexOf(e.target);
   const step = e.key === 'ArrowRight' ? 1 : -1;
   let next = buttons[(i + step + buttons.length) % buttons.length];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const current = game.tiles.get(e.target.dataset.key);
+    const sign = e.key === 'ArrowDown' ? 1 : -1;
+    const x = current.q + current.r / 2;
+    let rows = Infinity, distance = Infinity;
+    next = e.target;
+    for (const button of buttons) {
+      const { q, r } = game.tiles.get(button.dataset.key);
+      const delta = (r - current.r) * sign;
+      const dx = Math.abs(q + r / 2 - x);
+      if (delta > 0 && (delta < rows || (delta === rows && dx < distance))) {
+        rows = delta;
+        distance = dx;
+        next = button;
+      }
+    }
+  }
   if (e.key === 'Home') next = buttons[0];
   if (e.key === 'End') next = buttons.at(-1);
   next.focus();
 });
+
+function closeInspection() {
+  inspection = null;
+  inspectedKey = null;
+  $('inspection').hidden = true;
+  $('inspect-btn').setAttribute('aria-pressed', 'false');
+  $('inspect-neighbours').open = false;
+}
+
+function toggleInspection() {
+  if (!game || game.status !== 'playing' || !$('tip').hidden || $('stage').inert) return;
+  if (!$('inspection').hidden) {
+    closeInspection();
+    syncBoardLayout();
+    $('move-status').textContent = 'Inspection off. Activate a pane to move it.';
+    return;
+  }
+  $('inspection').hidden = false;
+  $('inspect-btn').setAttribute('aria-pressed', 'true');
+  $('inspect-move').hidden = $('inspect-neighbours').hidden = true;
+  $('inspect-summary').textContent = 'Select a pane to preview its move.';
+  syncBoardLayout();
+  if (panes.contains(document.activeElement)) selectForInspection(document.activeElement.dataset.key);
+  else $('move-status').textContent = $('inspect-summary').textContent;
+}
+
+function selectForInspection(k) {
+  inspectedKey = k;
+  inspection = inspectPane(game, k);
+  $('inspect-summary').textContent = inspection.summary;
+  $('neighbour-text').textContent = inspection.neighbours;
+  $('move-status').textContent = inspection.summary;
+  $('inspect-move').hidden = $('inspect-neighbours').hidden = false;
+  syncBoardLayout();
+}
+
+function activatePane(k) {
+  if ($('inspection').hidden) onTap(k);
+  else selectForInspection(k);
+}
 
 function onTap(k) {
   if (!game || game.status !== 'playing') return;
@@ -341,7 +406,7 @@ function showResult(current, won, g) {
     if (level.tiles.some((t) => t.keystone)) extra.push('clear around keystones first');
     if (level.tiles.some((t) => t.weighted)) extra.push('mind where weighted panes will stop');
     const more = extra.length ? ` ${extra.join(' and ').replace(/^./, (c) => c.toUpperCase())}.` : '';
-    $('result-text').textContent = `Too many bumps cracked the frame. Look for an arrow with nothing in front of it.${more}`;
+    $('result-text').textContent = `Too many bumps cracked the frame. Look for an arrow with nothing in front of it.${more} 0 of 3 gems.`;
     next.hidden = true;
     $('result-again').textContent = 'Try again';
   }
@@ -369,6 +434,8 @@ function showHint(count = true) {
 
 function doUndo() {
   if (!game) return;
+  if (!game.history.length || game.status !== 'playing' || $('stage').inert) return;
+  closeInspection();
   const fromUndoButton = document.activeElement === $('undo-btn');
   const res = undo(game);
   if (!res) return;
@@ -395,9 +462,15 @@ function dismissTip() {
     if (tip === 'intro') progress.tipSeen = true;
     else progress.seen = { ...progress.seen, [tip]: true };
   }
-  syncReserve();
+  syncBoardLayout();
   if (fromTipButton) panes.querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
   persist();
+}
+
+function resume() {
+  show(null);
+  history.replaceState(null, '', hashFor(level));
+  focusGame();
 }
 
 function openHome() {
@@ -405,6 +478,10 @@ function openHome() {
   const next = Math.min(progress.unlocked, CAMPAIGN_SIZE);
   const allDone = Object.keys(progress.best).length >= CAMPAIGN_SIZE;
   $('continue-btn').innerHTML = allDone ? `Trail <small>window ${progress.trail}</small>` : `Continue <small>window ${next}</small>`;
+  if (game?.status === 'playing') {
+    const label = level.kind === 'daily' ? `daily · ${prettyDate(level.date)}` : `${level.kind === 'trail' ? 'trail' : 'window'} ${level.number}`;
+    $('continue-btn').innerHTML = `Continue <small>${label}</small>`;
+  }
   $('trail-btn').innerHTML = `Trail <small>${progress.trailCleared ? `${progress.trailCleared} cleared` : 'endless'}</small>`;
   const today = localDateId();
   $('daily-btn').innerHTML = `Today’s window <small>${progress.daily[today] ? 'done ✓' : prettyDate(today)}</small>`;
@@ -533,9 +610,17 @@ canvas.addEventListener('pointerup', (e) => {
   const tap = pendingTap;
   pendingTap = null;
   if (tap.game === game && document.elementFromPoint(e.clientX, e.clientY) === canvas &&
-      renderer.pick(e.clientX, e.clientY) === tap.key) onTap(tap.key);
+      renderer.pick(e.clientX, e.clientY) === tap.key) activatePane(tap.key);
 });
 
+$('inspect-btn').onclick = toggleInspection;
+$('inspect-move').onclick = () => {
+  const k = inspectedKey;
+  closeInspection();
+  syncBoardLayout();
+  panes.querySelector(`[data-key="${k}"]`)?.focus({ preventScroll: true });
+  onTap(k);
+};
 $('menu-btn').onclick = openHome;
 $('mute-btn').onclick = toggleMute;
 $('undo-btn').onclick = doUndo;
@@ -547,10 +632,21 @@ $('tip').onclick = (e) => {
 };
 $('continue-btn').onclick = () => {
   audio.unlock();
+  if (game?.status === 'playing') return resume();
   if (Object.keys(progress.best).length >= CAMPAIGN_SIZE) start({ kind: 'trail', n: progress.trail });
   else start({ kind: 'campaign', n: Math.min(progress.unlocked, CAMPAIGN_SIZE) });
 };
 $('windows-btn').onclick = openLevels;
+$('rules-btn').onclick = () => {
+  $('rules-text').innerHTML = Object.values(TIPS).map(text => `<p>${text}</p>`).join('');
+  show('rules');
+  $('rules-title').focus({ preventScroll: true });
+};
+function closeRules() {
+  openHome();
+  $('rules-btn').focus({ preventScroll: true });
+}
+$('rules-back').onclick = closeRules;
 $('levels-back').onclick = openHome;
 $('trail-btn').onclick = () => {
   audio.unlock();
@@ -576,17 +672,20 @@ window.addEventListener('keydown', (e) => {
   }
   const k = e.key.toLowerCase();
   if (k === 'escape') {
-    if (!$('levels').hidden) openHome();
-    else if (!$('home').hidden && game?.status === 'playing') {
-      show(null);
-      focusGame();
-    }
+    if (!$('rules').hidden) closeRules();
+    else if (!$('levels').hidden) openHome();
+    else if (!$('home').hidden && game?.status === 'playing') resume();
     else openHome();
     return;
   }
   if (k === 'm') return toggleMute();
-  if (!$('home').hidden || !$('levels').hidden) return;
+  if (!$('home').hidden || !$('levels').hidden || !$('rules').hidden) return;
   if (k === 'u' || k === 'z') doUndo();
+  else if (k === 'i') toggleInspection();
+  else if (k === 'n' && inspection) {
+    $('inspect-neighbours').open = true;
+    $('move-status').textContent = inspection.neighbours;
+  }
   else if (k === 'h') showHint(true);
   else if (k === 'r') restart();
 });
@@ -598,7 +697,7 @@ new ResizeObserver(() => {
 }).observe($('stage'));
 
 function frame(now) {
-  renderer.draw(now, game, calm());
+  renderer.draw(now, game, calm(), inspection);
   requestAnimationFrame(frame);
 }
 

@@ -33,27 +33,41 @@
       <canvas id="board" aria-hidden="true"></canvas>
       <div id="pane-controls" role="toolbar" hidden></div>
       <span id="move-status" class="sr-only" role="status"></span>
+    </main>
+    <div id="dock">
       <div class="tip" id="tip" hidden>
         <p id="tip-text"></p>
         <button class="btn small" id="tip-ok" aria-describedby="level-kicker level-name tip-text">Got it</button>
       </div>
-    </main>
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <section id="inspection" aria-label="Pane inspection" hidden>
+        <p id="inspect-summary"></p>
+        <details id="inspect-neighbours" hidden>
+          <summary>Neighbours</summary>
+          <p id="neighbour-text"></p>
+        </details>
+        <button class="btn small" id="inspect-move" hidden>Move this pane</button>
+      </section>
+      <footer class="bar bottom" id="controls" hidden>
+        <button class="btn tool" id="undo-btn" aria-label="Undo (U)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -6)"/></svg>
+          <span>Undo</span>
+        </button>
+        <button class="btn tool" id="inspect-btn" aria-label="Inspect panes (I)" aria-controls="inspection" aria-keyshortcuts="I" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>
+          <span>Inspect</span>
+        </button>
+        <button class="btn tool" id="hint-btn" aria-label="Hint (H)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2M5.6 5.6 7 7M3 12h2M19 12h2M17 7l1.4-1.4"/><path d="M8.5 15a5 5 0 1 1 7 0c-.8.8-1.5 1.7-1.5 3h-4c0-1.3-.7-2.2-1.5-3z"/><path d="M10 21h4"/></svg>
+          <span>Hint</span>
+        </button>
+        <button class="btn tool" id="restart-btn" aria-label="Restart (R)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+          <span>Restart</span>
+        </button>
+      </footer>
+    </div>
 
-    <footer class="bar bottom" id="controls" hidden>
-      <button class="btn tool" id="undo-btn" aria-label="Undo (U)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -6)"/></svg>
-        <span>Undo</span>
-      </button>
-      <button class="btn tool" id="hint-btn" aria-label="Hint (H)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2M5.6 5.6 7 7M3 12h2M19 12h2M17 7l1.4-1.4"/><path d="M8.5 15a5 5 0 1 1 7 0c-.8.8-1.5 1.7-1.5 3h-4c0-1.3-.7-2.2-1.5-3z"/><path d="M10 21h4"/></svg>
-        <span>Hint</span>
-      </button>
-      <button class="btn tool" id="restart-btn" aria-label="Restart (R)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
-        <span>Restart</span>
-      </button>
-    </footer>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <section class="sheet home" id="home" hidden>
       <div class="home-inner">
@@ -70,9 +84,22 @@
         </div>
         <div class="toggles">
           <button class="chip" id="sound-btn" aria-pressed="true">Sound on</button>
+          <button class="chip" id="rules-btn">Rules</button>
           <button class="chip" id="calm-btn" aria-pressed="false">Calm off</button>
         </div>
         <a class="back" href="../">← Back to the arcade</a>
+      </div>
+    </section>
+
+    <section class="sheet levels" id="rules" aria-labelledby="rules-title" hidden>
+      <div class="levels-inner">
+        <div class="sheet-head">
+          <button class="btn small" id="rules-back">Back</button>
+          <h2 id="rules-title" tabindex="-1">Rules</h2>
+          <span class="spacer"></span>
+        </div>
+        <div id="rules-text"></div>
+        <p>Use Inspect to preview a pane’s path and neighbours for free. Choose Move this pane when you’re ready.</p>
       </div>
     </section>
 
