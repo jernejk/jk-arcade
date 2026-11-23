@@ -54,6 +54,7 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
 const ui = {
   hud: document.querySelector("#hud"),
   tray: document.querySelector("#tray"),
+  hint: document.querySelector("#hint"),
   callout: document.querySelector("#callout"),
   title: document.querySelector("#title"),
   help: document.querySelector("#help-sheet"),
@@ -95,6 +96,8 @@ let view = { scale: 1, scaleY: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, 
 let last = 0;
 let simAcc = 0;
 const STEP_MS = 1000 / 60;
+const DRAG_TO_FIRE_PX = 12;
+const idleAimHint = ui.hint.textContent;
 
 function reduced() {
   if (state.save.settings.motion === "reduce") return true;
@@ -370,6 +373,8 @@ function endBattle(won, note) {
 }
 
 function openYard() {
+  ui.callout.hidden = true;
+  state.calloutUntil = 0;
   const rubble = document.querySelector("#yard-rubble");
   rubble.textContent = `${state.save.rubble} rubble in the yard.`;
   const plaque = document.querySelector("#yard-plaque");
@@ -1206,17 +1211,19 @@ function bind() {
     if (!event.isPrimary || event.button !== 0 || state.gesture || state.screen !== "battle" || state.phase !== "aim") return;
     state.gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
-    document.querySelector("#hint").textContent = "Release to fire. Slide back to cancel.";
     aimFrom(event);
   });
   canvas.addEventListener("pointermove", event => {
-    if (state.gesture?.id === event.pointerId) aimFrom(event);
+    if (state.gesture?.id !== event.pointerId) return;
+    const hint = dragCanFire(event) ? "Release to fire. Slide back to cancel." : idleAimHint;
+    if (ui.hint.textContent !== hint) ui.hint.textContent = hint;
+    aimFrom(event);
   });
   canvas.addEventListener("pointerup", event => {
     if (state.gesture?.id !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y);
+    const fireOnRelease = dragCanFire(event);
     cancelGesture();
-    if (distance < 12) return;
+    if (!fireOnRelease) return;
     aimFrom(event);
     firePlayer();
   });
@@ -1256,7 +1263,7 @@ function bind() {
     else if (event.key === " " || event.key === "Enter") {
       const focused = event.target && event.target.closest && event.target.closest("button, a, input, textarea, select");
       if (focused) return;
-      firePlayer();
+      if (!event.repeat) firePlayer();
     }
     else if (event.key >= "1" && event.key <= "4") {
       const weapon = WEAPONS[Number(event.key) - 1];
@@ -1274,12 +1281,16 @@ function bind() {
   addEventListener("resize", () => { cancelGesture(); resize(); });
 }
 
+function dragCanFire(event) {
+  return Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y) >= DRAG_TO_FIRE_PX;
+}
+
 function cancelGesture() {
   if (!state.gesture) return;
   const { id } = state.gesture;
   state.gesture = null;
   if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
-  document.querySelector("#hint").textContent = "Drag to aim. Release to fire.";
+  ui.hint.textContent = idleAimHint;
 }
 
 function pause() {

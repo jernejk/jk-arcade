@@ -118,6 +118,7 @@ test("phone and desktop play a keep without page errors", async (t) => {
     }
     await page.locator("#yard").click();
     await page.waitForSelector("#yard-sheet:not([hidden])");
+    assert.equal(await page.locator("#callout").isVisible(), false);
     assert.ok(await page.locator(".yard-row:not([disabled])").count() > 0, "the first yard visit has nothing to buy");
     assert.ok(await page.locator(".yard-row[disabled] .price small").count() > 0, "a locked item does not say how much more it needs");
     for (const size of [{ width: 360, height: 640 }, { width: 1280, height: 800 }]) {
@@ -574,10 +575,15 @@ test("focused buttons keep their keys, and a played daily link keeps its date", 
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => window.__grokstone.shots), 1);
     await page.keyboard.press("r");
-    await page.keyboard.press("Enter");
+    await page.keyboard.down("Enter");
     assert.equal(await page.evaluate(() => window.__grokstone.screen), "battle");
     assert.equal(await page.evaluate(() => window.__grokstone.shots), 0);
     assert.deepEqual(await page.evaluate(() => window.__grokstone.layout), layout);
+    await page.keyboard.down("Enter"); // OS repeat while Retry's Enter is held
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 0, "holding Retry fired the cannon");
+    await page.keyboard.up("Enter");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 1);
     await page.waitForFunction(() => window.__grokstone.phase === "aim" || window.__grokstone.screen === "result", null, { timeout: 12000 });
     if (await page.evaluate(() => window.__grokstone.screen === "battle")) {
       await page.keyboard.press("Escape");
@@ -689,7 +695,20 @@ test("one-thumb cancellation, interruptions and a complete rival turn", async ()
       await send("touchMove", target);
     };
     const noShots = async () => assert.equal(await page.evaluate(() => window.__grokstone.shots), 0);
-    await send("touchStart", target);
+    const hint = page.locator("#hint");
+    const origin = { x: Math.round(start.x), y: Math.round(start.y) };
+    assert.doesNotMatch(await hint.innerText(), /Release to fire/i);
+    await send("touchStart", origin);
+    assert.doesNotMatch(await hint.innerText(), /Release to fire/i);
+    await send("touchEnd");
+    await noShots();
+    await send("touchStart", origin);
+    await send("touchMove", { ...origin, x: origin.x + 11 });
+    assert.doesNotMatch(await hint.innerText(), /Release to fire/i);
+    await send("touchMove", { ...origin, x: origin.x + 12 });
+    assert.match(await hint.innerText(), /Release to fire/i);
+    await send("touchMove", { ...origin, x: origin.x + 11 });
+    assert.doesNotMatch(await hint.innerText(), /Release to fire/i);
     await send("touchEnd");
     await noShots();
     await begin();
