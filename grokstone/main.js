@@ -15,6 +15,7 @@ import {
   hashFor,
   inscription,
   integrate,
+  lossLine,
   layoutByNumber,
   loadSave,
   localDateString,
@@ -24,6 +25,7 @@ import {
   seedLayout,
   shareText,
   shotVelocity,
+  stepClock,
   cleverClear,
   missingStar,
   starsFor,
@@ -52,6 +54,7 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
 const ui = {
   hud: document.querySelector("#hud"),
   tray: document.querySelector("#tray"),
+  hint: document.querySelector("#hint"),
   callout: document.querySelector("#callout"),
   title: document.querySelector("#title"),
   help: document.querySelector("#help-sheet"),
@@ -67,6 +70,7 @@ const state = {
   screen: "title",
   layout: null,
   siege: null,
+  battleFrame: null,
   phase: "aim",
   angle: -0.62,
   power: 0.66,
@@ -82,17 +86,18 @@ const state = {
   calloutUntil: 0,
   time: 0,
   enemyAt: 0,
-  dragging: false,
-  pointer: null,
+  gesture: null,
   particles: [],
   vista: null,
   eggTaps: 0,
 };
 
-let view = { scale: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, bottom: 0 };
+let view = { scale: 1, scaleY: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, bottom: 0 };
 let last = 0;
 let simAcc = 0;
 const STEP_MS = 1000 / 60;
+const DRAG_TO_FIRE_PX = 12;
+const idleAimHint = ui.hint.textContent;
 
 function reduced() {
   if (state.save.settings.motion === "reduce") return true;
@@ -118,6 +123,7 @@ function persist() {
 }
 
 function show(screen) {
+  cancelGesture();
   state.screen = screen;
   ui.title.hidden = screen !== "title";
   ui.help.hidden = screen !== "help";
@@ -127,8 +133,10 @@ function show(screen) {
   ui.pause.hidden = screen !== "pause";
   const battle = screen === "battle" || screen === "pause";
   ui.hud.hidden = !battle;
-  ui.tray.hidden = screen !== "battle";
+  ui.tray.hidden = !battle;
+  if (document.activeElement?.closest("[hidden]")) document.activeElement.blur();
   document.body.dataset.screen = screen;
+  resize();
 }
 
 function motionLabel() {
@@ -157,9 +165,12 @@ function freshVista() {
 function startBattle(layout) {
   if (state.siege) destroySiege(state.siege);
   state.layout = layout;
+  state.battleFrame = frameForKeeps(layout.blocks);
   state.siege = createSiege({ ...layout, powder: state.save.upgrades.powder === true });
   state.phase = "aim";
   state.shots = 0;
+  document.querySelector("#keep-goal").textContent = layout.mode === "daily" && layout.starShot
+    ? `Aim for ${layout.starShot}.` : layout.blurb;
   state.rubble = 0;
   state.earned = 0;
   state.paidSpoil = new Set();
@@ -176,6 +187,7 @@ function startBattle(layout) {
   say(line);
   document.querySelector("#level-name").textContent = layout.name;
   document.querySelector("#foe-name").textContent = layout.foe;
+  resize();
 }
 
 function callout(text) {
@@ -184,13 +196,26 @@ function callout(text) {
   state.calloutUntil = performance.now() + 2400;
 }
 
+const hudShown = {};
+
+function paintHudPart(selector, key, value) {
+  if (hudShown[selector] === value) return;
+  hudShown[selector] = value;
+  const el = document.querySelector(selector);
+  if (key === "width") el.style.width = value;
+  else el.textContent = value;
+}
+
 function paintHud() {
   const you = state.siege ? sideIntegrity(state.siege, "player") : 1;
   const foe = state.siege ? sideIntegrity(state.siege, "enemy") : 1;
-  document.querySelector("#you-bar").style.width = `${Math.round(you * 100)}%`;
-  document.querySelector("#foe-bar").style.width = `${Math.round(foe * 100)}%`;
+  paintHudPart("#you-bar", "width", `${Math.round(you * 100)}%`);
+  paintHudPart("#foe-bar", "width", `${Math.round(foe * 100)}%`);
   const par = state.layout ? state.layout.par : "";
-  document.querySelector("#shot-count").textContent = state.phase === "enemy" ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`;
+  const rivalTurn = state.phase === "enemy" || (state.phase !== "aim" && state.simFor === "enemy");
+  const acceptsAim = String(state.phase === "aim");
+  if (ui.tray.dataset.aim !== acceptsAim) ui.tray.dataset.aim = acceptsAim;
+  paintHudPart("#shot-count", "text", rivalTurn ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`);
 }
 
 function paintWeapons() {
@@ -207,7 +232,7 @@ function paintWeapons() {
     button.dataset.weapon = weapon.id;
     button.innerHTML = `<b>${weapon.short}</b><small>${unlocked ? weapon.crew.split(" ")[0] : "Locked"}</small>`;
     button.setAttribute("aria-label", unlocked ? `${weapon.crew}, ${weapon.name}. ${weapon.line}` : `${weapon.name} is hired in the yard`);
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
       if (!unlocked) {
         callout("Hire that crew in the mason's yard.");
         return;
@@ -216,6 +241,7 @@ function paintWeapons() {
       state.save.lastWeapon = weapon.id;
       persist();
       paintWeapons();
+      if (event.detail === 0) root.querySelector(`[data-weapon="${weapon.id}"]`).focus();
       audio.blip();
     });
     root.append(button);
@@ -230,17 +256,17 @@ function predicted() {
   if (!state.layout) return null;
   const weapon = currentWeapon();
   const vel = shotVelocity(weapon, state.angle, state.power);
-  const points = integrate(state.layout.playerCannon.x, state.layout.playerCannon.y, vel.vx, vel.vy, state.layout.wind, 90, weapon.air);
-  const blocks = aimBlocks();
-  const hit = firstHit(points, blocks, weapon.radius);
-  return { points, hit, weapon };
+  const points = integrate(state.layout.playerCannon.x, state.layout.playerCannon.y, vel.vx, vel.vy, state.layout.wind, 240, weapon.air);
+  const blocks = aimBlocks(true);
+  const hit = firstHit(points, blocks, weapon.radius, state.layout.playerCannon);
+  return { points, hit, block: hit?.type === "block" ? blocks.find(b => b.id === hit.id) : null };
 }
 
-function aimBlocks() {
+function aimBlocks(includeLoose = false) {
   if (!state.siege) return state.layout ? state.layout.blocks : [];
   const list = [];
   for (const body of state.siege.bodies.values()) {
-    if (!body.isStatic || body.grok.hp <= 0) continue;
+    if ((!body.isStatic && !includeLoose) || body.grok.hp <= 0) continue;
     list.push({
       id: body.grok.id,
       side: body.grok.side,
@@ -256,7 +282,7 @@ function aimBlocks() {
       heavy: body.grok.heavy === true,
       arch: body.grok.arch,
       neighbors: body.grok.neighbors,
-      loose: false,
+      loose: !body.isStatic,
       col: body.grok.col,
       row: body.grok.row,
       variant: body.grok.variant,
@@ -270,6 +296,7 @@ function fire(owner, angle, power, weapon) {
   const origin = owner === "player" ? layout.playerCannon : layout.enemyCannon;
   const vel = shotVelocity(weapon, angle, power);
   fireProjectile(state.siege, owner, weapon, vel, origin);
+  state.slow = 0;
   state.recoil = 1;
   state.phase = "sim";
   state.simFor = owner;
@@ -280,6 +307,7 @@ function fire(owner, angle, power, weapon) {
 
 function firePlayer() {
   if (state.screen !== "battle" || state.phase !== "aim" || state.paused) return;
+  cancelGesture();
   state.shots += 1;
   fire("player", state.angle, state.power, currentWeapon());
   say(`Shot ${state.shots}.`);
@@ -299,7 +327,7 @@ function finishSim() {
         if (body.grok.side === "enemy" && !body.isStatic) puff(body.position.x, body.position.y, "#efe6d4");
       }
     }
-    state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? "Your standard is down." : "");
+    state.holdNote = both ? "Both standards are in the dust." : (player !== "up" ? lossLine(state.layout.blocks, state.siege.broken) : "");
     return;
   }
   if (state.simFor === "player") {
@@ -320,10 +348,12 @@ function endBattle(won, note) {
   const clever = won && cleverClear(state.layout.blocks, state.siege ? state.siege.broken : []);
   const stars = starsFor(state.shots, state.layout.par, won, clever);
   const outcome = { won, shots: state.shots, rubble: state.rubble, stars, clever };
-  state.result = outcome;
-  state.save = recordResult(state.save, state.layout, outcome, localDateString());
-  persist();
   state.phase = "over";
+  state.result = outcome;
+  const had = state.save.rubble;
+  state.save = recordResult(state.save, state.layout, outcome, localDateString());
+  const gained = state.save.rubble - had;
+  persist();
   const text = shareText(state.layout, { ...outcome, stars });
   const url = new URL(location.href);
   url.search = "";
@@ -333,16 +363,18 @@ function endBattle(won, note) {
   document.querySelector("#result-title").textContent = won ? "The banner falls" : "Your standard is down";
   const gap = missingStar(state.layout, stars, won);
   document.querySelector("#result-detail").textContent = won
-    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && outcome.rubble ? ` · +${state.rubble} rubble` : ""}${gap ? `. ${gap}` : ""}`
+    ? `${state.shots} shot${state.shots === 1 ? "" : "s"} · par ${state.layout.par}${state.layout.mode === "campaign" && gained > 0 ? ` · +${gained} rubble` : ""}${gap ? `. ${gap}` : ""}`
     : (note || "The rival keep is still standing.");
   document.querySelector("#result-stars").textContent = won ? "★".repeat(stars) + "☆".repeat(3 - stars) : "☆☆☆";
   document.querySelector("#yard").hidden = !won;
   show("result");
-  say(won ? `${text}.` : "Your standard is down.");
+  say(won ? `${text}.` : `Your standard is down. ${note || ""}`.trim());
   if (won) audio.win(); else audio.lose();
 }
 
 function openYard() {
+  ui.callout.hidden = true;
+  state.calloutUntil = 0;
   const rubble = document.querySelector("#yard-rubble");
   rubble.textContent = `${state.save.rubble} rubble in the yard.`;
   const plaque = document.querySelector("#yard-plaque");
@@ -358,7 +390,8 @@ function openYard() {
     row.type = "button";
     row.className = "yard-row";
     row.disabled = owned || state.save.rubble < item.cost;
-    row.innerHTML = `<span><b>${item.name}</b><small>${item.blurb}</small></span><span>${owned ? "Kept" : item.cost}</span>`;
+    const short = owned ? 0 : item.cost - state.save.rubble;
+    row.innerHTML = `<span><b>${item.name}</b><small>${item.blurb}</small></span><span class="price">${owned ? "Kept" : item.cost}${short > 0 ? `<small>${short} more</small>` : ""}</span>`;
     row.addEventListener("click", () => {
       const bought = buy(state.save, item.id);
       if (!bought.ok) return;
@@ -418,6 +451,15 @@ function toggleMute() {
   syncPrefs();
 }
 
+// Measure the standing layout once so a falling tower never moves the camera.
+function frameForKeeps(blocks) {
+  const left = Math.min(...blocks.map(b => b.x - b.w / 2)) - 5;
+  const right = Math.max(...blocks.map(b => b.x + b.w / 2)) + 5;
+  const roof = Math.min(...blocks.map(b => b.y - b.h / 2));
+  const top = Math.min(210, roof - 90); // headroom for the incoming shot
+  return { left, top, width: right - left, height: WORLD.groundTop + 20 - top };
+}
+
 function resize() {
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.min(2, devicePixelRatio || 1);
@@ -427,18 +469,20 @@ function resize() {
   if (canvas.height !== nextH) canvas.height = nextH;
   const battle = state.screen === "battle" || state.screen === "pause";
   const top = battle ? ui.hud.getBoundingClientRect().height : 0;
-  const bottom = state.screen === "battle" ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
+  const bottom = battle ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
   const bandH = Math.max(120, rect.height - top - bottom);
-  const crop = 100;
-  const worldH = WORLD.h - crop;
-  const scale = Math.min(rect.width / WORLD.w, bandH / worldH);
+  const frame = battle ? state.battleFrame : { left: 0, top: 100, width: WORLD.w, height: WORLD.h - 100 };
+  const scale = Math.min(rect.width / frame.width, bandH / frame.height);
+  // Portrait has spare height even when the two outer walls touch the margins.
+  const scaleY = battle ? Math.min(scale * 1.3, bandH / frame.height) : scale;
   view = {
     dpr,
     w: rect.width,
     h: rect.height,
     scale,
-    ox: (rect.width - WORLD.w * scale) / 2,
-    oy: top + (bandH - worldH * scale) / 2 - crop * scale,
+    scaleY,
+    ox: (rect.width - frame.width * scale) / 2 - frame.left * scale,
+    oy: top + (bandH - frame.height * scaleY) / 2 - frame.top * scaleY,
     top,
     bottom,
   };
@@ -448,7 +492,7 @@ function screenToWorld(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   return {
     x: (clientX - rect.left - view.ox) / view.scale,
-    y: (clientY - rect.top - view.oy) / view.scale,
+    y: (clientY - rect.top - view.oy) / view.scaleY,
   };
 }
 
@@ -559,7 +603,7 @@ function handleFx(events) {
 
 function drawBackground() {
   const { w, h } = view;
-  const ground = view.oy + WORLD.groundTop * view.scale;
+  const ground = view.oy + WORLD.groundTop * view.scaleY;
   const sky = ctx.createLinearGradient(0, 0, 0, Math.max(ground, 1));
   sky.addColorStop(0, "#1a1030");
   sky.addColorStop(0.42, "#6a3a5c");
@@ -766,7 +810,7 @@ function drawBlock(b) {
     ctx.restore();
     return;
   }
-  const course = (b.material === "stone" || b.material === "merlon" || b.material === "foundation") && b.w < 48;
+  const course = (b.material === "stone" || b.material === "merlon" || b.material === "foundation") && b.w < 48 && !String(b.id).includes("haunch");
   if (course) {
     const v = b.variant || 0;
     ctx.scale(0.8 + (v % 3) * 0.12, 0.76 + (v % 4) * 0.1);
@@ -829,8 +873,12 @@ function drawBlock(b) {
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(crack.x, crack.y);
-    ctx.lineTo(crack.x + crack.ix * b.w * 0.24, crack.y + crack.iy * b.h * 0.32);
-    ctx.lineTo(crack.x + crack.ix * b.w * 0.06, crack.y + crack.iy * b.h * 0.62);
+    const dx = crack.ix * b.w;
+    const dy = crack.iy * b.h;
+    ctx.lineTo(crack.x + dx * 0.18, crack.y + dy * 0.14);
+    ctx.lineTo(crack.x + dx * 0.13, crack.y + dy * 0.32);
+    ctx.lineTo(crack.x + dx * 0.31, crack.y + dy * 0.39);
+    ctx.lineTo(crack.x + dx * 0.36, crack.y + dy * 0.58);
     ctx.stroke();
   }
   if (b.flash > 0.08) {
@@ -891,16 +939,19 @@ function drawTrajectory(pred) {
   if (!pred) return;
   const pts = pred.points;
   const stop = pred.hit ? pred.hit.index : pts.length - 1;
-  for (let i = 2; i <= stop; i += 3) {
-    const p = pts[i];
-    ctx.fillStyle = i > stop - 8 ? "#ffe3a4" : "rgba(255, 236, 210, 0.95)";
+  const px = 1 / view.scale;
+  for (let i = 2; i <= stop; i += 2) {
+    const p = i === stop && pred.hit ? pred.hit : pts[i];
+    const near = i > stop - 6;
+    ctx.globalAlpha = near ? 1 : 0.55 + 0.4 * (i / Math.max(1, stop));
+    ctx.fillStyle = near ? "#ffe3a4" : "#ffecd2";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, i > stop - 8 ? 3.1 : 2.2, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, Math.max(near ? 3.1 : 2.2, (near ? 3 : 2.2) * px), 0, Math.PI * 2);
     ctx.fill();
   }
-  if (pred.hit && pred.hit.type === "block") {
-    const block = aimBlocks().find((b) => b.id === pred.hit.id);
-    if (!block) return;
+  ctx.globalAlpha = 1;
+  if (pred.block) {
+    const block = pred.block;
     ctx.strokeStyle = block.side === "player" ? "#d4534e" : (block.material === "banner" ? "#f2c08a" : "#ffe3a4");
     ctx.lineWidth = 2.5;
     roundRect(block.x - block.w / 2 - 2, block.y - block.h / 2 - 2, block.w + 4, block.h + 4, 4);
@@ -914,7 +965,7 @@ function drawWorld(blocks, cannons, pred) {
     ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
   }
   ctx.translate(view.ox, view.oy);
-  ctx.scale(view.scale, view.scale);
+  ctx.scale(view.scale, view.scaleY);
   const sorted = blocks.slice().sort((a, b) => a.y - b.y);
   for (const block of sorted) {
     if (block.shot) {
@@ -933,7 +984,8 @@ function drawWorld(blocks, cannons, pred) {
     else drawBlock(block);
   }
   if (cannons) {
-    drawCannon(cannons.player, state.screen === "battle" && state.phase !== "enemy" ? state.angle : -0.4, state.simFor === "player" ? state.recoil : 0);
+    const aiming = state.screen === "battle" || state.screen === "pause";
+    drawCannon(cannons.player, aiming && state.phase !== "enemy" ? state.angle : -0.4, state.simFor === "player" ? state.recoil : 0);
     const enemyAngle = state.enemyPlan ? state.enemyPlan.angle : Math.PI + 0.55;
     drawCannon(cannons.enemy, enemyAngle, state.simFor === "enemy" ? state.recoil : 0);
     if (state.phase === "enemy" && state.enemyPlan) {
@@ -948,7 +1000,7 @@ function drawWorld(blocks, cannons, pred) {
       }
     }
   }
-  if (pred && state.screen === "battle" && state.phase === "aim") drawTrajectory(pred);
+  if (pred) drawTrajectory(pred);
   for (const p of state.particles) {
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1041,7 +1093,9 @@ function stepSimulation() {
 }
 
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = last ? Math.min(48, now - last) : STEP_MS;
+  const k = dt / STEP_MS;
   last = now;
   state.time = now;
   if (state.calloutUntil && now > state.calloutUntil) ui.callout.hidden = true;
@@ -1054,23 +1108,20 @@ function frame(now) {
     } else if (state.phase === "hold") {
       if (now >= state.holdUntil) endBattle(state.holdWon, state.holdNote);
     } else if (state.phase === "sim") {
-      simAcc = Math.min(STEP_MS * 5, simAcc + dt);
-      let guard = 0;
-      while (state.phase === "sim" && simAcc >= STEP_MS && guard++ < 5) {
-        simAcc -= STEP_MS;
-        stepSimulation();
-      }
+      const clock = stepClock(simAcc, dt);
+      simAcc = clock.acc;
+      for (let i = 0; i < clock.steps && state.phase === "sim"; i++) stepSimulation();
     } else simAcc = 0;
   } else simAcc = 0;
-  state.shake *= 0.86;
-  state.recoil *= 0.8;
-  state.flash *= 0.86;
+  state.shake *= 0.86 ** k;
+  state.recoil *= 0.8 ** k;
+  state.flash *= 0.86 ** k;
   for (const p of state.particles) {
-    p.life -= 1;
-    p.vy += p.g;
-    p.x += p.vx;
-    p.y += p.vy;
-    if (p.chip) p.rot = (p.rot || 0) + (p.vr || 0);
+    p.life -= k;
+    p.vy += p.g * k;
+    p.x += p.vx * k;
+    p.y += p.vy * k;
+    if (p.chip) p.rot = (p.rot || 0) + (p.vr || 0) * k;
   }
   state.particles = state.particles.filter((p) => p.life > 0);
   resize();
@@ -1079,20 +1130,19 @@ function frame(now) {
   if (state.screen === "battle" || state.screen === "pause" || state.screen === "result") {
     const pred = state.phase === "aim" ? predicted() : null;
     drawWorld(bodiesToDraw(), state.layout && { player: state.layout.playerCannon, enemy: state.layout.enemyCannon }, pred);
-    if (state.phase === "aim" && pred && pred.hit && pred.hit.type === "block") {
-      const block = aimBlocks().find((b) => b.id === pred.hit.id);
-      if (block && block.material === "banner" && state.dragging) {
-        /* hint already on release via clink */
-      }
-    }
     paintHud();
   } else if (state.vista) {
     drawWorld(state.vista.blocks, { player: state.vista.playerCannon, enemy: state.vista.enemyCannon }, null);
   }
-  requestAnimationFrame(frame);
 }
 
 function bind() {
+  const crewHelp = document.querySelector("#crew-help");
+  for (const weapon of WEAPONS) {
+    const entry = document.createElement("li");
+    entry.textContent = `${weapon.crew} · ${weapon.name}. ${weapon.line}`;
+    crewHelp.append(entry);
+  }
   document.querySelector("#continue").addEventListener("click", () => {
     const hash = parseHash(location.hash);
     const save = state.save;
@@ -1126,14 +1176,8 @@ function bind() {
       persist();
     }
   });
-  document.querySelector("#pause").addEventListener("click", () => {
-    state.paused = true;
-    show("pause");
-  });
-  document.querySelector("#resume").addEventListener("click", () => {
-    state.paused = false;
-    show("battle");
-  });
+  document.querySelector("#pause").addEventListener("click", pause);
+  document.querySelector("#resume").addEventListener("click", resume);
   document.querySelector("#pause-retry").addEventListener("click", () => startBattle(rebuild()));
   document.querySelector("#retry").addEventListener("click", () => startBattle(rebuild()));
   document.querySelector("#pause-title").addEventListener("click", goTitle);
@@ -1155,44 +1199,60 @@ function bind() {
     }
   });
 
-  canvas.addEventListener("pointerdown", (event) => {
-    if (state.screen !== "battle" || state.phase !== "aim") return;
+  // A second contact interrupts the whole gesture, even outside the canvas.
+  addEventListener("pointerdown", event => {
+    if (state.gesture && event.pointerId !== state.gesture.id) {
+      cancelGesture();
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  canvas.addEventListener("pointerdown", event => {
+    if (!event.isPrimary || event.button !== 0 || state.gesture || state.screen !== "battle" || state.phase !== "aim") return;
+    state.gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
-    state.dragging = true;
     aimFrom(event);
   });
-  canvas.addEventListener("pointermove", (event) => {
-    if (!state.dragging) return;
+  canvas.addEventListener("pointermove", event => {
+    if (state.gesture?.id !== event.pointerId) return;
+    const hint = dragCanFire(event) ? "Release to fire. Slide back to cancel." : idleAimHint;
+    if (ui.hint.textContent !== hint) ui.hint.textContent = hint;
     aimFrom(event);
   });
-  canvas.addEventListener("pointerup", (event) => {
-    if (!state.dragging) return;
-    state.dragging = false;
+  canvas.addEventListener("pointerup", event => {
+    if (state.gesture?.id !== event.pointerId) return;
+    const fireOnRelease = dragCanFire(event);
+    cancelGesture();
+    if (!fireOnRelease) return;
     aimFrom(event);
-    const dx = state.pointer ? state.pointer.dist : 0;
-    if (dx > 18) firePlayer();
+    firePlayer();
   });
-  canvas.addEventListener("pointercancel", () => { state.dragging = false; });
+  for (const name of ["pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(name, event => {
+      if (state.gesture?.id === event.pointerId) cancelGesture();
+    });
+  }
+  addEventListener("blur", cancelGesture);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelGesture();
+  });
 
   addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "m" || event.key === "M") {
       toggleMute();
       event.preventDefault();
       return;
     }
     if ((event.key === "r" || event.key === "R") && (state.screen === "battle" || state.screen === "result" || state.screen === "pause")) {
-      startBattle(rebuild());
+      if (state.screen === "battle") pause();
+      document.querySelector(state.screen === "result" ? "#retry" : "#pause-retry").focus();
       event.preventDefault();
       return;
     }
     if (event.key === "Escape") {
-      if (state.screen === "battle") {
-        state.paused = true;
-        show("pause");
-      } else if (state.screen === "pause") {
-        state.paused = false;
-        show("battle");
-      }
+      if (state.screen === "battle") pause();
+      else if (state.screen === "pause") resume();
       return;
     }
     if (state.screen !== "battle" || state.phase !== "aim") return;
@@ -1203,7 +1263,7 @@ function bind() {
     else if (event.key === " " || event.key === "Enter") {
       const focused = event.target && event.target.closest && event.target.closest("button, a, input, textarea, select");
       if (focused) return;
-      firePlayer();
+      if (!event.repeat) firePlayer();
     }
     else if (event.key >= "1" && event.key <= "4") {
       const weapon = WEAPONS[Number(event.key) - 1];
@@ -1218,7 +1278,35 @@ function bind() {
     state.power = Math.max(0.28, Math.min(1, state.power));
     event.preventDefault();
   });
-  addEventListener("resize", resize);
+  addEventListener("resize", () => { cancelGesture(); resize(); });
+}
+
+function dragCanFire(event) {
+  return Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y) >= DRAG_TO_FIRE_PX;
+}
+
+function cancelGesture() {
+  if (!state.gesture) return;
+  const { id } = state.gesture;
+  state.gesture = null;
+  if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  ui.hint.textContent = idleAimHint;
+}
+
+function pause() {
+  if (state.paused) return;
+  state.paused = true;
+  state.pausedAt = performance.now();
+  show("pause");
+}
+
+function resume() {
+  const held = state.pausedAt ? performance.now() - state.pausedAt : 0;
+  state.enemyAt += held;
+  state.holdUntil = (state.holdUntil || 0) + held;
+  state.pausedAt = 0;
+  state.paused = false;
+  show("battle");
 }
 
 function clampAngle(angle) {
@@ -1228,8 +1316,6 @@ function clampAngle(angle) {
 function aimFrom(event) {
   const point = screenToWorld(event.clientX, event.clientY);
   const cannon = state.layout.playerCannon;
-  const dist = Math.hypot(point.x - cannon.x, point.y - cannon.y);
-  state.pointer = { ...point, dist };
   const weapon = currentWeapon();
   const aim = aimToward(cannon, point, weapon, aimBlocks(), state.layout.wind, "player");
   if (aim) {
@@ -1270,8 +1356,11 @@ function boot() {
     window.__grokstone = {
       get screen() { return state.screen; },
       get phase() { return state.phase; },
+      get firstDamageId() { return state.siege?.firstDamageId; },
       get shots() { return state.shots; },
       get won() { return !!(state.result && state.result.won); },
+      get time() { return state.time; },
+      get layout() { return state.layout && { mode: state.layout.mode, date: state.layout.date, seed: state.layout.seed, name: state.layout.name }; },
       fireSolution() {
         const aim = bestAim(state.layout.playerCannon, currentWeapon(), aimBlocks(), state.layout.wind, "player", state.save.upgrades.powder);
         state.angle = aim.angle;
@@ -1293,7 +1382,7 @@ function boot() {
         const rect = canvas.getBoundingClientRect();
         return {
           x: rect.left + view.ox + (block.x + dx) * view.scale,
-          y: rect.top + view.oy + (block.y + dy) * view.scale,
+          y: rect.top + view.oy + (block.y + dy) * view.scaleY,
         };
       },
       feet() {

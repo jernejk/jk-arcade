@@ -1,6 +1,6 @@
 // Rigid-body siege. Matter is loaded by the page (vendor) or by tests (npm).
 
-import { WORLD, collapseIds, damageOf, hookYields, integrate, neighborsOf } from "./logic.js";
+import { WORLD, collapseIds, damageOf, hookYields, integrate, launchIndex, segmentContact, neighborsOf } from "./logic.js";
 
 function matter() {
   const api = globalThis.Matter;
@@ -66,6 +66,11 @@ export function createSiege(layout) {
       const b = pair.bodyB;
       if (!a.grok || !b.grok) continue;
       const speed = hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
+      // Matter resolves overlapping bodies after this event. Retain the free
+      // flight endpoint so the sweep sees the same segment as the preview.
+      for (const body of [a, b]) {
+        if (body.grok.role === "shot") body.grok.flightEnd = { ...body.position };
+      }
       siege.hits.push({ a, b, speed });
     }
   });
@@ -124,25 +129,18 @@ export function destroySiege(siege) {
   siege.bodies.clear();
 }
 
-function pointBlocked(siege, x, y, radius) {
-  if (y + radius >= WORLD.groundTop - 1) return true;
-  for (const body of siege.bodies.values()) {
-    const g = body.grok;
-    if (Math.abs(x - body.position.x) < g.w / 2 + radius && Math.abs(y - body.position.y) < g.h / 2 + radius) return true;
-  }
-  return false;
+function collisionBlocks(siege) {
+  return Array.from(siege.bodies.values(), body => ({
+    id: body.grok.id, x: body.position.x, y: body.position.y, w: body.grok.w, h: body.grok.h,
+  }));
 }
 
 export function fireProjectile(siege, owner, weapon, velocity, origin) {
   const { Bodies, Body, Composite } = matter();
+  siege.firstDamageId = null;
   const path = integrate(origin.x, origin.y, velocity.vx, velocity.vy, siege.layout.wind || 0, 8, weapon.air);
-  let spawn = { x: origin.x, y: origin.y, vx: velocity.vx, vy: velocity.vy };
-  for (const point of path) {
-    if (!pointBlocked(siege, point.x, point.y, weapon.radius + 1)) {
-      spawn = point;
-      break;
-    }
-  }
+  const start = launchIndex(path, collisionBlocks(siege), weapon.radius);
+  const spawn = path[start] || { ...origin, vx: velocity.vx, vy: velocity.vy };
   const x = spawn.x;
   const y = Math.min(spawn.y, WORLD.groundTop - weapon.radius - 3);
   const area = Math.PI * weapon.radius * weapon.radius;
@@ -165,7 +163,6 @@ export function fireProjectile(siege, owner, weapon, velocity, origin) {
     done: false,
     prevX: x,
     prevY: y,
-    swept: false,
   };
   Composite.add(siege.engine.world, body);
   Body.setVelocity(body, { x: spawn.vx, y: spawn.vy });
@@ -379,6 +376,7 @@ function applyDamage(siege, id, amount) {
   const body = siege.bodies.get(id);
   if (!body || body.grok.role !== "block" || amount <= 0 || body.grok.hp <= 0) return 0;
   if (body.grok.material === "banner") return 0;
+  siege.firstDamageId ??= id;
   body.grok.hp -= amount;
   body.grok.flash = 1;
   siege.fx.push({ kind: "chip", x: body.position.x, y: body.position.y, material: body.grok.material, amount, side: body.grok.side });
@@ -534,39 +532,15 @@ function sweepDebris(siege) {
 
 function sweepShots(siege) {
   for (const shot of siege.shots) {
-    if (shot.grok.done || shot.grok.swept) continue;
-    const r = shot.grok.weapon.radius;
-    const x0 = shot.grok.prevX;
-    const y0 = shot.grok.prevY;
-    const x1 = shot.position.x;
-    const y1 = shot.position.y;
-    const dist = hypot(x1 - x0, y1 - y0);
-    const steps = Math.max(1, Math.ceil(dist / 4));
-    let struck = null;
-    for (let i = 1; i <= steps && !struck; i++) {
-      const t = i / steps;
-      const x = x0 + (x1 - x0) * t;
-      const y = y0 + (y1 - y0) * t;
-      if (y + r >= WORLD.groundTop) {
-        struck = "ground";
-        break;
-      }
-      for (const body of siege.bodies.values()) {
-        const g = body.grok;
-        if (Math.abs(x - body.position.x) <= g.w / 2 + r && Math.abs(y - body.position.y) <= g.h / 2 + r) {
-          struck = body;
-          break;
-        }
-      }
-    }
-    shot.grok.prevX = shot.position.x;
-    shot.grok.prevY = shot.position.y;
-    if (!struck || struck === "ground") continue;
-    shot.grok.swept = true;
-    const speed = hypot(shot.velocity.x, shot.velocity.y);
-    onShotHit(siege, shot, struck, Math.max(speed, 4));
+    const end = shot.grok.flightEnd || shot.position;
+    const from = { x: shot.grok.prevX, y: shot.grok.prevY };
+    const hit = segmentContact(from, end, collisionBlocks(siege), shot.grok.weapon.radius);
+    if (!hit) continue;
+    const other = hit.type === "block" ? siege.bodies.get(hit.id) : { grok: { role: hit.type } };
+    const native = siege.hits.find(({ a, b }) => a === shot && b === other || b === shot && a === other);
+    const speed = native?.speed ?? Math.max(4, hypot(shot.velocity.x, shot.velocity.y));
+    onShotHit(siege, shot, other, speed);
   }
-  for (const shot of siege.shots) shot.grok.swept = false;
 }
 
 export function stepSiege(siege) {
@@ -574,13 +548,14 @@ export function stepSiege(siege) {
   siege.frame += 1;
   siege.engine.timing.timeScale = siege.timeScale;
   for (const shot of siege.shots) {
+    shot.grok.flightEnd = null;
     shot.grok.prevX = shot.position.x;
     shot.grok.prevY = shot.position.y;
   }
   Engine.update(siege.engine, 1000 / 60);
   stretchConstraints(siege);
-  drainHits(siege);
   sweepShots(siege);
+  drainHits(siege);
   for (const shot of siege.shots.slice()) {
     shot.grok.touched = false;
     shot.grok.age += 1;

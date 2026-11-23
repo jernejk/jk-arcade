@@ -9,6 +9,7 @@ import {
   WORLD,
   bestAim,
   defaultSave,
+  firstHit,
   integrate,
   layoutByNumber,
   shotVelocity,
@@ -87,6 +88,22 @@ test("the preview arc matches Matter for a clear shot", () => {
   assert.ok(drift < 1.5, `drift ${drift}`);
   assert.ok(points.at(-1).vy > points[0].vy);
   assert.ok(WORLD.groundTop > 500);
+});
+
+test("the reported Odd Arch arc clips the merlon before the gold stone", () => {
+  const layout = layoutByNumber(2, defaultSave());
+  const weapon = weaponById("roundshot");
+  const origin = layout.playerCannon;
+  const velocity = shotVelocity(weapon, -0.6382857142857142, 0.3353846153846154);
+  const points = integrate(origin.x, origin.y, velocity.vx, velocity.vy, layout.wind, 90, weapon.air);
+  const preview = firstHit(points, layout.blocks, weapon.radius, origin);
+  assert.equal(preview.id, "e0x2");
+  const siege = createSiege(layout);
+  fireProjectile(siege, "player", weapon, velocity, origin);
+  for (let i = 0; i < 90 && !siege.firstDamageId; i++) stepSiege(siege);
+  assert.equal(siege.firstDamageId, preview.id);
+  assert.equal(siege.bodies.get("e2x3").grok.hp, 184);
+  destroySiege(siege);
 });
 
 test("striking one foot leaves the banner up", () => {
@@ -182,5 +199,33 @@ test("breaking a full stone lowers the keep, and a keg still bursts on rubble", 
     exploded = consumeFx(siege).some((fx) => fx.kind === "explode");
   }
   assert.equal(exploded, true);
+  destroySiege(siege);
+});
+
+test("a full-health stone that breaks still lowers the keep", () => {
+  const siege = createSiege(layoutByNumber(1, defaultSave()));
+  const foot = [...siege.bodies.values()].find((b) => b.grok.side === "enemy" && b.grok.material === "foundation");
+  assert.equal(foot.grok.hp, foot.grok.maxHp);
+  strikeBlock(siege, foot.grok.id, 9999);
+  assert.equal(siege.bodies.has(foot.grok.id), false);
+  assert.ok(sideIntegrity(siege, "enemy") < 1);
+  destroySiege(siege);
+});
+
+test("the turn timeout stills stones without putting them to sleep", () => {
+  const siege = createSiege(layoutByNumber(1, defaultSave()));
+  const foot = [...siege.bodies.values()].find((b) => b.grok.side === "enemy" && b.grok.material === "foundation");
+  strikeBlock(siege, foot.grok.id, 9999);
+  for (let i = 0; i < 4; i++) stepSiege(siege);
+  forceSettle(siege);
+  const loose = [...siege.bodies.values(), ...siege.debris].filter((b) => !b.isStatic);
+  assert.ok(loose.length > 0);
+  for (const body of loose) {
+    assert.equal(body.isSleeping, false);
+    assert.equal(body.speed, 0);
+  }
+  const before = loose.map((b) => b.position.y);
+  for (let i = 0; i < 12; i++) stepSiege(siege);
+  assert.ok(loose.some((b, i) => b.position.y > before[i] + 1), "nothing fell after the timeout");
   destroySiege(siege);
 });

@@ -38,8 +38,9 @@ try {
   </header>
   <p id="callout" hidden></p>
   <footer id="tray" hidden>
+    <p id="keep-goal"></p>
     <div id="weapons" role="group" aria-label="Crews"></div>
-    <p id="hint">Drag to aim. Release to fire.</p>
+    <p id="hint">Drag to aim.</p>
   </footer>
 
   <section id="title" class="sheet">
@@ -62,12 +63,16 @@ try {
   <section id="help-sheet" class="sheet" hidden>
     <h2>How the stone stands</h2>
     <ul>
-      <li>Drag across the field and let go. The mark is the block you will hit.</li>
+      <li>Drag across the field and let go. Slide back to where you started to cancel. The mark is the first block you will hit.</li>
       <li>You take a shot, then the rival answers.</li>
       <li>A block stands on the block below it. Take that away and the courses above come down.</li>
       <li>Gold stone, timber, and cinder kegs give up sooner than ashlar. The banner itself is only cloth.</li>
       <li>Rubble from a fallen keep spends in the yard: thicker walls, and three more crews.</li>
     </ul>
+    <h3>Crews</h3>
+    <ul id="crew-help"></ul>
+    <h3>Keyboard</h3>
+    <p>← → or A/D aim. ↑ ↓ or W/S change power. Space or Enter fires. 1–4 pick a crew. M toggles sound. Esc pauses or resumes. R selects Retry, then Enter confirms.</p>
     <button id="help-back" class="primary" type="button">Back</button>
   </section>
 

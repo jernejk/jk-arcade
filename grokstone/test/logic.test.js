@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  FIRST_HIRE,
   LEVELS,
+  UPGRADES,
   aimToward,
   buy,
   cleverClear,
@@ -16,6 +18,7 @@ import {
   missingStar,
   loadSave,
   localDateString,
+  lossLine,
   parseHash,
   recordResult,
   sampleAims,
@@ -23,6 +26,7 @@ import {
   shareText,
   stableIds,
   starsFor,
+  stepClock,
   weaponById,
   writeSave,
 } from "../logic.js";
@@ -432,4 +436,80 @@ test("the second siege and today's keep lend one extra crew", () => {
 test("roundshot is the crew you start with", () => {
   assert.equal(weaponById("roundshot").crew, "Ida Flint");
   assert.equal(localDateString(new Date(2026, 10, 18)), "2026-11-18");
+});
+
+test("physics steps follow elapsed time, not the display refresh", () => {
+  for (const hz of [30, 60, 120, 144]) {
+    let acc = 0;
+    let steps = 0;
+    for (let i = 0; i < hz * 2; i++) {
+      const clock = stepClock(acc, 1000 / hz);
+      acc = clock.acc;
+      steps += clock.steps;
+    }
+    assert.equal(steps, 120, `${hz} Hz`);
+  }
+  assert.equal(stepClock(0, 2000).steps, 5);
+  assert.equal(stepClock(0, -5).steps, 0);
+});
+
+test("a played daily keeps its date in the name, and today's stays today's", () => {
+  const today = localDateString();
+  assert.equal(dailyLayout(defaultSave(), today).name, "Today's keep");
+  const old = dailyLayout(defaultSave(), "2026-01-15");
+  assert.equal(old.name, "The keep of 2026-01-15");
+  assert.equal(old.date, "2026-01-15");
+  assert.equal(parseHash(hashFor(old)).date, "2026-01-15");
+});
+
+test("a lost keep says which stone gave way, not the heading again", () => {
+  const layout = layoutByNumber(1, defaultSave());
+  const banner = layout.blocks.find((b) => b.side === "player" && b.material === "banner");
+  const byId = new Map(layout.blocks.map((b) => [b.id, b]));
+  let support = byId.get(banner.neighbors.below[0]);
+  while (support.neighbors.below.length) support = byId.get(support.neighbors.below[0]);
+  const line = lossLine(layout.blocks, [{ id: support.id, material: support.material, side: "player" }]);
+  assert.match(line, /gave way/);
+  assert.doesNotMatch(line, /standard is down/i);
+  const aside = layout.blocks.find((b) => b.side === "player" && b.material !== "banner" && !b.neighbors.above.length && b.id !== banner.neighbors.below[0]);
+  if (aside) assert.match(lossLine(layout.blocks, [{ id: aside.id, material: aside.material, side: "player" }]), /broke 1 of your stones/);
+  assert.match(lossLine(layout.blocks, []), /shook your cloth loose/);
+});
+
+test("an arch lintel sits on its haunches before any shot", () => {
+  const layouts = LEVELS.map((level) => layoutByNumber(level.number, defaultSave()));
+  for (let d = 1; d <= 28; d++) layouts.push(dailyLayout(defaultSave(), `2026-11-${String(d).padStart(2, "0")}`));
+  let arches = 0;
+  for (const layout of layouts) {
+    const lintel = layout.blocks.find((b) => b.id === "elintel");
+    if (!lintel) continue;
+    const banner = layout.blocks.find((b) => b.id === "ebanner");
+    assert.deepEqual(banner.neighbors.below, ["elintel"], layout.name);
+    if (layout.blocks.some((b) => b.id === "ehaunchL")) {
+      arches += 1;
+      assert.deepEqual(lintel.neighbors.below.slice().sort(), ["ehaunchL", "ehaunchR"], layout.name);
+    }
+    for (const id of lintel.neighbors.below) {
+      const support = layout.blocks.find((b) => b.id === id);
+      const gap = (support.y - support.h / 2) - (lintel.y + lintel.h / 2);
+      assert.ok(gap >= 0 && gap <= 2.5, `${layout.name} ${id} gap ${gap}`);
+    }
+  }
+  assert.ok(arches >= 3, `only ${arches} arch keeps`);
+});
+
+test("the first keep pays for a first hire, and later keeps pay what they earn", () => {
+  assert.equal(FIRST_HIRE, Math.min(...UPGRADES.map((item) => item.cost)));
+  for (const earned of [0, 3, 7]) {
+    const save = recordResult(defaultSave(), layoutByNumber(1, defaultSave()), { won: true, shots: 3, rubble: earned });
+    assert.ok(save.rubble >= FIRST_HIRE, `earned ${earned}, holding ${save.rubble}`);
+    const affordable = UPGRADES.filter((item) => buy(save, item.id).ok);
+    assert.ok(affordable.length > 0, `nothing to buy after earning ${earned}`);
+  }
+  let save = recordResult(defaultSave(), layoutByNumber(1, defaultSave()), { won: true, shots: 3, rubble: 7 });
+  const first = save.rubble;
+  save = recordResult(save, layoutByNumber(1, save), { won: true, shots: 1, rubble: 7 });
+  assert.equal(save.rubble, first, "a replay of the first keep pays again");
+  save = recordResult(save, layoutByNumber(2, save), { won: true, shots: 3, rubble: 3 });
+  assert.equal(save.rubble, first + 3);
 });

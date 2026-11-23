@@ -125,6 +125,8 @@ export const UPGRADES = Object.freeze([
   { id: "boulder", kind: "weapon", weapon: "boulder", cost: 15, name: "Hire Bram Holt", blurb: "A boulder for doors, feet, and bad ideas." },
 ]);
 
+export const FIRST_HIRE = Math.min(...UPGRADES.map((item) => item.cost));
+
 export const LEVELS = Object.freeze([
   {
     number: 1,
@@ -265,6 +267,13 @@ export function localDateString(date = new Date()) {
 
 export function dailySeed(dateStr) {
   return hashString(`grokstone-daily-${dateStr}`);
+}
+
+export function stepClock(acc, elapsed, maxSteps = 5) {
+  const total = Math.min(PHYS.dt * maxSteps, acc + Math.max(0, elapsed));
+  // The epsilon keeps two 8.33 ms frames at 120 Hz from landing a hair short of one step.
+  const steps = Math.floor(total / PHYS.dt + 1e-6);
+  return { steps, acc: Math.max(0, total - steps * PHYS.dt) };
 }
 
 export function weaponById(id) {
@@ -609,7 +618,7 @@ function buildArchCrown(blocks, side) {
     col: key.col,
     row: key.row + 2,
     x: key.x,
-    y: y1 - BLOCK_H / 2 - 2 - 9,
+    y: y1 - 7 - 2 - 9,
     w: 52,
     h: 18,
     material: "stone",
@@ -1021,7 +1030,7 @@ export function buildLayout({ mode, number = 1, save, seed, date }) {
     ai = { skill: clamp(spec.skill, 0.35, 0.85), weapon: spec.weapon };
     if (mode === "daily") {
       id = `daily-${date}`;
-      name = "Today's keep";
+      name = !date || date === localDateString() ? "Today's keep" : `The keep of ${date}`;
       starShot = spec.bridge ? "the timber span" : spec.arch ? "the gold stone" : spec.kegs ? "the casks" : "both feet under the cloth";
       blurb = `${foe} stood up overnight. Ida and one other crew are lent. Fewest shots is the mark.`;
     } else {
@@ -1109,18 +1118,57 @@ export function shotVelocity(weapon, angle, power) {
   };
 }
 
-export function firstHit(points, blocks, radius) {
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    if (p.y + radius >= WORLD.groundTop) {
-      return { type: "ground", x: p.x, y: WORLD.groundTop, speed: Math.hypot(p.vx, p.vy), index: i };
-    }
+// The muzzle can sit inside a battlement. Both flight and preview leave from
+// the first clear point in the first eight ticks of the launch arc.
+export function launchIndex(points, blocks, radius) {
+  for (let i = 0; i < Math.min(8, points.length); i++) {
+    const { x, y } = points[i];
+    if (y + radius + 1 >= WORLD.groundTop - 1) continue;
+    if (!blocks.some(b => Math.abs(x - b.x) < b.w / 2 + radius + 1 &&
+                          Math.abs(y - b.y) < b.h / 2 + radius + 1)) return i;
+  }
+  return -1;
+}
+
+// Sample the whole tick at the siege's four-unit sweep spacing. Checking
+// just the endpoint skips merlon corners between consecutive trajectory dots.
+export function segmentContact(from, to, blocks, radius) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
+  for (let step = 1; step <= steps; step++) {
+    const x = from.x + dx * (step / steps), y = from.y + dy * (step / steps);
+    if (y + radius >= WORLD.groundTop) return { type: "ground", x, y };
+    if (x - radius <= 0 || x + radius >= WORLD.w) return { type: "wall", x, y };
     for (const b of blocks) {
       if (b.hp <= 0) continue;
-      if (Math.abs(p.x - b.x) <= b.w / 2 + radius && Math.abs(p.y - b.y) <= b.h / 2 + radius) {
-        return { type: "block", id: b.id, side: b.side, x: p.x, y: p.y, speed: Math.hypot(p.vx, p.vy), index: i };
+      if (Math.abs(x - b.x) <= b.w / 2 + radius && Math.abs(y - b.y) <= b.h / 2 + radius) {
+        return { type: "block", id: b.id, side: b.side, x, y };
       }
     }
+  }
+  return null;
+}
+
+export function firstHit(points, blocks, radius, origin) {
+  const start = launchIndex(points, blocks, radius);
+  let from = points[start] || origin;
+  for (let i = start + 1; from && i < points.length; i++) {
+    const p = points[i];
+    const hit = segmentContact(from, p, blocks, radius);
+    if (hit) return { ...hit, speed: Math.hypot(p.vx, p.vy), index: i };
+    from = p;
+  }
+  return null;
+}
+
+// Score the crew's intended line through the courses. A hook can clear a
+// screen on its way to a valuable stone over several turns. Resolve the
+// actual first impact separately, including the space between these points.
+function intendedTarget(points, blocks, radius) {
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const hit = segmentContact(p, p, blocks, radius);
+    if (hit) return { ...hit, speed: Math.hypot(p.vx, p.vy), index: i };
   }
   return null;
 }
@@ -1156,7 +1204,7 @@ export function sampleAims(cannon, weapon, blocks, wind, side, powder = false) {
       const power = 0.32 + i * 0.1;
       const vel = shotVelocity(weapon, angle, power);
       const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 78, weapon.air);
-      const hit = firstHit(pts, blocks, weapon.radius);
+      const hit = intendedTarget(pts, blocks, weapon.radius);
       let score = 0;
       let target = null;
       if (hit && hit.type === "block") {
@@ -1184,7 +1232,8 @@ export function sampleAims(cannon, weapon, blocks, wind, side, powder = false) {
           score = -40;
         }
       }
-      aims.push({ angle, power, score, hit, targetId: target ? target.id : null });
+      const contact = firstHit(pts, blocks, weapon.radius, cannon);
+      aims.push({ angle, power, score, hit: contact, targetId: contact?.id || null });
     }
   }
   aims.sort((a, b) => b.score - a.score);
@@ -1238,10 +1287,10 @@ function pointerBlock(point, blocks) {
   return null;
 }
 
-function rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked) {
+function rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked, contact = firstHit) {
   const vel = shotVelocity(weapon, angle, power);
   const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 96, weapon.air);
-  const hit = firstHit(pts, blocks, weapon.radius);
+  const hit = contact(pts, blocks, weapon.radius, cannon);
   let bestD = Infinity;
   let approach = Infinity;
   const stop = hit ? hit.index : pts.length - 1;
@@ -1315,6 +1364,18 @@ export function aimToward(cannon, point, weapon, blocks, wind, side) {
       if (lockedAim) break;
     }
   }
+  // When nothing can reach the selected course yet, aim down its intended
+  // line. Keep the real sweep result so the outline marks the screening stone.
+  if (locked && !lockedAim) {
+    let screened = null;
+    for (const candidate of seeds) {
+      const intended = rankAim(cannon, point, weapon, blocks, wind, candidate.angle, candidate.power, wanted, locked, intendedTarget);
+      if (intended.hit?.id === locked.id && (!screened || intended.distance < screened.distance)) {
+        screened = { distance: intended.distance, candidate };
+      }
+    }
+    if (screened) return screened.candidate;
+  }
   return lockedAim || best;
 }
 
@@ -1364,7 +1425,8 @@ export function recordResult(save, layout, outcome, today = null) {
   if (layout.mode === "campaign") {
     if (!next.cleared[layout.id]) {
       next.cleared = { ...next.cleared, [layout.id]: true };
-      next.rubble += outcome.rubble | 0;
+      const earned = outcome.rubble | 0;
+      next.rubble += layout.number === 1 ? Math.max(earned, FIRST_HIRE) : earned;
     }
     next.unlocked = Math.max(next.unlocked, (layout.number || 1) + 1);
   } else if (layout.mode === "daily") {
@@ -1393,6 +1455,34 @@ export function recordResult(save, layout, outcome, today = null) {
     next.seeds = seeds;
   }
   return next;
+}
+
+const STONE_WORDS = {
+  foundation: "footing",
+  stone: "course",
+  merlon: "merlon",
+  timber: "timber",
+  keystone: "gold stone",
+  keg: "keg",
+};
+
+export function lossLine(blocks, broken) {
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+  const banner = blocks.find((b) => b.side === "player" && b.material === "banner");
+  const under = new Set();
+  const queue = banner && banner.neighbors ? [...banner.neighbors.below] : [];
+  while (queue.length) {
+    const id = queue.shift();
+    if (under.has(id)) continue;
+    under.add(id);
+    const block = byId.get(id);
+    if (block && block.neighbors) queue.push(...block.neighbors.below);
+  }
+  const mine = (broken || []).filter((b) => b.side === "player" && b.material !== "banner");
+  const support = mine.find((b) => under.has(b.id));
+  if (support) return `Your ${STONE_WORDS[support.material] || "stone"} gave way, and the cloth went with it.`;
+  if (mine.length) return `They broke ${mine.length} of your stones, and the cloth came down.`;
+  return "Their shot shook your cloth loose.";
 }
 
 export function shareText(layout, outcome) {
