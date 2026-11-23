@@ -1,0 +1,7 @@
+{
+  "name": "craterwake",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test", "shot": "node scripts/shot.mjs" },
+  "devDependencies": { "playwright-core": "1.56.1" }
+}
