@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { collapseDetached, stepShard, recoilTank } from '../src/destruction.js';
 import { World, SEA, M, settle } from '../src/world.js';
 import { greedyMesh } from '../src/mesher.js';
 import {
@@ -282,4 +283,108 @@ test('stock Saltpan cargo encloses the six-block flat Corkscrew bore from either
       );
     }
   }
+});
+
+test('opening salvo chains two spring crates once and drops the unsupported signal beam', () => {
+  const run = () => {
+    const r = fixed(),
+      shot = fly(r, 0, freshAim()),
+      out = resolve(r, 0, 0, shot);
+    assert.equal(out.echoes.length, 2);
+    const second = out.echoes[1];
+    const nearestCore = Math.hypot(
+      ...['x', 'y', 'z'].map((k) =>
+        Math.max(0, Math.abs(second[k] - shot.p[k]) - 0.5),
+      ),
+    );
+    assert.ok(
+      nearestCore > 2.5,
+      'the second crate lies outside the primary crater',
+    );
+    assert.ok(out.debris.filter((p) => p.loose).length >= 6);
+    for (let x = 30; x <= 35; x++) assert.equal(r.world.get(x, 20, 80), 0);
+    const hash = r.world.checksum();
+    assert.equal(resolve(r, 0, 0, shot).echoes.length, 0);
+    return [hash, out.echoes];
+  };
+  assert.deepEqual(run(), run());
+});
+
+test('a connected overhang survives until its last supporting column is cut', () => {
+  const w = fixed().world;
+  for (let x = 10; x <= 14; x++) w.set(x, 12, 56, M.cream);
+  for (const x of [10, 14])
+    for (let y = 3; y < 12; y++) w.set(x, y, 56, M.teal);
+  const cut = (x) => {
+    w.set(x, 11, 56, M.air);
+    return [{ x: x + 0.5, y: 11.5, z: 56.5 }];
+  };
+  assert.deepEqual(collapseDetached(w, cut(10)), []);
+  assert.equal(collapseDetached(w, cut(14)).length, 5);
+  for (let x = 10; x <= 14; x++) assert.equal(w.get(x, 12, 56), M.air);
+  assert.equal(w.get(14, 10, 56), M.teal);
+});
+
+test('a debris voxel falls, rebounds, settles on the pier and sinks over water', () => {
+  const w = fixed().world;
+  function body(x, z) {
+    return {
+      x,
+      y: 17,
+      z,
+      vx: 0.7,
+      vy: 0,
+      vz: 0,
+      spin: 1,
+      pitch: 0,
+      size: 0.4,
+      bounces: 0,
+      asleep: false,
+      sunk: false,
+    };
+  }
+  const chip = body(24.5, 28.5),
+    spray = body(10, 55);
+  let bouncedUp = false;
+  for (let i = 0; i < 250; i++) {
+    stepShard(w, chip, 1 / 60);
+    stepShard(w, spray, 1 / 60);
+    if (chip.bounces && chip.vy > 0) bouncedUp = true;
+  }
+  assert.ok(bouncedUp && chip.bounces >= 2 && chip.asleep);
+  assert.ok(Math.abs(chip.y - (w.top(chip.x, chip.z) + 0.2)) < 0.001);
+  assert.ok(spray.sunk);
+});
+
+test('nearby blasts push a tank away; the hull stops against solid cover', () => {
+  const r = fixed(),
+    a = { ...freshAim(), heading: 8, power: 75 };
+  const s = fly(r, 0, a),
+    out = resolve(r, 0, 0, s);
+  assert.equal(s.direct, 1);
+  assert.equal(out.damage[1], 18);
+  assert.ok(out.settles[1].kick > 0.6 && out.settles[1].kick <= 1.8);
+  const w = fixed().world,
+    tank = { x: 24.5, y: 12, z: 28.5, hp: 100 };
+  for (let z = 27; z <= 29; z++) w.set(26, 12, z, M.teal);
+  const stopped = recoilTank(w, tank, [{ x: 23.5, y: 13, z: 28.5 }], {
+    x: 1,
+    z: 0,
+  });
+  assert.ok(stopped.kick > 0 && tank.x + 0.8 < 26);
+});
+
+test('Skipper keeps one chase path through two surface rebounds and stops at a vertical face', () => {
+  const r = fixed(),
+    a = { heading: 12, angle: 23, power: 43, ammo: 3 };
+  const s = fly(r, 0, a);
+  assert.equal(r.tanks[0].stock[3], 2);
+  assert.equal(s.skips.length, 2);
+  for (const bounce of s.skips) {
+    assert.equal(bounce.p.y, SEA);
+    assert.ok(s.path[bounce.step + 1].y > s.path[bounce.step].y);
+  }
+  assert.equal(s.hit, 'terrain');
+  assert.deepEqual(fly(r, 0, a, false).p, s.p);
+  assert.equal(fly(r, 0, { ...freshAim(), angle: 5, ammo: 3 }).skips.length, 0);
 });

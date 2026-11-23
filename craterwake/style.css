@@ -611,9 +611,12 @@ footer {
 #tray button[aria-pressed='true'] {
   border-color: #3a887d;
 }
+#hud[data-phase='impact'] footer {
+  visibility: hidden;
+}
 #skip {
   position: absolute;
-  bottom: 13%;
+  bottom: max(22px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   min-height: 44px;

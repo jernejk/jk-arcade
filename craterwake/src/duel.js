@@ -1,14 +1,17 @@
-import { World, random, clamp, settle, SEA } from './world.js';
+import { chainAndCollapse, recoilTank } from './destruction.js';
+import { World, random, clamp, SEA } from './world.js';
 
 export const DT = 1 / 120,
   GRAVITY = 22,
   RAD = Math.PI / 180;
-export const AMMO = ['Pebble', 'Corkscrew', 'Gull Strike'];
+export const AMMO = ['Pebble', 'Corkscrew', 'Gull Strike', 'Skipper'];
 export const freshAim = () => ({ heading: 0, angle: 43, power: 72, ammo: 0 });
 export const limits = { heading: [-30, 30], angle: [5, 80], power: [10, 100] };
 export function adjust(aim, key, value) {
   aim[key] = clamp(Math.round(value), ...limits[key]);
 }
+const hitDamage = [18, 22, 12, 16];
+const craterRadius = [2.5, 2, 1.8, 2];
 const norm = (v) => {
   const m = Math.hypot(v.x, v.y, v.z);
   return { x: v.x / m, y: v.y / m, z: v.z / m };
@@ -95,6 +98,7 @@ export function fly(round, shooter, aim, record = true) {
     hit = 'water',
     direct = null;
   const path = record ? [p] : null;
+  const skips = [];
   for (let i = 0; i < 120 * 12; i++) {
     const next = offset(p, v, DT);
     next.x += 0.5 * wind.x * DT * DT;
@@ -123,10 +127,25 @@ export function fly(round, shooter, aim, record = true) {
       if (record) path.push(p);
       continue;
     }
+    const flatTop = hit === 'terrain' && Math.abs(p.y - Math.round(p.y)) < 1e-6;
+    if (
+      aim.ammo === 3 &&
+      v.y < 0 &&
+      skips.length < 2 &&
+      (hit === 'water' || flatTop)
+    ) {
+      skips.push({ p: { ...p }, step: i + 1 });
+      p = { ...p, y: p.y + 0.035 };
+      v.x *= 0.83;
+      v.z *= 0.83;
+      v.y = Math.min(13, Math.max(3, -v.y * 0.58));
+      if (record) path.push(p);
+      continue;
+    }
     if (record) path.push(p);
     break;
   }
-  return { p, path, hit, direct, vector: norm(v) };
+  return { p, path, hit, direct, skips, vector: norm(v) };
 }
 export const windFor = (rng) => {
   const az = rng() * Math.PI * 2,
@@ -146,7 +165,7 @@ export function makeRound(seed, number = 1, bonus = false) {
       side,
       hp: 100,
       sunk: false,
-      stock: [Infinity, 2 + (!i && bonus ? 1 : 0), 1],
+      stock: [Infinity, 2 + (!i && bonus ? 1 : 0), 1, 2],
     };
   });
   const rng = random(seed ^ 0xb194d3);
@@ -178,6 +197,7 @@ export function resolve(round, shooter, ammo, shot) {
     blasts = [],
     damage = [0, 0],
     before = tanks.map((t) => t.hp);
+  let echoes = [];
   const drill = [],
     settles = [];
   if (shot.hit !== 'water' || ammo === 2) {
@@ -193,21 +213,30 @@ export function resolve(round, shooter, ammo, shot) {
       blasts.push(...gullTargets(round, shot));
     } else blasts.push(centre);
     for (const b of blasts) {
-      debris.push(...world.carve(b, [2.5, 2, 1.8][ammo]));
+      debris.push(...world.carve(b, craterRadius[ammo]));
+    }
+    echoes = chainAndCollapse(world, debris);
+    if (shot.direct !== null && ammo !== 2)
+      damage[shot.direct] = hitDamage[ammo];
+    const centres = [...blasts, ...echoes];
+    for (const [index, b] of centres.entries()) {
       tanks.forEach((tank, i) => {
+        const secondary = index >= blasts.length;
+        if (!secondary && i === shot.direct && ammo !== 2) return;
         const d = Math.hypot(
           b.x - tank.x,
           Math.max(0, Math.abs(b.y - (tank.y + 1)) - 1),
           b.z - tank.z,
         );
-        damage[i] += Math.round([18, 22, 12][ammo] * clamp(1 - d / 4, 0, 1));
+        damage[i] += Math.round(
+          (secondary ? 15 : hitDamage[ammo]) *
+            clamp(1 - d / (secondary ? 5 : 4), 0, 1),
+        );
       });
     }
-    if (shot.direct !== null && ammo !== 2)
-      damage[shot.direct] = [18, 22][ammo];
     tanks.forEach((tank, i) => {
       tank.hp = Math.max(0, tank.hp - damage[i]);
-      settles.push(settle(world, tank));
+      settles.push(recoilTank(world, tank, centres, shot.vector));
     });
   }
   if (shooter === 1 && round.previous) {
@@ -227,6 +256,7 @@ export function resolve(round, shooter, ammo, shot) {
     debris,
     blasts,
     drill,
+    echoes,
     settles,
     winner,
     direct: shot.direct,

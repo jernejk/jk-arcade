@@ -28,6 +28,8 @@ export class Chimes {
       click: [420, 525, 0.075, 'sine'],
       splash: [410, 95, 0.22, 'sine'],
       impact: [130, 34, 0.31, 'sawtooth'],
+      skip: [540, 850, 0.08, 'sine'],
+      spring: [340, 48, 0.27, 'triangle'],
       win: [460, 920, 0.44, 'triangle'],
     };
     const [start, end, length, type] = sounds[name],

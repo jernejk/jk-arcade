@@ -1,5 +1,5 @@
 // Keep a visited cabinet playable when the harbour goes offline.
-const CACHE = 'craterwake-static-v2-3';
+const CACHE = 'craterwake-static-v2-4';
 const ROOT = new URL('./', self.location.href);
 const FILES = [
   './',
@@ -11,10 +11,13 @@ const FILES = [
   'assets/pebble.webp',
   'assets/corkscrew.webp',
   'assets/gull.webp',
+  'assets/skipper.webp',
   'vendor/three.module.min.js',
   '../fonts/Bungee-Regular.ttf',
   ...[
     'world',
+    'destruction',
+    'salvo-effects',
     'duel',
     'mesher',
     'mesh-worker',

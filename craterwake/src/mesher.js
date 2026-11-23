@@ -103,6 +103,7 @@ export const palette = [
   '#cb6552',
   '#be935d',
   '#8b6557',
+  '#d54d32',
 ];
 const faceTint = palette.map((hex) =>
   [1, 3, 5].map((i) => {

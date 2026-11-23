@@ -436,3 +436,88 @@ test('390 × 844 shows the complete opening and rival guides, then frames the st
         point.y < 640,
     );
 });
+
+test('spring chain stages its shockwaves and bouncing rubble within phone budgets; calm mode preserves the crater', async (t) => {
+  if (skip) return t.skip(skip);
+  const hashes = [];
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const p = await open(t, { clock: true, reducedMotion });
+    await p.evaluate(async () => {
+      const { Battlefield } = await import('./src/scene.js'),
+        draw = Battlefield.prototype.draw;
+      let field;
+      Battlefield.prototype.draw = function (...args) {
+        field = this;
+        return draw.apply(this, args);
+      };
+      window.impactStats = () => {
+        const e = field.effects;
+        return {
+          shards: e.shards.count,
+          puffs: e.cloud.count,
+          waves: e.waves.count,
+          bounces: e.bodies.filter((b) => b.bounces).length,
+          settled: e.bodies.filter((b) => b.asleep).length,
+          shake: document
+            .querySelector('canvas')
+            .getAnimations()
+            .flatMap((a) => a.effect.getKeyframes())
+            .reduce((max, f) => {
+              const m = new DOMMatrix(
+                f.transform === 'none' ? undefined : f.transform,
+              );
+              return Math.max(max, Math.hypot(m.e, m.f));
+            }, 0),
+        };
+      };
+    });
+    await begin(p);
+    await advance(p, 32);
+    await p.keyboard.press('Space');
+    await advance(p, 4000);
+    await p.clock.runFor(360);
+    const early = await p.evaluate(() => window.impactStats());
+    assert.match(await p.textContent('#beat'), /chain ×2/i);
+    if (reducedMotion === 'reduce') {
+      assert.deepEqual(
+        [early.shards, early.puffs, early.waves, early.shake],
+        [0, 0, 0, 0],
+      );
+    } else {
+      assert.ok(early.waves >= 2 && early.waves <= 7);
+      assert.ok(
+        early.shards > 0 &&
+          early.shards <= 144 &&
+          early.puffs > 0 &&
+          early.puffs <= 48,
+      );
+      assert.ok(early.shake > 0 && early.shake <= 6);
+      assert.ok((await state(p)).calls <= 70);
+      await p.clock.runFor(900);
+      const late = await p.evaluate(() => window.impactStats());
+      assert.ok(late.bounces > 0 && late.settled > 0);
+    }
+    hashes.push((await state(p)).checksum);
+  }
+  assert.equal(hashes[0], hashes[1]);
+});
+
+test('Skipper is selectable with 4 and both water skips occur in the original chase beat', async (t) => {
+  if (skip) return t.skip(skip);
+  const p = await open(t, { clock: true });
+  await begin(p);
+  await advance(p, 32);
+  await range(p, '#elevation', 23);
+  await range(p, '#throttle', 43);
+  for (let n = 0; n < 12; n++) await p.keyboard.press('d');
+  await p.keyboard.press('4');
+  assert.match(await p.textContent('#ammo b'), /Skipper 2/);
+  await p.keyboard.press('Space');
+  await p.clock.runFor(1320);
+  assert.equal((await state(p)).phase, 'shell-cam');
+  assert.match(await p.textContent('#beat'), /bounce 1/);
+  await p.clock.runFor(960);
+  assert.match(await p.textContent('#beat'), /bounce 2/);
+  await advance(p, 3000);
+  assert.equal((await state(p)).phase, 'impact');
+});

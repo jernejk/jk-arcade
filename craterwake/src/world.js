@@ -15,6 +15,7 @@ export const M = Object.freeze({
   rust: 7,
   brass: 8,
   scorched: 9,
+  spring: 10,
 });
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -33,6 +34,7 @@ export class World {
   constructor(seed) {
     this.cells = new Uint8Array(WIDTH * HEIGHT * LENGTH);
     this.dirty = new Set();
+    this.charges = [];
     const rng = random(seed);
     const phase = rng() * 6.28,
       offset = rng() * 4;
@@ -93,6 +95,36 @@ export class World {
           }
         }
       }
+      // Two spring crates share a loading bay beneath a striped signal beam.
+      const mirror = (z) => (side ? LENGTH - 1 - z : z);
+      for (const [left, floor, front] of [
+        [29, 12, 32],
+        [28, 12, 28],
+      ]) {
+        const centre = {
+          x: left + 1,
+          y: floor + 1,
+          z: side ? LENGTH - front - 1 : front + 1,
+          spent: false,
+        };
+        this.charges.push(centre);
+        for (let x = left; x < left + 2; x++)
+          for (let z = front; z < front + 2; z++) {
+            for (
+              let y = Math.min(floor, this.top(x, mirror(z)));
+              y < floor;
+              y++
+            )
+              this.cells[index(x, y, mirror(z))] = M.clay;
+            for (let y = floor; y < floor + 2; y++)
+              this.cells[index(x, y, mirror(z))] = M.spring;
+          }
+      }
+      const postZ = mirror(31);
+      for (let y = this.top(32, postZ); y < 20; y++)
+        this.cells[index(32, y, postZ)] = M.brass;
+      for (let x = 30; x <= 35; x++)
+        this.cells[index(x, 20, postZ)] = x % 2 ? M.cream : M.teal;
       // A narrow loading jetty ends in a stack of enamel cargo. The central
       // stack has room for a full Corkscrew bore, with water visible either side.
       for (let d = 0; d < 19; d++) {

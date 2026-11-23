@@ -11,18 +11,20 @@ Run `npx serve` from the arcade repository root and open `/craterwake/`. The gam
 | Turn the turret | Drag the battlefield | A/D or ←/→ |
 | Set elevation | Slide the left brass knob or use the wheel | ↑/↓ |
 | Set power | Drag the right rail or tap/hold ▲/▼ | W/S |
-| Pick ammunition | Open the ammo tray | 1 Pebble, 2 Corkscrew, 3 Gull Strike |
+| Pick ammunition | Open the ammo tray | 1 Pebble, 2 Corkscrew, 3 Gull Strike, 4 Skipper |
 | Fire | Press FIRE, or let the 20-second timer expire | Space or Enter |
 | Skip the impact | Tap the field or Skip after 0.8 seconds | Space or Enter |
 | Pause / sound | Use the top buttons | Esc / M |
 
-The cream pips trace the first 35% of a windless arc. The wind tag gives strength and direction from the active tank's seat. Its horizontal arrow shows lateral drift, ▲ carries a shot farther, and ▼ shortens it. After your shot, the range call tells you how far to correct. Pebbles are unlimited. The two Corkscrews bore through cover. The single Gull Strike calls three clockwork birds down the flare line. An intact hull still loses if it sinks.
+The cream pips trace the first 35% of a windless arc. The wind tag gives strength and direction from the active tank's seat. Its horizontal arrow shows lateral drift, ▲ carries a shot farther, and ▼ shortens it. After your shot, the range call tells you how far to correct. Pebbles are unlimited. The two Corkscrews bore through cover. The single Gull Strike calls three clockwork birds down the flare line. Each round also carries two Skippers. They rebound up to twice off water or flat ground before their final impact. Red crates with a lightning stamp can set off nearby crates. Taking out a support drops the blocks it held, and a close blast can shove a tank over the edge. An intact hull still loses if it sinks.
 
 The game follows the device’s reduced-motion setting. This holds camera positions during flight and impact and turns off shake, debris animation, vibration and sound effects. Tab moves between controls. Enter activates a focused button.
 
 ## Replay and judge
 
 Use `/craterwake/?seed=824` for a repeatable arena. The results card shows the starting seed and the final round’s voxel checksum. Rematch replays the seed. A loss gives Kettle a third Corkscrew each round of the rematch. Bullseye rewards a direct hit, Undertow a ring-out win, and Untouched a round won at full hull.
+
+On a fresh seed 824, fire the opening Pebble to set off both spring crates beneath the signal beam. For a knockback hit on Rivet, start fresh and fire a Pebble at +8° heading, 43° elevation and 75 power. For a double water skip, select Skipper at +12°, 23° and 43 power.
 
 At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For the physical-device performance check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
 

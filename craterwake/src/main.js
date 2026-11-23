@@ -21,7 +21,7 @@ const hud = $('#hud'),
   pin = $('#pin');
 const sound = new Chimes(),
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-const icons = ['pebble', 'corkscrew', 'gull'].map(
+const icons = ['pebble', 'corkscrew', 'gull', 'skipper'].map(
   (n) => './assets/' + n + '.webp',
 );
 let field,
@@ -35,7 +35,9 @@ let field,
   remaining = 20,
   flightTime = 0,
   impactLength = 0;
-let gullPending = false;
+let gullPending = false,
+  echoesPlayed = 0,
+  skipsSeen = 0;
 let last = 0,
   frame = 0,
   drag = null,
@@ -130,7 +132,7 @@ function instructions() {
     `<p>Win two rounds. Knock Rivet into the water or wear down its hull.</p>
   <dl><dt>Heading</dt><dd>Drag the field, A/D or ←/→.</dd><dt>Angle</dt><dd>Slide the left rail or press ↑/↓.</dd>
   <dt>Power</dt><dd>Use the right rail, hold ▲/▼, or press W/S.</dd><dt>Wind</dt><dd>The arrow pushes the shell sideways. ▲ carries it farther, ▼ shortens the shot. The dots ignore wind.</dd>
-  <dt>Ammo</dt><dd>Open the tray or use 1–3. Bore through cover with Corkscrew. Gull Strike drops three bombs.</dd>
+  <dt>Ammo</dt><dd>Use 1–4 or open the tray. Corkscrew bores through cover, Gull Strike drops three bombs, and Skipper bounces twice off water or flat ground. Hit a red spring crate to set off its neighbour.</dd>
   <dt>Fire</dt><dd>Space or Enter. The tank fires itself after 20 seconds.</dd></dl>`,
     [['Got it', back]],
   );
@@ -374,6 +376,7 @@ function fire() {
   match.round.tanks[actor].stock[a.ammo]--;
   shot = fly(match.round, actor, a);
   flightTime = 0;
+  skipsSeen = 0;
   result = null;
   feedback = '';
   drag = null;
@@ -389,7 +392,7 @@ function impact() {
       settles: [],
       winner: null,
     };
-    field.chips = [];
+    field.effects.clear();
     impactLength = 2.3;
     feedback = '';
     enter('impact');
@@ -403,7 +406,9 @@ function detonate() {
   result = resolve(r, actor, a.ammo, shot);
   if (shot.direct === 1 && actor === 0) match.medals.add('Bullseye');
   if (r.world.dirty.size) field.sync();
-  field.burst(shot, result);
+  if (!calm()) field.effects.burst(r.world, shot, result);
+  else field.effects.clear();
+  echoesPlayed = 0;
   const splash = shot.hit === 'water' && a.ammo !== 2;
   impactLength =
     (splash ? 0.8 : result.settles.some((s) => s.tipped) ? 2.3 : 1.75) +
@@ -423,6 +428,8 @@ function detonate() {
     : result.damage[1 - actor]
       ? name + ' −' + result.damage[1 - actor] + '%'
       : (splash ? 'Water miss' : 'Landfall') + (where ? ' · ' + where : '');
+  if (result.echoes.length)
+    feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
   if (!actor) lastSalvo = 'Last shot · ' + feedback;
   play(splash ? 'splash' : 'impact');
   result.damage.forEach((n, i) => {
@@ -433,18 +440,34 @@ function detonate() {
       h.classList.add('hit');
     }
   });
-  if (!calm())
-    canvas.animate(
-      [
-        { transform: 'translate(0,0)' },
-        { transform: 'translate(3px,-2px)' },
-        { transform: 'translate(-2px,1px)' },
-        { transform: 'none' },
-      ],
-      { duration: 150 },
-    );
+  shake(splash ? 2 : 4);
   if (delayed) update();
   else enter('impact');
+}
+let shaking;
+motion.addEventListener('change', () => {
+  if (calm()) {
+    shaking?.cancel();
+    field?.effects.clear();
+  }
+});
+function shake(strength) {
+  if (calm()) return;
+  shaking?.cancel();
+  // The largest translation is sqrt(5² + 2.25²), below six CSS pixels.
+  shaking = canvas.animate(
+    [
+      { transform: 'none' },
+      { transform: 'translate(' + strength + 'px,' + -strength * 0.45 + 'px)' },
+      {
+        transform:
+          'translate(' + -strength * 0.6 + 'px,' + strength * 0.3 + 'px)',
+      },
+      { transform: 'translate(' + strength * 0.24 + 'px,0)' },
+      { transform: 'none' },
+    ],
+    { duration: 190, easing: 'ease-out' },
+  );
 }
 function finishRound(winner) {
   const final = match.finish(winner),
@@ -522,10 +545,29 @@ function loop(stamp) {
     } else if (phase === 'their-shot' && elapsed >= 1.35) fire();
     else if (phase === 'shell-cam') {
       flightTime += dt * 1.15;
+      if (
+        skipsSeen < shot.skips.length &&
+        flightTime >= shot.skips[skipsSeen].step * DT
+      ) {
+        skipsSeen++;
+        $('#beat').textContent = 'Skipper · bounce ' + skipsSeen;
+        play('skip');
+      }
       if (flightTime >= (shot.path.length - 1) * DT && elapsed >= 0.18)
         impact();
     } else if (phase === 'impact') {
       if (gullPending && elapsed >= 0.58) detonate();
+      const age = elapsed - (current().ammo === 2 ? 0.58 : 0);
+      const due = Math.min(
+        result.echoes?.length || 0,
+        Math.floor(Math.max(0, age) / 0.16),
+      );
+      if (due > echoesPlayed) {
+        echoesPlayed = due;
+        $('#beat').textContent = 'Spring chain ×' + due;
+        play('spring');
+        shake(5);
+      }
       $('#skip').hidden = elapsed < 0.8;
       if (elapsed >= impactLength) endImpact();
     }
@@ -596,6 +638,7 @@ document.addEventListener('keydown', (e) => {
       '1',
       '2',
       '3',
+      '4',
     ].includes(k)
   )
     return;
@@ -616,7 +659,7 @@ document.addEventListener('keydown', (e) => {
     if (!e.repeat) fire();
     return;
   }
-  if (['1', '2', '3'].includes(k)) {
+  if (['1', '2', '3', '4'].includes(k)) {
     choose(+k - 1);
     $('#fire').focus();
     return;

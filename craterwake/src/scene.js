@@ -1,5 +1,6 @@
+import { SalvoEffects } from './salvo-effects.js';
 import * as T from '../vendor/three.module.min.js';
-import { greedyMesh, palette } from './mesher.js';
+import { greedyMesh } from './mesher.js';
 import { SEA, WIDTH, LENGTH, random, clamp } from './world.js';
 import { RAD, DT, launch, preview } from './duel.js';
 import { Batch, makeToy, backdrop, islandProps } from './toys.js';
@@ -10,10 +11,6 @@ const damp = (dt, k) => 1 - (1 + k * dt) * Math.exp(-k * dt);
 const smooth = (t) => t * t * (3 - 2 * t);
 const fog = new T.Fog('#dcc0bd', 60, 137);
 const dummy = new T.Object3D();
-const debrisColors = palette.map((hex) => new T.Color(hex));
-const splashColors = ['#88ddd4', '#d4f5da'].map((hex) => new T.Color(hex));
-const sparkColor = new T.Color('#f4b45e');
-
 function sky() {
   const canvas = document.createElement('canvas');
   canvas.width = 2048;
@@ -111,7 +108,13 @@ function terrainPaint() {
       diffuseColor.rgb *= (0.87+0.20*grain)*(1.0-0.13*joint);
       vec3 axis=abs(normalize(cross(dFdx(blocks),dFdy(blocks))));
       vec2 uv=axis.y>.5?blocks.xz:(axis.x>.5?blocks.zy:blocks.xy);
-      if(kind>=5.0 && kind<=8.0){
+      if(kind>9.5){
+        vec2 badge=fract(uv)-.5;
+        float diamond=abs(badge.x)+abs(badge.y);
+        if(diamond<.41) diffuseColor.rgb=vec3(.96,.69,.27);
+        if(diamond<.27 && abs(badge.x+.55*badge.y-.055*sign(badge.y))<.065) diffuseColor.rgb=vec3(.09,.12,.13);
+        if(abs(badge.y)>.43) diffuseColor.rgb*=.55;
+      }else if(kind>=5.0 && kind<=8.0){
         vec2 cell=fract(uv);
         float ribs=.5+.5*cos(uv.x*31.416);
         diffuseColor.rgb*=.83+.20*ribs;
@@ -268,29 +271,9 @@ export class Battlefield {
     );
     this.bombs.frustumCulled = false;
     this.scene.add(this.bombs);
-    this.dust = new T.InstancedMesh(
-      new T.BoxGeometry(1, 1, 1),
-      new T.MeshBasicMaterial(),
-      220,
-    );
-    // Allocate the instance-colour attribute before the first render so the
-    // first impact uses the same shader program as the idle particle batch.
-    this.dust.setColorAt(0, sparkColor);
-    this.mist = new T.InstancedMesh(
-      new T.IcosahedronGeometry(1, 0),
-      new T.MeshBasicMaterial({
-        color: '#ffe7bd',
-        transparent: true,
-        opacity: 0.58,
-        depthWrite: false,
-      }),
-      64,
-    );
-    this.dust.frustumCulled =
-      this.mist.frustumCulled =
-      this.pips.frustumCulled =
-        false;
-    this.scene.add(this.dust, this.mist, this.shell, this.pips);
+    this.effects = new SalvoEffects(this.scene);
+    this.pips.frustumCulled = false;
+    this.scene.add(this.shell, this.pips);
     this.scale = 1;
     this.slow = 0;
     this.time = 0;
@@ -299,6 +282,7 @@ export class Battlefield {
   }
   load(round) {
     this.round = round;
+    this.effects.clear();
     this.pending.clear();
     for (const mesh of this.chunks.values()) {
       this.scene.remove(mesh);
@@ -375,28 +359,6 @@ export class Battlefield {
           );
     }
     this.depth.needsUpdate = true;
-  }
-  burst(shot, result) {
-    const rng = random(
-      this.round.number * 83 + Math.round(shot.p.z * 131 + shot.p.x * 53),
-    );
-    this.chips = [];
-    const splash = shot.hit === 'water',
-      pieces = result.debris,
-      amount = splash ? 34 : Math.min(208, Math.max(25, pieces.length * 4));
-    for (let i = 0; i < amount; i++) {
-      const p = pieces[i % pieces.length] || shot.p;
-      this.chips.push({
-        p: vec(p),
-        vel: v((rng() - 0.5) * 9, 2 + rng() * 9, (rng() - 0.5) * 9),
-        s: 0.08 + rng() * 0.25,
-      });
-      this.dust.setColorAt(
-        i,
-        splash ? splashColors[i % 2] : debrisColors[p.m] || sparkColor,
-      );
-    }
-    this.dust.instanceColor.needsUpdate = true;
   }
   resize(dt) {
     if (dt > 0.018) {
@@ -506,6 +468,12 @@ export class Battlefield {
           smooth(clamp((elapsed - 0.16) / 0.67, 0, 1)),
         );
       }
+      const hop =
+        s?.kick && orbit && !calm
+          ? Math.sin(Math.PI * clamp((elapsed - 0.08) / 0.55, 0, 1)) *
+            Math.min(0.6, s.kick * 0.45)
+          : 0;
+      p.y += hop;
       toy.group.position.copy(p);
       toy.group.visible = p.y + 1 > SEA - 0.2;
       const parked = i ? -0.19 : 0.27;
@@ -514,7 +482,7 @@ export class Battlefield {
         (i ? Math.PI : 0) + parked,
         s?.tipped && orbit && !calm
           ? Math.sin(Math.PI * clamp(elapsed / 0.83, 0, 1)) * 0.42
-          : 0,
+          : hop * 0.36,
       );
       toy.turret.rotation.y = -a.heading * RAD - parked;
       toy.barrel.rotation.x = -a.angle * RAD;
@@ -532,8 +500,8 @@ export class Battlefield {
     this.shell.visible = flying;
     this.pips.visible =
       aiming && (phase !== 'their-shot' || calm || elapsed >= 0.6);
-    this.mist.count = 0;
-    this.dust.count = 0;
+    this.effects.cloud.count = this.effects.waves.count = 0;
+    this.effects.shardsFrame(this.round.world, dt, calm, orbit);
     this.bombs.count = 0;
     this.birds.forEach((b) => (b.visible = false));
     if (flying) {
@@ -560,9 +528,23 @@ export class Battlefield {
       } else if (elapsed >= 0.15) {
         eye = p
           .clone()
-          .addScaledVector(velocity, -4)
-          .add(v(0, 1.5, 0));
-        look = p.clone().addScaledVector(velocity, 5);
+          .addScaledVector(velocity, -4.8)
+          .addScaledVector(right, 1.15)
+          .add(v(0, 1.65, 0));
+        // Retain the launch bearing as a reference while the shell bends with the wind.
+        look = p
+          .clone()
+          .addScaledVector(velocity, 2.4)
+          .addScaledVector(dir, 1.4);
+        if (shot.skips.some((b) => Math.abs(b.step * DT - flightTime) < 0.32)) {
+          const horizontal = v(velocity.x, 0, velocity.z).normalize();
+          eye = p
+            .clone()
+            .addScaledVector(horizontal, -5)
+            .addScaledVector(right, 1.25)
+            .add(v(0, 2.2, 0));
+          look = p.clone().addScaledVector(horizontal, 2);
+        }
         // Keep the lens above ground on shots that immediately meet the cover.
         eye.y = Math.max(SEA + 1, eye.y);
         const lead = (shot.path.length - 1) * DT - flightTime;
@@ -580,14 +562,8 @@ export class Battlefield {
         }
       }
       if (!calm) {
-        for (let i = 0; i < 28 && idx - i * 3 >= 0; i++) {
-          dummy.position.copy(shot.path[idx - i * 3]);
-          dummy.scale.setScalar(0.09 + i * 0.009);
-          dummy.rotation.set(0, i * 0.7, 0);
-          dummy.updateMatrix();
-          this.mist.setMatrixAt(i, dummy.matrix);
-          this.mist.count++;
-        }
+        this.effects.trail(shot, idx);
+        this.effects.skipRipples(shot.skips, flightTime, DT);
       }
     }
     if (orbit) {
@@ -616,49 +592,8 @@ export class Battlefield {
           );
       }
       const blastAge = elapsed - (aim.ammo === 2 ? 0.58 : 0);
-      if (!calm && this.chips && blastAge >= 0) {
-        const t = blastAge < 0.4 ? blastAge * 0.35 : blastAge - 0.26;
-        this.chips.forEach(({ p, vel, s }, i) => {
-          dummy.position.copy(p).addScaledVector(vel, t);
-          dummy.position.y -= 8 * t * t;
-          dummy.scale.setScalar(
-            dummy.position.y < SEA || blastAge > 1.6 ? 0 : s,
-          );
-          dummy.rotation.set(t * (i % 6), i + t * 3, 0);
-          dummy.updateMatrix();
-          this.dust.setMatrixAt(i, dummy.matrix);
-        });
-        this.dust.count = this.chips.length;
-        for (let i = 0; i < 18; i++) {
-          const a = i * 2.4,
-            r = (0.2 + t * 2) * (1 + (i % 3) * 0.34);
-          dummy.position
-            .copy(centre)
-            .add(v(Math.cos(a) * r, t * (1 + (i % 5)) + 0.3, Math.sin(a) * r));
-          dummy.scale.setScalar(
-            Math.max(0, 1 - blastAge / 1.35) * (0.22 + t * 0.6),
-          );
-          dummy.updateMatrix();
-          this.mist.setMatrixAt(i, dummy.matrix);
-        }
-        this.mist.count = 18;
-        for (const settle of result.settles) {
-          if (!settle.sunk || blastAge < 0.52) continue;
-          const t = blastAge - 0.52;
-          for (let i = 0; i < 18; i++) {
-            const angle = i * 2.4,
-              r = t * (2 + (i % 3) * 0.9) + 0.8;
-            dummy.position.set(
-              settle.to.x + Math.sin(angle) * r,
-              SEA + Math.max(0, t * (3 + (i % 4)) - 5 * t * t),
-              settle.to.z + Math.cos(angle) * r,
-            );
-            dummy.scale.setScalar(Math.max(0, 0.42 * (1 - t / 1.45)));
-            dummy.updateMatrix();
-            this.mist.setMatrixAt(this.mist.count++, dummy.matrix);
-          }
-        }
-      }
+      if (!calm && blastAge >= 0)
+        this.effects.atmosphere(blastAge, this.round.wind, result.settles);
       if (aim.ammo === 2)
         this.birds.forEach((b, i) => {
           b.visible = elapsed < 1.45;
@@ -687,8 +622,7 @@ export class Battlefield {
         });
     }
     this.bombs.instanceMatrix.needsUpdate = this.bombs.count > 0;
-    this.dust.instanceMatrix.needsUpdate = this.dust.count > 0;
-    this.mist.instanceMatrix.needsUpdate = this.mist.count > 0;
+
     const cut = this.resetCamera || calm || (phase !== this.lastPhase && orbit);
     if (phase !== this.lastPhase) {
       this.startEye = this.camera.position.clone();
