@@ -69,6 +69,7 @@ const state = {
   screen: "title",
   layout: null,
   siege: null,
+  battleFrame: null,
   phase: "aim",
   angle: -0.62,
   power: 0.66,
@@ -91,7 +92,7 @@ const state = {
   eggTaps: 0,
 };
 
-let view = { scale: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, bottom: 0 };
+let view = { scale: 1, scaleY: 1, ox: 0, oy: 0, dpr: 1, w: 360, h: 640, top: 0, bottom: 0 };
 let last = 0;
 let simAcc = 0;
 const STEP_MS = 1000 / 60;
@@ -160,6 +161,7 @@ function freshVista() {
 function startBattle(layout) {
   if (state.siege) destroySiege(state.siege);
   state.layout = layout;
+  state.battleFrame = frameForKeeps(layout.blocks);
   state.siege = createSiege({ ...layout, powder: state.save.upgrades.powder === true });
   state.phase = "aim";
   state.shots = 0;
@@ -436,6 +438,15 @@ function toggleMute() {
   syncPrefs();
 }
 
+// Measure the standing layout once so a falling tower never moves the camera.
+function frameForKeeps(blocks) {
+  const left = Math.min(...blocks.map(b => b.x - b.w / 2)) - 5;
+  const right = Math.max(...blocks.map(b => b.x + b.w / 2)) + 5;
+  const roof = Math.min(...blocks.map(b => b.y - b.h / 2));
+  const top = Math.min(210, roof - 90); // headroom for the incoming shot
+  return { left, top, width: right - left, height: WORLD.groundTop + 20 - top };
+}
+
 function resize() {
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.min(2, devicePixelRatio || 1);
@@ -447,16 +458,18 @@ function resize() {
   const top = battle ? ui.hud.getBoundingClientRect().height : 0;
   const bottom = state.screen === "battle" ? ui.tray.getBoundingClientRect().height : (state.screen === "title" ? Math.min(rect.height * 0.42, 320) : 0);
   const bandH = Math.max(120, rect.height - top - bottom);
-  const crop = 100;
-  const worldH = WORLD.h - crop;
-  const scale = Math.min(rect.width / WORLD.w, bandH / worldH);
+  const frame = battle ? state.battleFrame : { left: 0, top: 100, width: WORLD.w, height: WORLD.h - 100 };
+  const scale = Math.min(rect.width / frame.width, bandH / frame.height);
+  // Portrait has spare height even when the two outer walls touch the margins.
+  const scaleY = battle ? Math.min(scale * 1.3, bandH / frame.height) : scale;
   view = {
     dpr,
     w: rect.width,
     h: rect.height,
     scale,
-    ox: (rect.width - WORLD.w * scale) / 2,
-    oy: top + (bandH - worldH * scale) / 2 - crop * scale,
+    scaleY,
+    ox: (rect.width - frame.width * scale) / 2 - frame.left * scale,
+    oy: top + (bandH - frame.height * scaleY) / 2 - frame.top * scaleY,
     top,
     bottom,
   };
@@ -466,7 +479,7 @@ function screenToWorld(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   return {
     x: (clientX - rect.left - view.ox) / view.scale,
-    y: (clientY - rect.top - view.oy) / view.scale,
+    y: (clientY - rect.top - view.oy) / view.scaleY,
   };
 }
 
@@ -577,7 +590,7 @@ function handleFx(events) {
 
 function drawBackground() {
   const { w, h } = view;
-  const ground = view.oy + WORLD.groundTop * view.scale;
+  const ground = view.oy + WORLD.groundTop * view.scaleY;
   const sky = ctx.createLinearGradient(0, 0, 0, Math.max(ground, 1));
   sky.addColorStop(0, "#1a1030");
   sky.addColorStop(0.42, "#6a3a5c");
@@ -847,8 +860,12 @@ function drawBlock(b) {
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(crack.x, crack.y);
-    ctx.lineTo(crack.x + crack.ix * b.w * 0.24, crack.y + crack.iy * b.h * 0.32);
-    ctx.lineTo(crack.x + crack.ix * b.w * 0.06, crack.y + crack.iy * b.h * 0.62);
+    const dx = crack.ix * b.w;
+    const dy = crack.iy * b.h;
+    ctx.lineTo(crack.x + dx * 0.18, crack.y + dy * 0.14);
+    ctx.lineTo(crack.x + dx * 0.13, crack.y + dy * 0.32);
+    ctx.lineTo(crack.x + dx * 0.31, crack.y + dy * 0.39);
+    ctx.lineTo(crack.x + dx * 0.36, crack.y + dy * 0.58);
     ctx.stroke();
   }
   if (b.flash > 0.08) {
@@ -936,7 +953,7 @@ function drawWorld(blocks, cannons, pred) {
     ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
   }
   ctx.translate(view.ox, view.oy);
-  ctx.scale(view.scale, view.scale);
+  ctx.scale(view.scale, view.scaleY);
   const sorted = blocks.slice().sort((a, b) => a.y - b.y);
   for (const block of sorted) {
     if (block.shot) {
@@ -1190,7 +1207,8 @@ function bind() {
       return;
     }
     if ((event.key === "r" || event.key === "R") && (state.screen === "battle" || state.screen === "result" || state.screen === "pause")) {
-      startBattle(rebuild());
+      if (state.screen === "battle") pause();
+      document.querySelector(state.screen === "result" ? "#retry" : "#pause-retry").focus();
       event.preventDefault();
       return;
     }
@@ -1226,6 +1244,7 @@ function bind() {
 }
 
 function pause() {
+  state.dragging = false;
   state.paused = true;
   state.pausedAt = performance.now();
   show("pause");
@@ -1314,7 +1333,7 @@ function boot() {
         const rect = canvas.getBoundingClientRect();
         return {
           x: rect.left + view.ox + (block.x + dx) * view.scale,
-          y: rect.top + view.oy + (block.y + dy) * view.scale,
+          y: rect.top + view.oy + (block.y + dy) * view.scaleY,
         };
       },
       feet() {

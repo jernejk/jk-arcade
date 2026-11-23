@@ -10,7 +10,7 @@ Ida Flint fires roundshot. Puck Harrow, Sable Quinn, and Bram Holt are hired in 
 
 ## How to play
 
-Drag on the field, release to fire. Arrows aim, Space fires, 1–4 pick a crew, M mutes, R retries, Esc holds.
+Drag on the field, release to fire. Arrows aim, Space fires, 1–4 pick a crew, M mutes, R selects Retry (Enter confirms), Esc holds.
 
 Sound is synthesized in the browser. Motion follows the device, or can be set calm or full. Calm drops the shake and the slow collapse.
 

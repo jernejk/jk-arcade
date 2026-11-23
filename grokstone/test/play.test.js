@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { defaultSave, layoutByNumber } from "../logic.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const types = {
@@ -285,6 +286,49 @@ async function touchDrag(page, from, to) {
   }
 }
 
+test("battle framing enlarges the stones and keeps both walls in reach", async (t) => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const page = await browser.newPage({ hasTouch: true });
+    const blocks = layoutByNumber(1, defaultSave()).blocks;
+    await page.goto(`http://127.0.0.1:${server.address().port}/?test=1`);
+    await page.locator("#continue").click();
+    for (const [width, height, minW, minH] of [[360, 640, 28, 22], [390, 844, 30, 24], [1280, 800, 54, 34]]) {
+      await page.setViewportSize({ width, height });
+      await nextFrames(page, 2);
+      const bounds = await page.evaluate((blocks) => blocks.map(b => {
+        const game = window.__grokstone;
+        return {
+          id: b.id,
+          tl: game.clientFor(b.id, -b.w / 2, -b.h / 2),
+          br: game.clientFor(b.id, b.w / 2, b.h / 2),
+        };
+      }), blocks);
+      const hud = await page.locator("#hud").boundingBox();
+      const tray = await page.locator("#tray").boundingBox();
+      for (const { id, tl, br } of bounds) {
+        assert.ok(tl.x >= 0 && br.x <= width && tl.y > hud.y + hud.height && br.y < tray.y, `${id} outside battle area at ${width}px`);
+      }
+      const { tl, br } = bounds.find(b => b.id === "p0x0");
+      const w = br.x - tl.x, h = br.y - tl.y;
+      t.diagnostic(`${width}×${height}: stone target ${w.toFixed(1)}×${h.toFixed(1)} CSS px`);
+      assert.ok(w >= minW && h >= minH);
+      const [from, to, foot] = await page.evaluate(() => {
+        const game = window.__grokstone;
+        const foot = game.feet()[0];
+        return [game.clientFor("cannon"), game.clientFor(foot), foot];
+      });
+      assert.equal(await touchDrag(page, from, to), foot);
+    }
+    await page.close();
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("every foot outlines under a mouse drag and a touch drag", async () => {
   const server = await startServer();
   let browser;
@@ -491,6 +535,19 @@ test("focused buttons keep their keys, and a played daily link keeps its date", 
     assert.equal(await page.evaluate(() => window.__grokstone.shots), 1, "a browser shortcut restarted the keep");
     assert.equal(await page.locator("#mute").getAttribute("aria-pressed"), "true", "a browser shortcut toggled the sound");
 
+    await page.keyboard.down("r");
+    await page.keyboard.down("r");
+    await page.keyboard.up("r");
+    assert.equal(await page.evaluate(() => window.__grokstone.screen), "pause");
+    assert.equal(await page.evaluate(() => document.activeElement.id), "pause-retry");
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 1);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 1);
+    await page.keyboard.press("r");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(() => window.__grokstone.screen), "battle");
+    assert.equal(await page.evaluate(() => window.__grokstone.shots), 0);
+    assert.deepEqual(await page.evaluate(() => window.__grokstone.layout), layout);
     await page.waitForFunction(() => window.__grokstone.phase === "aim" || window.__grokstone.screen === "result", null, { timeout: 12000 });
     if (await page.evaluate(() => window.__grokstone.screen === "battle")) {
       await page.keyboard.press("Escape");
