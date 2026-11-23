@@ -145,6 +145,8 @@ body[data-screen="pause"] #tray { visibility: hidden; }
   border-color: transparent;
 }
 .weapon.lent small::after { content: " · lent"; }
+#keep-goal { margin: 0 0 6px; text-align: center; font-size: 14px; color: var(--cream); text-shadow: 0 1px 3px var(--ink); }
+#tray[data-aim="false"] #hint { visibility: hidden; }
 #hint { margin: 6px 0 0; text-align: center; font-size: 12px; opacity: 0.8; }
 
 .sheet {

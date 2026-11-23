@@ -128,6 +128,11 @@ test("phone and desktop play a keep without page errors", async (t) => {
       assert.ok(blurb.y >= name.y + name.height - 1, `yard row name and blurb share a line at ${size.width}px`);
     }
     await page.setViewportSize({ width: 360, height: 640 });
+    const puck = page.getByRole("button", { name: /Hire Puck Harrow/ });
+    const hire = await puck.boundingBox();
+    assert.ok(hire.y >= 0 && hire.y + hire.height <= 640);
+    await page.mouse.click(hire.x + hire.width / 2, hire.y + hire.height / 2);
+    assert.match(await puck.innerText(), /Kept/);
     const next = await page.locator("#next-siege").boundingBox();
     t.diagnostic(`Next siege at 360×640: y=${next.y}, height=${next.height}`);
     assert.ok(next.y >= 0 && next.y + next.height <= 640, "Next siege is below the fold");
@@ -137,6 +142,7 @@ test("phone and desktop play a keep without page errors", async (t) => {
     }
     await page.mouse.click(x, next.y + next.height / 2);
     assert.equal(await page.evaluate(() => window.__grokstone.screen), "battle");
+    assert.equal(await page.locator('[data-weapon="keg"]').isEnabled(), true);
     assert.deepEqual(errors, []);
     await page.close();
 
@@ -351,7 +357,7 @@ test("battle framing enlarges the stones and keeps both walls in reach", async (
   }
 });
 
-test("every foot outlines under a mouse drag and a touch drag", async () => {
+test("mouse and touch outline reachable feet and the screen before a sheltered foot", async () => {
   const server = await startServer();
   let browser;
   try {
@@ -390,7 +396,9 @@ test("every foot outlines under a mouse drag and a touch drag", async () => {
           for (const [kind, drag] of [["mouse", mouseDrag], ["touch", touchDrag]]) {
             for (const point of foot === "e0x7" ? [to, toward] : [to]) {
               const outlined = await drag(page, from, point);
-              assert.equal(outlined, foot, `level ${level} ${weapon} ${kind} on ${foot} outlined ${outlined}`);
+              const screen = weapon === "harpoon" && foot === "e2x3"
+                ? ({ 2: "ehaunchL", 7: "e0x2", 8: "ehaunchL" })[level] : null;
+              assert.equal(outlined, screen || foot, `level ${level} ${weapon} ${kind} on ${foot} outlined ${outlined}`);
               const shots = await page.evaluate(() => window.__grokstone.shots);
               assert.equal(shots, 0, `level ${level} ${weapon} ${kind} on ${foot} fired during the aim drag`);
             }
@@ -614,5 +622,126 @@ test("a pause during the rival's wind-up keeps the wind-up", async () => {
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("releasing a held outline hits its marked stone first", async (t) => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const page = await browser.newPage({ reducedMotion: "reduce" });
+    await page.addInitScript(save => localStorage.setItem("grokstone-v1", JSON.stringify(save)), {
+      ...defaultSave(), unlocked: 8, weapons: ["roundshot", "keg", "harpoon", "boulder"],
+    });
+    for (const [width, height] of [[360, 640], [390, 844], [1280, 800]]) {
+      await page.setViewportSize({ width, height });
+      for (const [level, weapon, target, expected] of [
+        [2, "roundshot", "e3x1", "e4x2"], // screened on the descending arc
+        [2, "roundshot", "e2x3", "e2x3"], // clear line to gold
+        [4, "keg", "efootb", "efootb"],
+        [3, "harpoon", "efootb", "efootb"],
+        [6, "boulder", "efootb", "efootb"],
+      ]) {
+        await page.goto(`http://127.0.0.1:${server.address().port}/?test=1&keep=${level}&target=${target}&width=${width}#l=${level}`);
+        await page.locator("#continue").click();
+        await page.locator(`[data-weapon="${weapon}"]`).click();
+        const [from, to] = await page.evaluate(target =>
+          ["cannon", target].map(id => window.__grokstone.clientFor(id)), target);
+        await page.mouse.move(from.x, from.y);
+        await page.mouse.down();
+        await page.mouse.move(to.x, to.y, { steps: 4 });
+        await nextFrames(page, 2);
+        const outline = await page.evaluate(() => window.__grokstone.outline());
+        assert.equal(outline, expected, `${width}px ${weapon} toward ${target}`);
+        await page.mouse.up();
+        await page.waitForFunction(() => window.__grokstone.firstDamageId, null, { timeout: 4000 });
+        assert.equal(await page.evaluate(() => window.__grokstone.firstDamageId), outline);
+        assert.equal(await page.evaluate(() => window.__grokstone.shots), 1);
+      }
+      t.diagnostic(`${width}×${height}: all five held outlines matched first HP loss`);
+    }
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test("one-thumb cancellation, interruptions and a complete rival turn", async () => {
+  const server = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch(launchOptions());
+    const page = await browser.newPage({ viewport: { width: 360, height: 640 }, hasTouch: true, reducedMotion: "reduce" });
+    await page.goto(`http://127.0.0.1:${server.address().port}/?test=1`);
+    await page.locator("#continue").click();
+    const goal = await page.locator("#keep-goal").boundingBox();
+    assert.match(await page.locator("#keep-goal").innerText(), /One foot is gold/);
+    const [start, target, base] = await page.evaluate(() =>
+      ["cannon", "e0x0", "p0x0"].map(id => window.__grokstone.clientFor(id)));
+    assert.ok(goal.y > base.y && goal.y > target.y);
+    const client = await page.context().newCDPSession(page);
+    const send = (type, ...points) => client.send("Input.dispatchTouchEvent", { type,
+      touchPoints: points.map((point, i) => ({ ...point, id: i + 1 })),
+    });
+    const begin = async () => {
+      await send("touchStart", start);
+      await send("touchMove", target);
+    };
+    const noShots = async () => assert.equal(await page.evaluate(() => window.__grokstone.shots), 0);
+    await send("touchStart", target);
+    await send("touchEnd");
+    await noShots();
+    await begin();
+    await send("touchMove", start);
+    await send("touchEnd");
+    await noShots();
+    await begin();
+    await send("touchCancel");
+    await noShots();
+    await begin();
+    const outline = await page.evaluate(() => window.__grokstone.outline());
+    await send("touchStart", target, base);
+    await send("touchMove", target, start);
+    assert.equal(await page.evaluate(() => window.__grokstone.outline()), outline);
+    await send("touchEnd");
+    await noShots();
+    await begin();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await send("touchEnd");
+    await noShots();
+    await begin();
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await send("touchEnd");
+    await noShots();
+
+    // Record the visible DOM on every frame, including flight and settlement.
+    await page.evaluate(() => {
+      window.turnFrames = [];
+      function observe() {
+        const game = window.__grokstone;
+        window.turnFrames.push([game.phase, document.querySelector("#shot-count").textContent,
+          getComputedStyle(document.querySelector("#hint")).visibility, game.firstDamageId]);
+        if (game.shots === 0 || game.phase !== "aim") requestAnimationFrame(observe);
+      }
+      observe();
+    });
+    await begin();
+    await send("touchEnd");
+    await page.waitForFunction(() => window.__grokstone.shots === 1 && window.__grokstone.phase === "aim", null, { timeout: 15000 });
+    await nextFrames(page, 2);
+    const frames = await page.evaluate(() => window.turnFrames);
+    const enemy = frames.findIndex(([phase]) => phase === "enemy");
+    assert.ok(enemy > 0 && frames.slice(0, enemy).some(([phase]) => phase === "sim"));
+    const rival = frames.slice(enemy, -1);
+    assert.ok(rival.some(([phase]) => phase === "sim"));
+    assert.ok(rival.some(([phase, , , damage]) => phase === "sim" && damage));
+    assert.ok(rival.every(([, label]) => label === "Their shot"));
+    assert.ok(frames.every(([phase, , visibility]) => visibility === (phase === "aim" ? "visible" : "hidden")));
+    assert.deepEqual(frames.at(-1).slice(0, 3), ["aim", "Shot 2 · par 3", "visible"]);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
   }
 });

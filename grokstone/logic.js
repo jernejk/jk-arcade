@@ -1118,18 +1118,57 @@ export function shotVelocity(weapon, angle, power) {
   };
 }
 
-export function firstHit(points, blocks, radius) {
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    if (p.y + radius >= WORLD.groundTop) {
-      return { type: "ground", x: p.x, y: WORLD.groundTop, speed: Math.hypot(p.vx, p.vy), index: i };
-    }
+// The muzzle can sit inside a battlement. Both flight and preview leave from
+// the first clear point in the first eight ticks of the launch arc.
+export function launchIndex(points, blocks, radius) {
+  for (let i = 0; i < Math.min(8, points.length); i++) {
+    const { x, y } = points[i];
+    if (y + radius + 1 >= WORLD.groundTop - 1) continue;
+    if (!blocks.some(b => Math.abs(x - b.x) < b.w / 2 + radius + 1 &&
+                          Math.abs(y - b.y) < b.h / 2 + radius + 1)) return i;
+  }
+  return -1;
+}
+
+// Sample the whole tick at the siege's four-unit sweep spacing. Checking
+// just the endpoint skips merlon corners between consecutive trajectory dots.
+export function segmentContact(from, to, blocks, radius) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
+  for (let step = 1; step <= steps; step++) {
+    const x = from.x + dx * (step / steps), y = from.y + dy * (step / steps);
+    if (y + radius >= WORLD.groundTop) return { type: "ground", x, y };
+    if (x - radius <= 0 || x + radius >= WORLD.w) return { type: "wall", x, y };
     for (const b of blocks) {
       if (b.hp <= 0) continue;
-      if (Math.abs(p.x - b.x) <= b.w / 2 + radius && Math.abs(p.y - b.y) <= b.h / 2 + radius) {
-        return { type: "block", id: b.id, side: b.side, x: p.x, y: p.y, speed: Math.hypot(p.vx, p.vy), index: i };
+      if (Math.abs(x - b.x) <= b.w / 2 + radius && Math.abs(y - b.y) <= b.h / 2 + radius) {
+        return { type: "block", id: b.id, side: b.side, x, y };
       }
     }
+  }
+  return null;
+}
+
+export function firstHit(points, blocks, radius, origin) {
+  const start = launchIndex(points, blocks, radius);
+  let from = points[start] || origin;
+  for (let i = start + 1; from && i < points.length; i++) {
+    const p = points[i];
+    const hit = segmentContact(from, p, blocks, radius);
+    if (hit) return { ...hit, speed: Math.hypot(p.vx, p.vy), index: i };
+    from = p;
+  }
+  return null;
+}
+
+// Score the crew's intended line through the courses. A hook can clear a
+// screen on its way to a valuable stone over several turns. Resolve the
+// actual first impact separately, including the space between these points.
+function intendedTarget(points, blocks, radius) {
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const hit = segmentContact(p, p, blocks, radius);
+    if (hit) return { ...hit, speed: Math.hypot(p.vx, p.vy), index: i };
   }
   return null;
 }
@@ -1165,7 +1204,7 @@ export function sampleAims(cannon, weapon, blocks, wind, side, powder = false) {
       const power = 0.32 + i * 0.1;
       const vel = shotVelocity(weapon, angle, power);
       const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 78, weapon.air);
-      const hit = firstHit(pts, blocks, weapon.radius);
+      const hit = intendedTarget(pts, blocks, weapon.radius);
       let score = 0;
       let target = null;
       if (hit && hit.type === "block") {
@@ -1193,7 +1232,8 @@ export function sampleAims(cannon, weapon, blocks, wind, side, powder = false) {
           score = -40;
         }
       }
-      aims.push({ angle, power, score, hit, targetId: target ? target.id : null });
+      const contact = firstHit(pts, blocks, weapon.radius, cannon);
+      aims.push({ angle, power, score, hit: contact, targetId: contact?.id || null });
     }
   }
   aims.sort((a, b) => b.score - a.score);
@@ -1247,10 +1287,10 @@ function pointerBlock(point, blocks) {
   return null;
 }
 
-function rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked) {
+function rankAim(cannon, point, weapon, blocks, wind, angle, power, wanted, locked, contact = firstHit) {
   const vel = shotVelocity(weapon, angle, power);
   const pts = integrate(cannon.x, cannon.y, vel.vx, vel.vy, wind, 96, weapon.air);
-  const hit = firstHit(pts, blocks, weapon.radius);
+  const hit = contact(pts, blocks, weapon.radius, cannon);
   let bestD = Infinity;
   let approach = Infinity;
   const stop = hit ? hit.index : pts.length - 1;
@@ -1323,6 +1363,18 @@ export function aimToward(cannon, point, weapon, blocks, wind, side) {
       }
       if (lockedAim) break;
     }
+  }
+  // When nothing can reach the selected course yet, aim down its intended
+  // line. Keep the real sweep result so the outline marks the screening stone.
+  if (locked && !lockedAim) {
+    let screened = null;
+    for (const candidate of seeds) {
+      const intended = rankAim(cannon, point, weapon, blocks, wind, candidate.angle, candidate.power, wanted, locked, intendedTarget);
+      if (intended.hit?.id === locked.id && (!screened || intended.distance < screened.distance)) {
+        screened = { distance: intended.distance, candidate };
+      }
+    }
+    if (screened) return screened.candidate;
   }
   return lockedAim || best;
 }

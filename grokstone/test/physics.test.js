@@ -9,6 +9,7 @@ import {
   WORLD,
   bestAim,
   defaultSave,
+  firstHit,
   integrate,
   layoutByNumber,
   shotVelocity,
@@ -87,6 +88,22 @@ test("the preview arc matches Matter for a clear shot", () => {
   assert.ok(drift < 1.5, `drift ${drift}`);
   assert.ok(points.at(-1).vy > points[0].vy);
   assert.ok(WORLD.groundTop > 500);
+});
+
+test("the reported Odd Arch arc clips the merlon before the gold stone", () => {
+  const layout = layoutByNumber(2, defaultSave());
+  const weapon = weaponById("roundshot");
+  const origin = layout.playerCannon;
+  const velocity = shotVelocity(weapon, -0.6382857142857142, 0.3353846153846154);
+  const points = integrate(origin.x, origin.y, velocity.vx, velocity.vy, layout.wind, 90, weapon.air);
+  const preview = firstHit(points, layout.blocks, weapon.radius, origin);
+  assert.equal(preview.id, "e0x2");
+  const siege = createSiege(layout);
+  fireProjectile(siege, "player", weapon, velocity, origin);
+  for (let i = 0; i < 90 && !siege.firstDamageId; i++) stepSiege(siege);
+  assert.equal(siege.firstDamageId, preview.id);
+  assert.equal(siege.bodies.get("e2x3").grok.hp, 184);
+  destroySiege(siege);
 });
 
 test("striking one foot leaves the banner up", () => {

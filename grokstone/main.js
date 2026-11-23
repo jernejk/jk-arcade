@@ -85,8 +85,7 @@ const state = {
   calloutUntil: 0,
   time: 0,
   enemyAt: 0,
-  dragging: false,
-  pointer: null,
+  gesture: null,
   particles: [],
   vista: null,
   eggTaps: 0,
@@ -121,6 +120,7 @@ function persist() {
 }
 
 function show(screen) {
+  cancelGesture();
   state.screen = screen;
   ui.title.hidden = screen !== "title";
   ui.help.hidden = screen !== "help";
@@ -131,6 +131,7 @@ function show(screen) {
   const battle = screen === "battle" || screen === "pause";
   ui.hud.hidden = !battle;
   ui.tray.hidden = !battle;
+  if (document.activeElement?.closest("[hidden]")) document.activeElement.blur();
   document.body.dataset.screen = screen;
   resize();
 }
@@ -165,6 +166,8 @@ function startBattle(layout) {
   state.siege = createSiege({ ...layout, powder: state.save.upgrades.powder === true });
   state.phase = "aim";
   state.shots = 0;
+  document.querySelector("#keep-goal").textContent = layout.mode === "daily" && layout.starShot
+    ? `Aim for ${layout.starShot}.` : layout.blurb;
   state.rubble = 0;
   state.earned = 0;
   state.paidSpoil = new Set();
@@ -206,7 +209,10 @@ function paintHud() {
   paintHudPart("#you-bar", "width", `${Math.round(you * 100)}%`);
   paintHudPart("#foe-bar", "width", `${Math.round(foe * 100)}%`);
   const par = state.layout ? state.layout.par : "";
-  paintHudPart("#shot-count", "text", state.phase === "enemy" ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`);
+  const rivalTurn = state.phase === "enemy" || (state.phase !== "aim" && state.simFor === "enemy");
+  const acceptsAim = String(state.phase === "aim");
+  if (ui.tray.dataset.aim !== acceptsAim) ui.tray.dataset.aim = acceptsAim;
+  paintHudPart("#shot-count", "text", rivalTurn ? "Their shot" : `Shot ${state.shots + (state.phase === "aim" ? 1 : 0)} · par ${par}`);
 }
 
 function paintWeapons() {
@@ -247,17 +253,17 @@ function predicted() {
   if (!state.layout) return null;
   const weapon = currentWeapon();
   const vel = shotVelocity(weapon, state.angle, state.power);
-  const points = integrate(state.layout.playerCannon.x, state.layout.playerCannon.y, vel.vx, vel.vy, state.layout.wind, 90, weapon.air);
-  const blocks = aimBlocks();
-  const hit = firstHit(points, blocks, weapon.radius);
-  return { points, hit, weapon };
+  const points = integrate(state.layout.playerCannon.x, state.layout.playerCannon.y, vel.vx, vel.vy, state.layout.wind, 240, weapon.air);
+  const blocks = aimBlocks(true);
+  const hit = firstHit(points, blocks, weapon.radius, state.layout.playerCannon);
+  return { points, hit, block: hit?.type === "block" ? blocks.find(b => b.id === hit.id) : null };
 }
 
-function aimBlocks() {
+function aimBlocks(includeLoose = false) {
   if (!state.siege) return state.layout ? state.layout.blocks : [];
   const list = [];
   for (const body of state.siege.bodies.values()) {
-    if (!body.isStatic || body.grok.hp <= 0) continue;
+    if ((!body.isStatic && !includeLoose) || body.grok.hp <= 0) continue;
     list.push({
       id: body.grok.id,
       side: body.grok.side,
@@ -273,7 +279,7 @@ function aimBlocks() {
       heavy: body.grok.heavy === true,
       arch: body.grok.arch,
       neighbors: body.grok.neighbors,
-      loose: false,
+      loose: !body.isStatic,
       col: body.grok.col,
       row: body.grok.row,
       variant: body.grok.variant,
@@ -287,6 +293,7 @@ function fire(owner, angle, power, weapon) {
   const origin = owner === "player" ? layout.playerCannon : layout.enemyCannon;
   const vel = shotVelocity(weapon, angle, power);
   fireProjectile(state.siege, owner, weapon, vel, origin);
+  state.slow = 0;
   state.recoil = 1;
   state.phase = "sim";
   state.simFor = owner;
@@ -297,6 +304,7 @@ function fire(owner, angle, power, weapon) {
 
 function firePlayer() {
   if (state.screen !== "battle" || state.phase !== "aim" || state.paused) return;
+  cancelGesture();
   state.shots += 1;
   fire("player", state.angle, state.power, currentWeapon());
   say(`Shot ${state.shots}.`);
@@ -928,7 +936,7 @@ function drawTrajectory(pred) {
   const stop = pred.hit ? pred.hit.index : pts.length - 1;
   const px = 1 / view.scale;
   for (let i = 2; i <= stop; i += 2) {
-    const p = pts[i];
+    const p = i === stop && pred.hit ? pred.hit : pts[i];
     const near = i > stop - 6;
     ctx.globalAlpha = near ? 1 : 0.55 + 0.4 * (i / Math.max(1, stop));
     ctx.fillStyle = near ? "#ffe3a4" : "#ffecd2";
@@ -937,9 +945,8 @@ function drawTrajectory(pred) {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-  if (pred.hit && pred.hit.type === "block") {
-    const block = aimBlocks().find((b) => b.id === pred.hit.id);
-    if (!block) return;
+  if (pred.block) {
+    const block = pred.block;
     ctx.strokeStyle = block.side === "player" ? "#d4534e" : (block.material === "banner" ? "#f2c08a" : "#ffe3a4");
     ctx.lineWidth = 2.5;
     roundRect(block.x - block.w / 2 - 2, block.y - block.h / 2 - 2, block.w + 4, block.h + 4, 4);
@@ -1125,6 +1132,12 @@ function frame(now) {
 }
 
 function bind() {
+  const crewHelp = document.querySelector("#crew-help");
+  for (const weapon of WEAPONS) {
+    const entry = document.createElement("li");
+    entry.textContent = `${weapon.crew} · ${weapon.name}. ${weapon.line}`;
+    crewHelp.append(entry);
+  }
   document.querySelector("#continue").addEventListener("click", () => {
     const hash = parseHash(location.hash);
     const save = state.save;
@@ -1181,24 +1194,41 @@ function bind() {
     }
   });
 
-  canvas.addEventListener("pointerdown", (event) => {
-    if (state.screen !== "battle" || state.phase !== "aim") return;
+  // A second contact interrupts the whole gesture, even outside the canvas.
+  addEventListener("pointerdown", event => {
+    if (state.gesture && event.pointerId !== state.gesture.id) {
+      cancelGesture();
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  canvas.addEventListener("pointerdown", event => {
+    if (!event.isPrimary || event.button !== 0 || state.gesture || state.screen !== "battle" || state.phase !== "aim") return;
+    state.gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
-    state.dragging = true;
+    document.querySelector("#hint").textContent = "Release to fire. Slide back to cancel.";
     aimFrom(event);
   });
-  canvas.addEventListener("pointermove", (event) => {
-    if (!state.dragging) return;
-    aimFrom(event);
+  canvas.addEventListener("pointermove", event => {
+    if (state.gesture?.id === event.pointerId) aimFrom(event);
   });
-  canvas.addEventListener("pointerup", (event) => {
-    if (!state.dragging) return;
-    state.dragging = false;
+  canvas.addEventListener("pointerup", event => {
+    if (state.gesture?.id !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y);
+    cancelGesture();
+    if (distance < 12) return;
     aimFrom(event);
-    const dx = state.pointer ? state.pointer.dist : 0;
-    if (dx > 18) firePlayer();
+    firePlayer();
   });
-  canvas.addEventListener("pointercancel", () => { state.dragging = false; });
+  for (const name of ["pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(name, event => {
+      if (state.gesture?.id === event.pointerId) cancelGesture();
+    });
+  }
+  addEventListener("blur", cancelGesture);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelGesture();
+  });
 
   addEventListener("keydown", (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -1241,12 +1271,19 @@ function bind() {
     state.power = Math.max(0.28, Math.min(1, state.power));
     event.preventDefault();
   });
-  addEventListener("resize", resize);
+  addEventListener("resize", () => { cancelGesture(); resize(); });
+}
+
+function cancelGesture() {
+  if (!state.gesture) return;
+  const { id } = state.gesture;
+  state.gesture = null;
+  if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  document.querySelector("#hint").textContent = "Drag to aim. Release to fire.";
 }
 
 function pause() {
   if (state.paused) return;
-  state.dragging = false;
   state.paused = true;
   state.pausedAt = performance.now();
   show("pause");
@@ -1268,8 +1305,6 @@ function clampAngle(angle) {
 function aimFrom(event) {
   const point = screenToWorld(event.clientX, event.clientY);
   const cannon = state.layout.playerCannon;
-  const dist = Math.hypot(point.x - cannon.x, point.y - cannon.y);
-  state.pointer = { ...point, dist };
   const weapon = currentWeapon();
   const aim = aimToward(cannon, point, weapon, aimBlocks(), state.layout.wind, "player");
   if (aim) {
@@ -1310,6 +1345,7 @@ function boot() {
     window.__grokstone = {
       get screen() { return state.screen; },
       get phase() { return state.phase; },
+      get firstDamageId() { return state.siege?.firstDamageId; },
       get shots() { return state.shots; },
       get won() { return !!(state.result && state.result.won); },
       get time() { return state.time; },
