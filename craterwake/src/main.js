@@ -130,7 +130,7 @@ function instructions() {
     'help',
     'Gunner’s handbook',
     'How to play',
-    `<p>Win two rounds. Knock Rivet into the water or wear down its hull.</p>
+    `<p>Win two rounds. Break through Rivet’s plates and destroy its gold core, or knock it into the water. Each lost block costs 1% armour.</p>
   <dl><dt>Heading</dt><dd>Drag the field, A/D or ←/→.</dd><dt>Angle</dt><dd>Slide the left rail or press ↑/↓.</dd>
   <dt>Power</dt><dd>Use the right rail, hold ▲/▼, or press W/S.</dd><dt>Wind</dt><dd>The arrow pushes the shell sideways. ▲ carries it farther, ▼ shortens the shot. The dots ignore wind.</dd>
   <dt>Ammo</dt><dd>Use 1–4 or open the tray. Corkscrew bores through cover, Gull Strike drops three bombs, and Skipper bounces twice off water or flat ground. Hit a red spring crate to set off its neighbour.</dd>
@@ -377,6 +377,8 @@ function fire() {
   match.round.tanks[actor].stock[a.ammo]--;
   $('#hp0').classList.remove('hit');
   $('#hp1').classList.remove('hit');
+  match.round.tanks[actor].heading = a.heading;
+  match.round.tanks[actor].angle = a.angle;
   shot = fly(match.round, actor, a);
   flightTime = 0;
   skipsSeen = 0;
@@ -429,9 +431,11 @@ function detonate() {
   const label = impactLabel(shot, result);
   const damage = target.sunk
     ? name + ' sank!'
-    : result.damage[1 - actor]
-      ? name + ' −' + result.damage[1 - actor] + '%'
-      : '';
+    : !target.hp
+      ? name + ' core destroyed!'
+      : result.damage[1 - actor]
+        ? name + ' −' + result.damage[1 - actor] + '%'
+        : '';
   feedback = [label, damage || where].filter(Boolean).join(' · ');
   if (result.echoes.length)
     feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
@@ -488,7 +492,7 @@ function finishRound(winner) {
     '<p>' +
       (r.tanks[1 - winner].sunk
         ? 'Ring-out in the saltpan.'
-        : 'The opposing hull gave way.') +
+        : 'The opposing core was destroyed.') +
       '</p>' +
       (final ? '<p class="medals">' + medals + '</p>' + record : ''),
     final

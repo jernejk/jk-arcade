@@ -107,8 +107,8 @@ export function chainAndCollapse(world, debris) {
   return echoes;
 }
 
-export function recoilTank(world, tank, centres, vector) {
-  const landing = settle(world, tank);
+export function recoilTank(world, tank, centres, vector, fragments) {
+  const landing = settle(world, tank, fragments);
   landing.kick = 0;
   if (tank.sunk || landing.tipped) return landing;
   let dx = 0,
@@ -144,7 +144,7 @@ export function recoilTank(world, tank, centres, vector) {
     tank.x = clamp(x, 0, WIDTH - 1);
     tank.z = clamp(z, 0, LENGTH - 1);
   }
-  const after = settle(world, tank);
+  const after = settle(world, tank, fragments);
   after.from = landing.from;
   after.drop += landing.drop;
   after.kick = Math.hypot(tank.x - landing.to.x, tank.z - landing.to.z);

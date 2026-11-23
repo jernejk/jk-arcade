@@ -1,6 +1,6 @@
 # Craterwake
 
-Kettle and Rivet are wind-up tin tanks duelling across the Saltpan Twins. Win two rounds by wearing down the other hull, or by taking the ground out from under its tracks. The islands rebuild between rounds.
+Kettle and Rivet are wind-up tin tanks duelling across the Saltpan Twins. Each tank has 100 armour blocks. Hits strip blocks from the tracks, hull and turret at the point of impact. Each lost block costs one percentage point. Break through to the gold core or sink the tank to win a round. Win two rounds to take the duel. The islands rebuild between rounds.
 
 ## Play
 

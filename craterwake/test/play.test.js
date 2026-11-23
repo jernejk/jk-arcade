@@ -531,3 +531,49 @@ test('Skipper is selectable with 4 and both water skips occur in the original ch
   await advance(p, 3000);
   assert.equal((await state(p)).phase, 'impact');
 });
+
+test('a direct turret hit leaves identical missing plates in Calm with the debris spray disabled', async (t) => {
+  if (skip) return t.skip(skip);
+  const wrecks = [];
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const p = await open(t, { clock: true, reducedMotion });
+    await p.evaluate(async () => {
+      const { Battlefield } = await import('./src/scene.js');
+      const { armour } = await import('./src/tank.js');
+      const draw = Battlefield.prototype.draw;
+      Battlefield.prototype.draw = function (...args) {
+        const stats = draw.apply(this, args);
+        const target = this.round.tanks[1];
+        window.readTank = () => ({
+          missing: armour.flatMap((v, i) => (target.cells.has(v) ? [] : [i])),
+          turretInstances: this.toys[1].turret.children.find(
+            (m) => m.isInstancedMesh,
+          ).count,
+          shards: this.effects.shards.count,
+          bodies: this.effects.bodies.length,
+        });
+        return stats;
+      };
+    });
+    await begin(p);
+    await advance(p, 32);
+    const fresh = await p.evaluate(() => window.readTank());
+    for (let i = 0; i < 8; i++) await p.keyboard.press('d');
+    await range(p, '#throttle', 75);
+    await p.keyboard.press('Space');
+    await advance(p, 5000);
+    await p.clock.runFor(150);
+    const hit = await p.evaluate(() => window.readTank());
+    assert.match(await p.textContent('#feedback'), /Turret hit.*Rivet −18%/);
+    assert.equal(await p.textContent('#hp1 strong'), '82%');
+    assert.equal(hit.missing.length, 18);
+    assert.ok(hit.turretInstances < fresh.turretInstances);
+    if (reducedMotion === 'reduce') {
+      assert.deepEqual([hit.bodies, hit.shards], [0, 0]);
+    } else {
+      assert.ok(hit.bodies >= 12 && hit.shards <= 96);
+    }
+    wrecks.push([hit.missing, hit.turretInstances]);
+  }
+  assert.deepEqual(wrecks[0], wrecks[1]);
+});

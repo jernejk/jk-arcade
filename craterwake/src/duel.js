@@ -1,3 +1,4 @@
+import { makeTank, tankHit } from './tank.js';
 import { chainAndCollapse, recoilTank } from './destruction.js';
 import { World, random, clamp, SEA, M } from './world.js';
 
@@ -75,7 +76,8 @@ export function gridHit(world, a, b) {
     const material = world.get(x, y, z);
     if (material) {
       return {
-        material, t,
+        material,
+        t,
         x: a.x + t * dx,
         y: a.y + t * dy,
         z: a.z + t * dz,
@@ -104,7 +106,8 @@ export function fly(round, shooter, aim, record = true) {
   let p = origin,
     hit = 'water',
     material = M.air,
-    direct = null;
+    direct = null,
+    part = null;
   const path = record ? [p] : null;
   const skips = [];
   for (let i = 0; i < 120 * 12; i++) {
@@ -116,19 +119,20 @@ export function fly(round, shooter, aim, record = true) {
     v.y -= GRAVITY * DT;
     v.z += wind.z * DT;
     const wall = gridHit(round.world, p, next);
-    if (wall && wall.y >= SEA) {
+    const contact = tankHit(target, p, next);
+    if (contact && (!wall || wall.y < SEA || contact.t < wall.t)) {
+      p = {
+        x: p.x + contact.t * (next.x - p.x),
+        y: p.y + contact.t * (next.y - p.y),
+        z: p.z + contact.t * (next.z - p.z),
+      };
+      hit = 'tank';
+      part = contact.part;
+      direct = 1 - shooter;
+    } else if (wall && wall.y >= SEA) {
       p = { x: wall.x, y: wall.y, z: wall.z };
       hit = 'terrain';
       material = wall.material;
-    } else if (
-      Math.abs(next.x - target.x) <= 1.35 &&
-      Math.abs(next.z - target.z) <= 1.55 &&
-      next.y >= target.y &&
-      next.y <= target.y + 2.25
-    ) {
-      p = next;
-      hit = 'tank';
-      direct = 1 - shooter;
     } else if (next.y <= SEA) {
       p = { ...next, y: SEA };
     } else {
@@ -154,7 +158,7 @@ export function fly(round, shooter, aim, record = true) {
     if (record) path.push(p);
     break;
   }
-  return { p, path, hit, material, direct, skips, vector: norm(v) };
+  return { p, path, hit, material, direct, part, skips, vector: norm(v) };
 }
 // Use the struck voxel before the crater removes it, including hits on a block face.
 export function impactLabel(shot, result) {
@@ -163,7 +167,11 @@ export function impactLabel(shot, result) {
       ? 'Cover hit'
       : 'Terrain hit';
   }
-  if (shot.hit === 'tank') return 'Hull hit';
+  if (shot.hit === 'tank') {
+    if (shot.part === 'track') return 'Track hit';
+    if (shot.part === 'turret') return 'Turret hit';
+    return 'Hull hit';
+  }
   // Gull bombs can land ashore even when the targeting flare splashed down.
   if (
     result.blasts.some((p) => p.y > SEA) ||
@@ -184,15 +192,12 @@ export function makeRound(seed, number = 1, bonus = false) {
   const tanks = [1, -1].map((side, i) => {
     const x = 24.5,
       z = i ? 81.5 : 30.5;
-    return {
-      x,
-      z,
-      y: world.top(x, z),
-      side,
-      hp: 100,
-      sunk: false,
-      stock: [Infinity, 2 + (!i && bonus ? 1 : 0), 1, 2],
-    };
+    return makeTank(x, world.top(x, z), z, side, [
+      Infinity,
+      2 + (!i && bonus ? 1 : 0),
+      1,
+      2,
+    ]);
   });
   const rng = random(seed ^ 0xb194d3);
   return {
@@ -221,7 +226,7 @@ export function resolve(round, shooter, ammo, shot) {
   const { world, tanks } = round;
   const debris = [],
     blasts = [],
-    damage = [0, 0],
+    tankDebris = [],
     before = tanks.map((t) => t.hp);
   let echoes = [];
   const drill = [],
@@ -243,7 +248,7 @@ export function resolve(round, shooter, ammo, shot) {
     }
     echoes = chainAndCollapse(world, debris);
     if (shot.direct !== null && ammo !== 2)
-      damage[shot.direct] = hitDamage[ammo];
+      tanks[shot.direct].chip(shot.p, hitDamage[ammo], tankDebris);
     const centres = [...blasts, ...echoes];
     for (const [index, b] of centres.entries()) {
       tanks.forEach((tank, i) => {
@@ -254,15 +259,15 @@ export function resolve(round, shooter, ammo, shot) {
           Math.max(0, Math.abs(b.y - (tank.y + 1)) - 1),
           b.z - tank.z,
         );
-        damage[i] += Math.round(
+        const chips = Math.round(
           (secondary ? 15 : hitDamage[ammo]) *
             clamp(1 - d / (secondary ? 5 : 4), 0, 1),
         );
+        tank.chip(b, chips, tankDebris);
       });
     }
-    tanks.forEach((tank, i) => {
-      tank.hp = Math.max(0, tank.hp - damage[i]);
-      settles.push(recoilTank(world, tank, centres, shot.vector));
+    tanks.forEach((tank) => {
+      settles.push(recoilTank(world, tank, centres, shot.vector, tankDebris));
     });
   }
   if (shooter === 1 && round.previous) {
@@ -280,6 +285,7 @@ export function resolve(round, shooter, ammo, shot) {
       : null;
   return {
     debris,
+    tankDebris,
     blasts,
     drill,
     echoes,

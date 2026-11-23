@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { collapseDetached, stepShard, recoilTank } from '../src/destruction.js';
 import { World, SEA, M, settle } from '../src/world.js';
 import { SalvoEffects } from '../src/salvo-effects.js';
+import { armour, core, tankHit, chassisYaw } from '../src/tank.js';
 import { Scene } from '../vendor/three.module.min.js';
 import { greedyMesh } from '../src/mesher.js';
 import {
@@ -147,7 +148,7 @@ test('water miss stops at the sea and leaves terrain and hulls intact', () => {
   assert.equal(impactLabel(s, result), 'Water miss');
   assert.equal(r.world.checksum(), before);
 });
-test('a direct Pebble knocks 18 off the target hull', () => {
+test('a direct Pebble removes 18 target cells, drops HP by 18 and ejects capped armour shards', () => {
   const r = fixed(),
     t = r.tanks[1];
   const res = resolve(r, 0, 0, {
@@ -158,6 +159,18 @@ test('a direct Pebble knocks 18 off the target hull', () => {
   });
   assert.equal(res.damage[1], 18);
   assert.equal(t.hp, 82);
+  assert.equal(t.cells.size, t.hp);
+  assert.equal(res.tankDebris.length, armour.length - t.cells.size);
+  const effects = new SalvoEffects(new Scene());
+  effects.burst(r.world, { p: res.blasts[0], hit: 'tank' }, res);
+  const key = ({ x, y, z }) => [x, y, z].join('/');
+  const origins = new Set(res.tankDebris.map(key));
+  const chips = effects.bodies.filter((b) => origins.has(key(b)));
+  assert.equal(chips.length, 12);
+  assert.ok(effects.bodies.length + res.echoes.length * 2 <= 96);
+  for (let i = 0; i < 180; i++)
+    effects.shardsFrame(r.world, 1 / 60, false, false);
+  assert.ok(chips.some((b) => b.bounces > 0));
 });
 test('spherical carve leaves bedrock and the tough outer clay shell', () => {
   const w = fixed().world;
@@ -181,6 +194,7 @@ test('dropping six blocks onto stable ground costs six hull points', () => {
   const res = settle(r.world, t);
   assert.equal(res.drop, 6);
   assert.equal(t.hp, 94);
+  assert.equal(t.cells.size, 94);
   assert.equal(t.sunk, false);
 });
 test('an undermined edge tips, slides and rings the tank out to end the round', () => {
@@ -248,7 +262,7 @@ test('best of three rebuilds terrain and stocks, awards medals and grants a loss
     r = m.round;
   fire(r, 0, { ...freshAim(), angle: 5, ammo: 1 });
   r.tanks[1].sunk = true;
-  r.tanks[0].hp = 100;
+  assert.equal(r.tanks[0].hp, 100);
   assert.equal(m.finish(0), false);
   assert.deepEqual([...m.medals], ['Undertow', 'Untouched']);
   m.nextRound();
@@ -416,4 +430,58 @@ test('a stalled debris frame advances at most two collision steps', () => {
   const twoSteps = positions(2 / 60);
   assert.notDeepEqual(positions(1 / 60), twoSteps);
   assert.deepEqual(positions(0.1), twoSteps);
+});
+
+test('track, hull and turret damage opens a hole exactly where a shell contacts the plate', () => {
+  for (const [part, x, y, z] of [
+    ['track', 1.02, 0.215, 1.35],
+    ['hull', 1.02, 1.075, 0],
+    ['turret', 0.51, 1.935, 0],
+  ]) {
+    const tank = fixed().tanks[0];
+    const angle = part === 'turret' ? 0 : chassisYaw(tank.side);
+    const point = (offset) => ({
+      x: tank.x + (x + offset) * Math.cos(angle) + z * Math.sin(angle),
+      y: tank.y + y,
+      z: tank.z - (x + offset) * Math.sin(angle) + z * Math.cos(angle),
+    });
+    const start = point(0.4),
+      end = point(0);
+    assert.equal(tankHit(tank, start, end)?.part, part);
+    const debris = [];
+    tank.chip(end, 1, debris);
+    assert.equal(tank.hp, 99);
+    assert.equal(debris.length, 1);
+    const lost = armour.filter((v) => !tank.cells.has(v));
+    assert.equal(lost.length, 1);
+    assert.equal(lost[0].part, part);
+    assert.equal(tankHit(tank, start, end), null);
+  }
+});
+
+test('repeated shots through armour reach the core and win with surviving wreckage above water', () => {
+  const round = fixed(),
+    target = round.tanks[1];
+  for (let x = 18; x < 32; x++)
+    for (let z = 75; z < 94; z++) round.world.set(x, 11, z, M.basalt);
+  let winner;
+  for (let n = 0; n < 6 && target.hp; n++) {
+    const a = { x: target.x, y: target.y + core.centre.y, z: target.z - 2.2 };
+    const b = { ...a, z: target.z + 0.4 };
+    const hit = tankHit(target, a, b);
+    assert.ok(hit);
+    const impact = { ...a, z: a.z + hit.t * (b.z - a.z) };
+    winner = resolve(round, 0, 0, {
+      hit: 'tank',
+      direct: 1,
+      p: impact,
+      vector: { x: 0, y: 0, z: 1 },
+    }).winner;
+    if (n === 0) assert.ok(target.cells.has(core) && target.hp < 100);
+  }
+  assert.equal(target.sunk, false);
+  assert.equal(target.cells.has(core), false);
+  assert.ok(target.cells.size > 0);
+  assert.equal(target.hp, 0);
+  assert.equal(winner, 0);
 });

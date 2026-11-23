@@ -96,18 +96,24 @@ export class SalvoEffects {
       chips = result.debris.filter((p) => !p.loose);
     this.fuses = this.fronts.slice(primary.length);
     const looseCount = Math.min(48, loose.length);
+    const armour = result.tankDebris;
+    const armourCount = Math.min(12, armour.length);
     const count = splash
       ? 24
       : Math.min(
-          SHARDS - looseCount - this.fuses.length * 2,
+          SHARDS - looseCount - armourCount - this.fuses.length * 2,
           Math.max(14, chips.length * 2),
         );
-    for (let i = 0; i < looseCount + count; i++) {
+    for (let i = 0; i < looseCount + count + armourCount; i++) {
       const falling = i < looseCount;
-      const p = falling
-        ? loose[Math.floor((i * loose.length) / looseCount)]
-        : chips[Math.floor(((i - looseCount) * chips.length) / count)] ||
-          shot.p;
+      const armourIndex = i - looseCount - count;
+      const p =
+        armourIndex >= 0
+          ? armour[Math.floor((armourIndex * armour.length) / armourCount)]
+          : falling
+            ? loose[Math.floor((i * loose.length) / looseCount)]
+            : chips[Math.floor(((i - looseCount) * chips.length) / count)] ||
+              shot.p;
       let origin = this.fronts[0],
         best = Infinity;
       for (const f of this.fronts) {
@@ -127,11 +133,14 @@ export class SalvoEffects {
       body.vx = Math.sin(a) * speed;
       body.vy = falling ? 0.1 : 2.3 + rng() * 6.7;
       body.vz = Math.cos(a) * speed;
-      body.size = falling
-        ? 0.94
-        : splash
-          ? 0.12 + rng() * 0.12
-          : 0.2 + rng() * 0.34;
+      body.size =
+        armourIndex >= 0
+          ? 0.41
+          : falling
+            ? 0.94
+            : splash
+              ? 0.12 + rng() * 0.12
+              : 0.2 + rng() * 0.34;
       body.spin = falling ? 1.1 : 2 + rng() * 6;
       body.pitch = falling ? 0 : rng() * 3;
       body.yaw = falling ? 0 : rng() * 6.28;
@@ -140,7 +149,13 @@ export class SalvoEffects {
       body.bounces = 0;
       body.asleep = body.sunk = false;
       this.bodies.push(body);
-      this.shards.setColorAt(i, splash ? foam : colors[p.m] || copper);
+      const color =
+        armourIndex >= 0
+          ? tint.setHex(p.color)
+          : splash
+            ? foam
+            : colors[p.m] || copper;
+      this.shards.setColorAt(i, color);
     }
     for (let i = 0; i < this.fuses.length; i++) {
       this.shards.setColorAt(this.bodies.length + i * 2, colors[M.spring]);

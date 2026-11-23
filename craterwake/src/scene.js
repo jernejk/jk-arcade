@@ -3,6 +3,7 @@ import * as T from '../vendor/three.module.min.js';
 import { greedyMesh } from './mesher.js';
 import { SEA, WIDTH, HEIGHT, LENGTH, random, clamp } from './world.js';
 import { RAD, DT, launch, preview } from './duel.js';
+import { chassisYaw } from './tank.js';
 import { Batch, makeToy, backdrop, islandProps } from './toys.js';
 
 const v = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
@@ -357,15 +358,15 @@ export class Battlefield {
           z = Math.floor(p.z),
           i = z * WIDTH + x,
           oldTop = Math.floor(p.y) + 1;
-        if (depth[i] !== Math.round(oldTop * 255 / HEIGHT)) continue;
-        depth[i] = Math.round(world.top(x, z, oldTop - 1) * 255 / HEIGHT);
+        if (depth[i] !== Math.round((oldTop * 255) / HEIGHT)) continue;
+        depth[i] = Math.round((world.top(x, z, oldTop - 1) * 255) / HEIGHT);
         changed = true;
       }
       if (changed) this.depth.needsUpdate = true;
     } else {
       for (let z = 0; z < LENGTH; z++)
         for (let x = 0; x < WIDTH; x++)
-          depth[z * WIDTH + x] = Math.round(world.top(x, z) * 255 / HEIGHT);
+          depth[z * WIDTH + x] = Math.round((world.top(x, z) * 255) / HEIGHT);
       this.depth.needsUpdate = true;
     }
   }
@@ -485,15 +486,17 @@ export class Battlefield {
       p.y += hop;
       toy.group.position.copy(p);
       toy.group.visible = p.y + 1 > SEA - 0.2;
-      const parked = i ? -0.19 : 0.27;
+      toy.sync(t);
+      const bearing = i ? Math.PI : 0;
+      const chassis = chassisYaw(t.side);
       toy.group.rotation.set(
         0,
-        (i ? Math.PI : 0) + parked,
+        chassis,
         s?.tipped && orbit && !calm
           ? Math.sin(Math.PI * clamp(elapsed / 0.83, 0, 1)) * 0.42
           : hop * 0.36,
       );
-      toy.turret.rotation.y = -a.heading * RAD - parked;
+      toy.turret.rotation.y = bearing - a.heading * RAD - chassis;
       toy.barrel.rotation.x = -a.angle * RAD;
       this.shadows[i].position.copy(p);
       this.shadows[i].position.y += 0.015;

@@ -203,7 +203,7 @@ const NEIGHBOURS = [
   [0, 0, -1],
 ];
 
-export function settle(world, tank) {
+export function settle(world, tank, fragments = []) {
   const from = { x: tank.x, y: tank.y, z: tank.z };
   let tipped = false;
   for (let step = 0; step < 10; step++) {
@@ -230,7 +230,7 @@ export function settle(world, tank) {
   }
   const drop = Math.max(0, from.y - tank.y);
   tank.sunk = tank.y + 1 < SEA;
-  tank.hp = tank.sunk ? 0 : Math.max(0, tank.hp - 2 * Math.max(0, drop - 3));
+  if (drop > 3 && !tank.sunk) tank.chip(tank, 2 * (drop - 3), fragments);
   return {
     from,
     to: { x: tank.x, y: tank.y, z: tank.z },
