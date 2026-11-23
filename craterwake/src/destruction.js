@@ -15,6 +15,15 @@ const cellKey = (x, y, z) => x + WIDTH * (y + HEIGHT * z);
 export function collapseDetached(world, cuts) {
   const supported = new Set(),
     fallen = [];
+  function anchoredColumn(x, y, z) {
+    for (let h = y; h >= 0; h--) {
+      const material = world.get(x, h, z);
+      if (!material) return false;
+      if (h === 0 || material === M.basalt || supported.has(cellKey(x, h, z)))
+        return true;
+    }
+    return false;
+  }
   for (const cut of cuts) {
     const cx = Math.floor(cut.x),
       cy = Math.floor(cut.y),
@@ -24,24 +33,19 @@ export function collapseDetached(world, cuts) {
         y = cy + dy,
         z = cz + dz;
       if (!world.get(x, y, z) || supported.has(cellKey(x, y, z))) continue;
+      if (anchoredColumn(x, y, z)) {
+        supported.add(cellKey(x, y, z));
+        continue;
+      }
       const queue = [[x, y, z]],
         visited = new Set([cellKey(x, y, z)]);
       let anchored = false;
       for (let i = 0; i < queue.length && !anchored; i++) {
         const [a, b, c] = queue[i];
-        let h = b;
-        while (h >= 0 && world.get(a, h, c)) {
-          if (
-            world.get(a, h, c) === M.basalt ||
-            h === 0 ||
-            supported.has(cellKey(a, h, c))
-          ) {
-            anchored = true;
-            break;
-          }
-          h--;
+        if (i > 0 && anchoredColumn(a, b, c)) {
+          anchored = true;
+          break;
         }
-        if (anchored) break;
         for (const [ix, iy, iz] of neighbours) {
           const nx = a + ix,
             ny = b + iy,
@@ -107,8 +111,8 @@ export function chainAndCollapse(world, debris) {
   return echoes;
 }
 
-export function recoilTank(world, tank, centres, vector) {
-  const landing = settle(world, tank);
+export function recoilTank(world, tank, centres, vector, fragments) {
+  const landing = settle(world, tank, fragments);
   landing.kick = 0;
   if (tank.sunk || landing.tipped) return landing;
   let dx = 0,
@@ -144,7 +148,7 @@ export function recoilTank(world, tank, centres, vector) {
     tank.x = clamp(x, 0, WIDTH - 1);
     tank.z = clamp(z, 0, LENGTH - 1);
   }
-  const after = settle(world, tank);
+  const after = settle(world, tank, fragments);
   after.from = landing.from;
   after.drop += landing.drop;
   after.kick = Math.hypot(tank.x - landing.to.x, tank.z - landing.to.z);

@@ -3,8 +3,8 @@ import { random, SEA, M, clamp } from './world.js';
 import { palette } from './mesher.js';
 import { stepShard } from './destruction.js';
 
-const SHARDS = 144,
-  PUFFS = 48,
+const SHARDS = 96,
+  PUFFS = 36,
   FRONTS = 7,
   STEP = 1 / 60;
 const dummy = new T.Object3D();
@@ -51,9 +51,9 @@ export class SalvoEffects {
     );
     this.waves = batch(
       scene,
-      new T.RingGeometry(0.88, 1, 48),
+      new T.RingGeometry(0.88, 1, 32),
       new T.MeshBasicMaterial({
-        side: T.DoubleSide,
+        side: T.FrontSide,
         transparent: true,
         opacity: 0.86,
         depthWrite: false,
@@ -61,10 +61,15 @@ export class SalvoEffects {
       }),
       FRONTS,
     );
+    // Prepare the next salvo while the previous rubble is still on the field.
+    this.pools = [0, 1].map(() => Array.from({ length: SHARDS }, () => ({})));
+    this.nextPool = 0;
+    this.colors = new Float32Array(SHARDS * 3);
+    this.bodies = [];
     this.clear();
   }
   clear() {
-    this.bodies = [];
+    this.bodies.length = 0;
     this.fronts = [];
     this.age = 0;
     this.accumulator = 0;
@@ -72,13 +77,14 @@ export class SalvoEffects {
     this.fuses = [];
     this.shards.count = this.cloud.count = this.waves.count = 0;
   }
-  burst(world, shot, result) {
-    this.clear();
+  prepare(world, shot, result) {
+    const bodies = [],
+      pool = this.pools[this.nextPool];
     const rng = random(
       Math.round(shot.p.x * 131 + shot.p.z * 331 + shot.p.y * 7),
     );
     const primary = result.blasts.length ? result.blasts : [shot.p];
-    this.fronts = [...primary, ...result.echoes].map((p, i) => ({
+    const fronts = [...primary, ...result.echoes].map((p, i) => ({
       ...p,
       delay: i < primary.length ? 0 : (i - primary.length + 1) * 0.16,
       splash: p.y <= SEA + 0.01,
@@ -92,23 +98,29 @@ export class SalvoEffects {
     const splash = shot.hit === 'water' && !result.blasts.length;
     const loose = result.debris.filter((p) => p.loose),
       chips = result.debris.filter((p) => !p.loose);
-    this.fuses = this.fronts.slice(primary.length);
-    const looseCount = Math.min(72, loose.length);
+    const fuses = fronts.slice(primary.length);
+    const looseCount = Math.min(48, loose.length);
+    const armour = result.tankDebris;
+    const armourCount = Math.min(12, armour.length);
     const count = splash
       ? 24
       : Math.min(
-          SHARDS - looseCount - this.fuses.length * 2,
+          SHARDS - looseCount - armourCount - fuses.length * 2,
           Math.max(14, chips.length * 2),
         );
-    for (let i = 0; i < looseCount + count; i++) {
+    for (let i = 0; i < looseCount + count + armourCount; i++) {
       const falling = i < looseCount;
-      const p = falling
-        ? loose[Math.floor((i * loose.length) / looseCount)]
-        : chips[Math.floor(((i - looseCount) * chips.length) / count)] ||
-          shot.p;
-      let origin = this.fronts[0],
+      const armourIndex = i - looseCount - count;
+      const p =
+        armourIndex >= 0
+          ? armour[Math.floor((armourIndex * armour.length) / armourCount)]
+          : falling
+            ? loose[Math.floor((i * loose.length) / looseCount)]
+            : chips[Math.floor(((i - looseCount) * chips.length) / count)] ||
+              shot.p;
+      let origin = fronts[0],
         best = Infinity;
-      for (const f of this.fronts) {
+      for (const f of fronts) {
         const d = (p.x - f.x) ** 2 + (p.y - f.y) ** 2 + (p.z - f.z) ** 2;
         if (d < best) {
           best = d;
@@ -118,58 +130,82 @@ export class SalvoEffects {
       const a =
         Math.atan2(p.x - origin.x, p.z - origin.z) + (rng() - 0.5) * 0.8;
       const speed = falling ? 0.5 + rng() * 0.4 : 2 + rng() * 5;
-      this.bodies.push({
-        x: p.x,
-        y: p.y,
-        z: p.z,
-        vx: Math.sin(a) * speed,
-        vy: falling ? 0.1 : 2.3 + rng() * 6.7,
-        vz: Math.cos(a) * speed,
-        size: falling
-          ? 0.94
+      const body = pool[i];
+      body.x = p.x;
+      body.y = p.y;
+      body.z = p.z;
+      body.vx = Math.sin(a) * speed;
+      body.vy = falling ? 0.1 : 2.3 + rng() * 6.7;
+      body.vz = Math.cos(a) * speed;
+      body.size =
+        armourIndex >= 0
+          ? 0.41
+          : falling
+            ? 0.94
+            : splash
+              ? 0.12 + rng() * 0.12
+              : 0.2 + rng() * 0.34;
+      body.spin = falling ? 1.1 : 2 + rng() * 6;
+      body.pitch = falling ? 0 : rng() * 3;
+      body.yaw = falling ? 0 : rng() * 6.28;
+      body.loose = falling;
+      body.release = origin.delay + (falling ? 0.12 : 0);
+      body.bounces = 0;
+      body.asleep = body.sunk = false;
+      body.finalPose = false;
+      bodies.push(body);
+      const color =
+        armourIndex >= 0
+          ? tint.setHex(p.color)
           : splash
-            ? 0.12 + rng() * 0.12
-            : 0.2 + rng() * 0.34,
-        spin: falling ? 1.1 : 2 + rng() * 6,
-        pitch: falling ? 0 : rng() * 3,
-        yaw: falling ? 0 : rng() * 6.28,
-        loose: falling,
-        release: origin.delay + (falling ? 0.12 : 0),
-        bounces: 0,
-        asleep: false,
-        sunk: false,
-      });
-      this.shards.setColorAt(i, splash ? foam : colors[p.m] || copper);
+            ? foam
+            : colors[p.m] || copper;
+      color.toArray(this.colors, 3 * i);
     }
-    for (let i = 0; i < this.fuses.length; i++) {
-      this.shards.setColorAt(this.bodies.length + i * 2, colors[M.spring]);
-      this.shards.setColorAt(this.bodies.length + i * 2 + 1, salt);
+    for (let i = 0; i < fuses.length; i++) {
+      const offset = 3 * (bodies.length + i * 2);
+      colors[M.spring].toArray(this.colors, offset);
+      salt.toArray(this.colors, offset + 3);
     }
+    return { fronts, fuses, bodies };
+  }
+  burst(world, shot, result, prepared = this.prepare(world, shot, result)) {
+    this.clear();
+    this.nextPool = 1 - this.nextPool;
+    this.fronts = prepared.fronts;
+    this.fuses = prepared.fuses;
+    this.bodies = prepared.bodies;
+    this.shards.instanceColor.array.set(this.colors);
     this.shards.instanceColor.needsUpdate = true;
   }
-  shardsFrame(world, dt, calm, orbit) {
+  shardsFrame(world, dt, calm, orbit, blastAge) {
     if (calm) {
       this.shards.count = 0;
       return;
     }
     if (!this.bodies.length || this.settled) return;
-    // Cap catch-up after a background tab or a dropped render frame.
-    this.accumulator += Math.min(dt, 0.1);
+    // The first impact frame shows the contact ring. Eject the rubble on the
+    // following frame, after the newly exposed terrain and plates are visible.
+    if (orbit && blastAge >= 0 && blastAge < STEP) return;
+    // Keep delayed crate releases on the blast clock; limit collision work after a stall.
+    this.age = blastAge ?? this.age + dt;
+    this.accumulator += Math.min(dt, 2 * STEP);
     while (this.accumulator >= STEP) {
       this.accumulator -= STEP;
       const slow = orbit && this.age < 0.32;
       const step = slow ? STEP * 0.48 : STEP;
-      this.age += STEP;
       for (const b of this.bodies)
         if (this.age >= b.release) stepShard(world, b, step);
     }
     this.bodies.forEach((b, i) => {
+      if (b.finalPose) return;
       dummy.position.set(b.x, b.y, b.z);
       dummy.rotation.set(b.pitch, b.yaw, b.pitch * 0.31);
       dummy.scale.setScalar(
         (!b.loose && this.age < b.release) || b.sunk ? 0 : b.size,
       );
       pose(this.shards, i);
+      b.finalPose = b.asleep || b.sunk;
     });
     // While an adjacent crate is still winding up, leave its red case and
     // brass band in view even if the terrain worker has delivered the final mesh.
@@ -188,9 +224,9 @@ export class SalvoEffects {
     this.shards.instanceMatrix.needsUpdate = true;
     this.settled = this.bodies.every((b) => b.asleep || b.sunk);
   }
-  atmosphere(age, wind, settles) {
+  atmosphere(age, wind, settles, showCore) {
     // Reserve a little of the cloud batch for a sinking hull's spray.
-    const perFront = Math.min(20, Math.floor((PUFFS - 8) / this.fronts.length));
+    const perFront = Math.min(16, Math.floor((PUFFS - 8) / this.fronts.length));
     for (const f of this.fronts) {
       const t = age - f.delay;
       if (t < 0 || t > 1.55) continue;
@@ -207,11 +243,12 @@ export class SalvoEffects {
         this.waves.setColorAt(this.waves.count, tint);
         pose(this.waves, this.waves.count++);
       }
+      if (t < STEP) continue;
       for (let i = 0; i < perFront; i++) {
         const smoke = i % 3 === 0,
           a = i * 2.39996 + f.phase,
           band = (i % 5) / 5;
-        const life = smoke ? 1.5 : 1.0;
+        const life = showCore ? (smoke ? 0.85 : 0.7) : smoke ? 1.5 : 1;
         if (t >= life) continue;
         const u = t / life,
           fade = 1 - u * u;

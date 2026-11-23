@@ -2,8 +2,10 @@ import {
   Match,
   fly,
   resolve,
+  prepareImpact,
   gullTargets,
-  gunner,
+  impactLabel,
+  planAim,
   freshAim,
   adjust,
   AMMO,
@@ -31,6 +33,10 @@ let field,
   aims = [],
   elapsed = 0,
   shot,
+  forecast,
+  spray,
+  rivalPlan,
+  rivalAim,
   result,
   remaining = 20,
   flightTime = 0,
@@ -129,7 +135,7 @@ function instructions() {
     'help',
     'Gunner’s handbook',
     'How to play',
-    `<p>Win two rounds. Knock Rivet into the water or wear down its hull.</p>
+    `<p>Win two rounds. Break through Rivet’s plates and destroy its gold core, or knock it into the water. Each lost block costs 1% armour.</p>
   <dl><dt>Heading</dt><dd>Drag the field, A/D or ←/→.</dd><dt>Angle</dt><dd>Slide the left rail or press ↑/↓.</dd>
   <dt>Power</dt><dd>Use the right rail, hold ▲/▼, or press W/S.</dd><dt>Wind</dt><dd>The arrow pushes the shell sideways. ▲ carries it farther, ▼ shortens the shot. The dots ignore wind.</dd>
   <dt>Ammo</dt><dd>Use 1–4 or open the tray. Corkscrew bores through cover, Gull Strike drops three bombs, and Skipper bounces twice off water or flat ground. Hit a red spring crate to set off its neighbour.</dd>
@@ -187,6 +193,7 @@ function beginRound() {
   field.load(match.round);
   aims = [freshAim(), freshAim()];
   actor = 0;
+  rivalPlan = null;
   result = shot = null;
   remaining = lastTick = 20;
   lastSalvo = '';
@@ -234,8 +241,13 @@ function update() {
   r.tanks.forEach((t, i) => {
     const plate = $('#hp' + i);
     plate.querySelector('strong').textContent = t.hp + '%';
-    plate.querySelector('em').style.width = t.hp + '%';
+    plate.querySelector('em').style.transform = 'scaleX(' + t.hp / 100 + ')';
+    plate.querySelector('.core-status').hidden = !t.coreExposed;
   });
+  if (phase === 'impact') {
+    updateBeat(a);
+    return;
+  }
   $('#bearing').textContent = (a.heading > 0 ? '+' : '') + a.heading + '°';
   $('#notch').style.left = 50 + (a.heading / 60) * 100 + '%';
   const wind = r.wind,
@@ -270,6 +282,10 @@ function update() {
     b.setAttribute('aria-pressed', String(i === a.ammo));
     b.lastChild.textContent = AMMO[i] + ' ' + count(stock[i]);
   });
+  updateBeat(a);
+  timerUI();
+}
+function updateBeat(a) {
   $('#beat').textContent =
     phase === 'their-shot'
       ? 'Rivet aiming'
@@ -288,7 +304,6 @@ function update() {
           : '';
   $('#feedback').textContent = feedback;
   $('#skip').hidden = true;
-  timerUI();
 }
 function timerUI() {
   const t = Math.ceil(remaining);
@@ -374,7 +389,12 @@ function fire() {
   const a = current();
   if (!match.round.tanks[actor].stock[a.ammo]) a.ammo = 0;
   match.round.tanks[actor].stock[a.ammo]--;
+  $('#hp0').classList.remove('hit');
+  $('#hp1').classList.remove('hit');
+  match.round.tanks[actor].heading = a.heading;
+  match.round.tanks[actor].angle = a.angle;
   shot = fly(match.round, actor, a);
+  forecast = spray = undefined;
   flightTime = 0;
   skipsSeen = 0;
   result = null;
@@ -403,72 +423,66 @@ function detonate() {
   gullPending = false;
   const r = match.round,
     a = current();
-  result = resolve(r, actor, a.ammo, shot);
+  result = resolve(r, actor, a.ammo, shot, forecast);
+  forecast = undefined;
+  if (!actor && result.winner === null) rivalPlan = planAim(r);
   if (shot.direct === 1 && actor === 0) match.medals.add('Bullseye');
-  if (r.world.dirty.size) field.sync();
-  if (!calm()) field.effects.burst(r.world, shot, result);
+  if (r.world.dirty.size) field.sync(result.debris);
+  if (!calm()) field.effects.burst(r.world, shot, result, spray);
   else field.effects.clear();
+  spray = undefined;
   echoesPlayed = 0;
   const splash = shot.hit === 'water' && a.ammo !== 2;
-  impactLength =
-    (splash ? 0.8 : result.settles.some((s) => s.tipped) ? 2.3 : 1.75) +
-    (delayed ? 0.58 : 0);
   const target = r.tanks[1 - actor],
     dz = Math.round((shot.p.z - target.z) * r.tanks[actor].side),
     dx = Math.round((shot.p.x - target.x) * -r.tanks[actor].side);
+  const breach = target.coreExposed && result.damage[1 - actor];
+  impactLength = splash ? 0.8 : 1.75;
+  if (result.settles.some((s) => s.tipped)) impactLength = 2.3;
+  if (breach) impactLength = 2.65;
+  if (delayed) impactLength += 0.58;
   const where = [
     dz ? Math.abs(dz) + (dz > 0 ? ' long' : ' short') : '',
     dx ? Math.abs(dx) + (dx > 0 ? ' right' : ' left') : '',
   ]
     .filter(Boolean)
     .join(' · ');
-  const name = actor ? 'Kettle' : 'Rivet';
-  feedback = target.sunk
-    ? name + ' sank!'
-    : result.damage[1 - actor]
-      ? name + ' −' + result.damage[1 - actor] + '%'
-      : (splash ? 'Water miss' : 'Landfall') + (where ? ' · ' + where : '');
+  const parts = [impactLabel(shot, result)];
+  if (shot.skips.length)
+    parts.push(
+      shot.skips.length + (shot.skips.length === 1 ? ' skip' : ' skips'),
+    );
+  for (const i of [1 - actor, actor]) {
+    if (!result.damage[i]) continue;
+    const t = r.tanks[i],
+      name = i ? 'Rivet' : 'Kettle';
+    if (t.sunk) parts.push(name + ' sank!');
+    else if (!t.hp) parts.push(name + ' core destroyed!');
+    else parts.push(name + ' −' + result.damage[i] + '%');
+  }
+  if (breach) parts.push('Core exposed');
+  if (!result.damage[1 - actor] && where) parts.push(where);
+  feedback = parts.join(' · ');
   if (result.echoes.length)
     feedback = 'Spring crate ×' + result.echoes.length + ' · ' + feedback;
-  if (!actor) lastSalvo = 'Last shot · ' + feedback;
+  if (!actor) {
+    const heading = (a.heading > 0 ? '+' : '') + a.heading;
+    lastSalvo = `Last shot · ${feedback} · Heading ${heading}° · Angle ${a.angle}° · Power ${a.power}`;
+  }
   play(splash ? 'splash' : 'impact');
   result.damage.forEach((n, i) => {
-    const h = $('#hp' + i);
-    h.classList.remove('hit');
-    if (n) {
-      void h.offsetWidth;
-      h.classList.add('hit');
-    }
+    if (n) $('#hp' + i).classList.add('hit');
   });
-  shake(splash ? 2 : 4);
+  if (!calm()) field.kick(splash ? 2 : 4);
   if (delayed) update();
   else enter('impact');
 }
-let shaking;
 motion.addEventListener('change', () => {
   if (calm()) {
-    shaking?.cancel();
+    field?.kick(0);
     field?.effects.clear();
   }
 });
-function shake(strength) {
-  if (calm()) return;
-  shaking?.cancel();
-  // The largest translation is sqrt(5² + 2.25²), below six CSS pixels.
-  shaking = canvas.animate(
-    [
-      { transform: 'none' },
-      { transform: 'translate(' + strength + 'px,' + -strength * 0.45 + 'px)' },
-      {
-        transform:
-          'translate(' + -strength * 0.6 + 'px,' + strength * 0.3 + 'px)',
-      },
-      { transform: 'translate(' + strength * 0.24 + 'px,0)' },
-      { transform: 'none' },
-    ],
-    { duration: 190, easing: 'ease-out' },
-  );
-}
 function finishRound(winner) {
   const final = match.finish(winner),
     r = match.round;
@@ -488,7 +502,7 @@ function finishRound(winner) {
     '<p>' +
       (r.tanks[1 - winner].sunk
         ? 'Ring-out in the saltpan.'
-        : 'The opposing hull gave way.') +
+        : 'The opposing core was destroyed.') +
       '</p>' +
       (final ? '<p class="medals">' + medals + '</p>' + record : ''),
     final
@@ -518,7 +532,9 @@ function endImpact() {
   result = null;
   shot = null;
   if (actor) {
-    aims[1] = gunner(match.round);
+    // A skipped orbit or backgrounded frame may leave candidates to finish.
+    while (rivalPlan) planRivalStep();
+    aims[1] = rivalAim;
     feedback = '';
     enter('their-shot');
   } else {
@@ -527,6 +543,13 @@ function endImpact() {
     feedback = lastSalvo;
     enter('aim');
     $('#fire').focus({ preventScroll: true });
+  }
+}
+function planRivalStep() {
+  const step = rivalPlan.next();
+  if (step.done) {
+    rivalAim = step.value;
+    rivalPlan = null;
   }
 }
 function skipImpact() {
@@ -544,6 +567,18 @@ function loop(stamp) {
       if (!remaining) fire();
     } else if (phase === 'their-shot' && elapsed >= 1.35) fire();
     else if (phase === 'shell-cam') {
+      if (forecast === undefined) {
+        forecast = prepareImpact(match.round, actor, current().ammo, shot);
+        if (forecast) {
+          if (!calm())
+            spray = field.effects.prepare(
+              forecast.world,
+              shot,
+              forecast.result,
+            );
+          field.prepareChunks(forecast.world);
+        }
+      }
       flightTime += dt * 1.15;
       if (
         skipsSeen < shot.skips.length &&
@@ -558,6 +593,7 @@ function loop(stamp) {
     } else if (phase === 'impact') {
       if (gullPending && elapsed >= 0.58) detonate();
       const age = elapsed - (current().ammo === 2 ? 0.58 : 0);
+      if (rivalPlan && age >= 0.35) planRivalStep();
       const due = Math.min(
         result.echoes?.length || 0,
         Math.floor(Math.max(0, age) / 0.16),
@@ -566,7 +602,7 @@ function loop(stamp) {
         echoesPlayed = due;
         $('#beat').textContent = 'Spring chain ×' + due;
         play('spring');
-        shake(5);
+        if (!calm()) field.kick(5);
       }
       $('#skip').hidden = elapsed < 0.8;
       if (elapsed >= impactLength) endImpact();
@@ -597,7 +633,9 @@ function loop(stamp) {
         pin.style.top = 50 - p.y * 50 + '%';
         const [a, b] = match.round.tanks;
         pin.lastChild.textContent =
-          Math.round(Math.hypot(a.x - b.x, a.z - b.z)) + ' vx';
+          (match.round.tanks[1 - actor].coreExposed ? 'Core exposed · ' : '') +
+          Math.round(Math.hypot(a.x - b.x, a.z - b.z)) +
+          ' vx';
       }
     }
   }
@@ -606,6 +644,12 @@ function loop(stamp) {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && match && !panel.open) pause();
   last = performance.now();
+});
+window.addEventListener('pagehide', (event) => {
+  // A document in the back/forward cache will resume with this same battlefield.
+  if (event.persisted) return;
+  cancelAnimationFrame(frame);
+  field?.dispose();
 });
 window.addEventListener('blur', stopHold);
 document.addEventListener('keydown', (e) => {

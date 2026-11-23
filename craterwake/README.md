@@ -1,6 +1,6 @@
 # Craterwake
 
-Kettle and Rivet are wind-up tin tanks duelling across the Saltpan Twins. Win two rounds by wearing down the other hull, or by taking the ground out from under its tracks. The islands rebuild between rounds.
+Kettle and Rivet are wind-up tin tanks duelling across the Saltpan Twins. Each tank has 100 armour blocks. Hits strip blocks from the tracks, hull and turret at the point of impact. Each lost block costs one percentage point. Break through to the gold core or sink the tank to win a round. Win two rounds to take the duel. The islands rebuild between rounds.
 
 ## Play
 
@@ -26,7 +26,9 @@ Use `/craterwake/?seed=824` for a repeatable arena. The results card shows the s
 
 On a fresh seed 824, fire the opening Pebble to set off both spring crates beneath the signal beam. For a knockback hit on Rivet, start fresh and fire a Pebble at +8° heading, 43° elevation and 75 power. For a double water skip, select Skipper at +12°, 23° and 43 power.
 
-At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For the physical-device performance check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
+At the browser console, `window.__craterwake` reports the current camera beat, render scale, draw calls, triangles, pending chunk rebuilds, score and aim. `window.__craterwake.checksum()` hashes the live voxel grid. For repeatable portrait timing, open `/craterwake/scripts/impact-probe.html` in Safari and run it in the foreground with full motion. It compares fresh play, an in-session restart, and reloading the game frame at 390 × 844. It checks the crate chain and armour hit against their HP and terrain checksums and reports flight and impact intervals separately.
+
+For ten top-level same-tab reloads in headless WebKit, run `node scripts/reload-probe.mjs` from `craterwake` with Playwright’s WebKit installed. To use a separately installed WebKit version, set `CRATERWAKE_PLAYWRIGHT` to the absolute path of its matching `playwright-core/index.mjs`. Each trial fires the seed-824 crate chain in the first second of aim on a fresh page, after reloading that tab, and after returning to the title within the same document. A reload with p95 above 20 ms or any interval above 33.5 ms makes the command exit nonzero. For a physical-device check, record an impact orbit in Safari Web Inspector. The target is 16.7 ms per frame and at most 70 draws.
 
 ## Tests
 
@@ -41,6 +43,6 @@ The deterministic simulation tests need only Node. Browser checks use Playwright
 
 ## Implementation and credits
 
-The simulation advances shots at 120 Hz against a 48 × 40 × 112 voxel volume. The renderer greedily meshes exposed faces in 16-block chunks. A module worker rebuilds dirty chunks after a blast and discards obsolete results. Browsers without module workers rebuild those chunks on the main thread. The sea, scenery, tanks, ammunition and particles use local geometry and materials. No real-time shadow or post-processing passes run.
+The simulation advances shots at 120 Hz against a 48 × 40 × 112 voxel volume. The renderer greedily meshes exposed faces in 16-block chunks. During flight a private snapshot supplies the crater, tank damage and debris poses. A module worker builds the affected chunks for upload before contact. Detonation applies the saved changes to the live world. Browsers without module workers rebuild the chunks on the main thread. The sea, scenery, tanks, ammunition and particles use local geometry and materials. No real-time shadow or post-processing passes run.
 
 Craterwake, its tanks, setting, artwork and game copy are original. Title, launcher and ammunition art come from JK’s Craterwake v2 concept pack. The live HUD and battlefield are rendered by the game. Three.js r160 is vendored under its MIT licence in `vendor/THREE-LICENSE.txt`. Bungee uses the arcade’s existing SIL Open Font License in `../fonts/OFL-Bungee.txt`.

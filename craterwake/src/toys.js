@@ -1,11 +1,11 @@
 import * as T from '../vendor/three.module.min.js';
+import { armour, cellColor, mounts, PIVOT } from './tank.js';
 import { random, SEA } from './world.js';
 
 const box = new T.BoxGeometry(),
   ball = new T.SphereGeometry(1, 18, 12),
   tube = new T.CylinderGeometry(1, 1, 1, 16);
 const bolt = new T.SphereGeometry(1, 9, 6);
-const ring = new T.TorusGeometry(1, 0.16, 7, 20);
 const part = new T.Object3D(),
   vertex = new T.Vector3(),
   normal = new T.Vector3(),
@@ -51,9 +51,6 @@ export class Batch {
   tube(pos, scale, c, rot) {
     this.add(tube, pos, scale, c, rot);
   }
-  ring(pos, scale, c, rot) {
-    this.add(ring, pos, scale, c, rot);
-  }
   mesh(material = paint) {
     const g = new T.BufferGeometry();
     for (const [name, data] of [
@@ -69,141 +66,115 @@ export class Batch {
   }
 }
 
-const brass = '#e5b765',
-  gold = '#f5d995',
-  iron = '#303743',
-  rubber = '#34333a',
-  ivory = '#ffe2a7';
+const armourMaterial = new T.MeshStandardMaterial({
+  roughness: 0.62,
+  metalness: 0.24,
+});
+// Stamp the fittings onto their parent plates so bolts, track shoes and the
+// wind-up handle leave with the armour that carried them.
+function armourStamps(v, side) {
+  const stamps = [];
+  const { x, y, z } = v.centre;
+  const { x: w, y: h, z: d } = v.size;
+  const gold = 0xf7cb78,
+    charcoal = 0x333743,
+    cream = 0xffe6ac;
+  function stamp(ox, oy, oz, width, height, depth, color, roll = 0) {
+    part.position.set(x + ox, y + oy, z + oz);
+    part.scale.set(width, height, depth);
+    part.rotation.set(0, 0, roll);
+    part.updateMatrix();
+    stamps.push({
+      cell: v,
+      matrix: part.matrix.clone(),
+      color: new T.Color(color),
+    });
+  }
+  stamp(0, 0, 0, w * 0.965, h * 0.965, d * 0.965, cellColor(v, side));
+  if (v.paint === 'core') {
+    // The square keyhole and narrow stem match the core badge on the HP plate.
+    const dimensions = [w, h, d];
+    for (const axis of [0, 1, 2]) {
+      const up = axis === 1 ? 2 : 1;
+      function face(width, height, level, offset, color) {
+        const size = dimensions.map(
+          (d, i) => d * (i === axis ? level : i === up ? height : width),
+        );
+        const centre = [0, 0, 0];
+        centre[up] = dimensions[up] * offset;
+        stamp(...centre, ...size, color);
+      }
+      face(0.84, 0.84, 0.978, 0, 0x493c32);
+      face(0.71, 0.71, 0.988, 0, 0xffdd75);
+      face(0.33, 0.28, 0.997, 0.07, 0x332c30);
+      face(0.14, 0.18, 0.997, -0.15, 0x332c30);
+    }
+  } else if (v.part === 'track') {
+    const outer = Math.sign(x) * w * 0.5;
+    if (y > 0.43 && v.paint === 'brass') {
+      stamp(outer, 0, 0, 0.06, 0.27, 0.27, charcoal);
+      stamp(outer * 1.15, 0, 0, 0.06, 0.12, 0.12, gold);
+    }
+    if (Math.abs(z) > 1.3)
+      for (const lift of [-0.1, 0.1])
+        stamp(0, lift, Math.sign(z) * d * 0.5, w, 0.09, 0.07, 0x786955);
+  } else if (v.part === 'hull' && z < -0.89) {
+    if (Math.abs(x) < 0.1) {
+      for (const offset of [-0.15, 0, 0.15])
+        stamp(offset, 0, -d * 0.5, 0.065, h * 0.55, 0.04, charcoal);
+    } else {
+      stamp(0, 0, -d * 0.5, 0.11, 0.11, 0.05, gold);
+    }
+  } else if (v.mount === 'turret' && v.paint === 'brass') {
+    stamp(0, 0.19, 0, 0.09, 0.27, 0.12, charcoal);
+    for (const end of [-1, 1]) {
+      stamp(end * 0.14, 0.31, 0, 0.28, 0.2, 0.11, gold, end * 0.28);
+      stamp(end * 0.16, 0.31, -0.01, 0.1, 0.07, 0.12, charcoal, end * 0.28);
+    }
+  } else if (v.mount === 'turret' && z < -0.44 && y > 1.8) {
+    if (!x) {
+      stamp(0, 0, -d * 0.51, 0.29, 0.29, 0.05, charcoal, Math.PI / 4);
+      stamp(0, 0, -d * 0.57, 0.16, 0.16, 0.04, gold, Math.PI / 4);
+    } else stamp(0, -0.09, -d * 0.5, 0.09, 0.09, 0.05, cream);
+  } else if (v.mount === 'barrel' && v.paint === 'brass') {
+    stamp(0, 0, d * 0.5, w * 0.64, h * 0.64, 0.025, charcoal);
+  }
+  return stamps;
+}
+
 export function makeToy(rival) {
-  const enamel = rival ? '#bb5542' : '#398e82',
-    top = rival ? '#e77854' : '#60ac98';
-  const chassis = new Batch(),
-    cap = new Batch(),
-    gun = new Batch(),
-    group = new T.Group();
-  for (const side of [-1, 1]) {
-    const x = side * 0.93;
-    chassis.box([x, 0.54, 0], [0.55, 0.88, 2.85], rubber);
-    chassis.box([x, 1.03, -0.02], [0.67, 0.16, 2.98], enamel);
-    for (let i = -1; i <= 1; i++) {
-      const z = i * 0.86;
-      chassis.tube([x + side * 0.29, 0.5, z], [0.42, 0.09, 0.42], brass, [
-        0,
-        0,
-        Math.PI / 2,
-      ]);
-      chassis.tube([x + side * 0.345, 0.5, z], [0.29, 0.06, 0.29], iron, [
-        0,
-        0,
-        Math.PI / 2,
-      ]);
-      chassis.tube([x + side * 0.39, 0.5, z], [0.13, 0.08, 0.13], gold, [
-        0,
-        0,
-        Math.PI / 2,
-      ]);
-    }
-    for (let i = 0; i < 10; i++) {
-      const z = -1.48 + i * 0.329;
-      chassis.box([x, 0.15, z], [0.59, 0.17, 0.11], '#65554b');
-      if (i === 0 || i === 9)
-        for (let j = 1; j <= 4; j++)
-          chassis.box([x, 0.1 + j * 0.17, z], [0.56, 0.11, 0.13], '#716050');
+  const group = new T.Group(),
+    turret = new T.Group(),
+    barrel = new T.Group();
+  group.add(turret);
+  turret.add(barrel);
+  barrel.position.y = PIVOT;
+  const batches = mounts.map((name, i) => {
+    const stamps = armour
+      .filter((v) => v.mount === name)
+      .flatMap((v) => armourStamps(v, rival ? -1 : 1));
+    const mesh = new T.InstancedMesh(box, armourMaterial, stamps.length);
+    mesh.frustumCulled = false;
+    [group, turret, barrel][i].add(mesh);
+    return { mesh, stamps };
+  });
+  let previous, count;
+  function sync(tank) {
+    if (tank === previous && tank.cells.size === count) return;
+    previous = tank;
+    count = tank.cells.size;
+    for (const { mesh, stamps } of batches) {
+      mesh.count = 0;
+      for (const { cell, matrix, color } of stamps) {
+        if (!tank.cells.has(cell)) continue;
+        mesh.setMatrixAt(mesh.count, matrix);
+        mesh.setColorAt(mesh.count++, color);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
   }
-  chassis.box([0, 0.87, 0], [1.72, 0.64, 2.4], enamel);
-  chassis.box([0, 1.18, 0], [1.87, 0.12, 2.52], ivory);
-  // A stamped rear plate with bolts, exhaust slots and a working wind-up key.
-  chassis.box([0, 0.9, -1.25], [1.28, 0.48, 0.09], top);
-  for (const x of [-0.52, 0.52])
-    for (const y of [0.73, 1.06])
-      chassis.ball([x, y, -1.31], [0.055, 0.055, 0.045], gold);
-  for (let i = 0; i < 5; i++)
-    chassis.box([-0.17 + i * 0.1, 0.9, -1.31], [0.045, 0.22, 0.04], iron);
-  chassis.tube([-0.64, 1.28, -1.36], [0.12, 0.48, 0.12], brass, [
-    Math.PI / 2,
-    0,
-    0,
-  ]);
-  for (const x of [-0.88, -0.42])
-    chassis.ring([x, 1.4, -1.58], [0.29, 0.26, 0.47], brass);
-  cap.tube([0, 0.06, 0], [0.85, 0.18, 0.85], brass);
-  if (rival) {
-    cap.box([0, 0.39, 0], [1.5, 0.68, 1.48], enamel);
-    cap.box([0, 0.75, 0], [1.57, 0.11, 1.51], ivory);
-  } else cap.ball([0, 0.12, 0], [0.92, 0.78, 0.88], top);
-  cap.tube([0, 0.84, -0.1], [0.42, 0.1, 0.42], brass);
-  cap.tube([0, 0.9, -0.1], [0.32, 0.08, 0.32], enamel);
-  cap.ring([0, 1.07, -0.12], [0.34, 0.22, 0.45], brass);
-  for (const x of [-0.45, 0.45]) {
-    cap.ball([x, 0.38, -0.72], [0.095, 0.095, 0.085], brass);
-    cap.ball([x, 0.39, -0.78], [0.045, 0.045, 0.04], ivory);
-  }
-  // The longitudinal cream band and brass muzzle are visible in shoulder view.
-  gun.tube([0, 0, 0.88], [0.18, 1.68, 0.18], ivory, [Math.PI / 2, 0, 0]);
-  for (const [z, r, len, c] of [
-    [0.17, 0.31, 0.46, enamel],
-    [0.64, 0.23, 0.12, brass],
-    [1.55, 0.23, 0.24, brass],
-    [1.78, 0.25, 0.12, ivory],
-    [1.85, 0.155, 0.024, iron],
-  ]) {
-    gun.tube([0, 0, z], [r, len, r], c, [Math.PI / 2, 0, 0]);
-  }
-  // A cream maker's medallion stamped into the back of each turret.
-  cap.tube([0, 0.35, -0.815], [0.245, 0.065, 0.245], brass, [
-    Math.PI / 2,
-    0,
-    0,
-  ]);
-  cap.tube([0, 0.35, -0.857], [0.202, 0.034, 0.202], ivory, [
-    Math.PI / 2,
-    0,
-    0,
-  ]);
-  cap.box([0, 0.36, -0.88], [0.035, 0.25, 0.02], enamel);
-  if (rival) {
-    cap.ring([0, 0.45, -0.895], [0.045, 0.045, 0.045], enamel);
-    for (const side of [-1, 1])
-      cap.box([side * 0.061, 0.285, -0.895], [0.12, 0.03, 0.023], enamel, [
-        0,
-        0,
-        side * 0.5,
-      ]);
-  } else {
-    for (const side of [-1, 1]) {
-      cap.ball([side * 0.067, 0.445, -0.894], [0.082, 0.027, 0.015], enamel, [
-        0,
-        0,
-        side * -0.32,
-      ]);
-      cap.ball([side * 0.065, 0.395, -0.895], [0.08, 0.025, 0.015], enamel, [
-        0,
-        0,
-        side * -0.62,
-      ]);
-    }
-  }
-  for (let i = 0; i < 14; i++) {
-    const a = (i * Math.PI) / 7;
-    cap.ball(
-      [Math.cos(a) * 0.8, 0.18, Math.sin(a) * 0.8],
-      [0.043, 0.043, 0.043],
-      brass,
-    );
-  }
-  for (const x of [-0.78, 0.78]) {
-    chassis.box([x, 1.24, -0.83], [0.17, 0.1, 0.65], enamel);
-    for (const z of [-1.08, -0.58])
-      chassis.ball([x, 1.32, z], [0.042, 0.034, 0.042], brass);
-  }
-  const turret = new T.Group(),
-    barrel = gun.mesh();
-  turret.position.y = 1.19;
-  barrel.position.set(0, 0.53, 0);
-  group.add(chassis.mesh(), turret);
-  turret.add(cap.mesh(), barrel);
-  return { group, turret, barrel };
+  return { group, turret, barrel, sync };
 }
 
 // Folded palm leaves and segmented trunks share a draw call with the beach grass.

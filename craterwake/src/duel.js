@@ -1,5 +1,6 @@
+import { makeTank, tankHit } from './tank.js';
 import { chainAndCollapse, recoilTank } from './destruction.js';
-import { World, random, clamp, SEA } from './world.js';
+import { World, random, clamp, SEA, M } from './world.js';
 
 export const DT = 1 / 120,
   GRAVITY = 22,
@@ -72,8 +73,16 @@ export function gridHit(world, a, b) {
   let tz = dz ? ((sz > 0 ? z + 1 : z) - a.z) / dz : Infinity;
   let t = 0;
   while (t <= 1) {
-    if (world.get(x, y, z))
-      return { t, x: a.x + t * dx, y: a.y + t * dy, z: a.z + t * dz };
+    const material = world.get(x, y, z);
+    if (material) {
+      return {
+        material,
+        t,
+        x: a.x + t * dx,
+        y: a.y + t * dy,
+        z: a.z + t * dz,
+      };
+    }
     t = Math.min(tx, ty, tz);
     if (tx === t) {
       x += sx;
@@ -96,7 +105,9 @@ export function fly(round, shooter, aim, record = true) {
     wind = round.wind;
   let p = origin,
     hit = 'water',
-    direct = null;
+    material = M.air,
+    direct = null,
+    part = null;
   const path = record ? [p] : null;
   const skips = [];
   for (let i = 0; i < 120 * 12; i++) {
@@ -108,33 +119,37 @@ export function fly(round, shooter, aim, record = true) {
     v.y -= GRAVITY * DT;
     v.z += wind.z * DT;
     const wall = gridHit(round.world, p, next);
-    if (wall && wall.y >= SEA) {
-      p = { x: wall.x, y: wall.y, z: wall.z };
-      hit = 'terrain';
-    } else if (
-      Math.abs(next.x - target.x) <= 1.35 &&
-      Math.abs(next.z - target.z) <= 1.55 &&
-      next.y >= target.y &&
-      next.y <= target.y + 2.25
-    ) {
-      p = next;
-      hit = 'tank';
+    const contact = tankHit(target, p, next);
+    let surface;
+    if (contact && (!wall || wall.y < SEA || contact.t < wall.t)) {
+      p = {
+        x: p.x + contact.t * (next.x - p.x),
+        y: p.y + contact.t * (next.y - p.y),
+        z: p.z + contact.t * (next.z - p.z),
+      };
+      surface = 'tank';
+      part = contact.part;
       direct = 1 - shooter;
+    } else if (wall && wall.y >= SEA) {
+      p = { x: wall.x, y: wall.y, z: wall.z };
+      surface = 'terrain';
     } else if (next.y <= SEA) {
       p = { ...next, y: SEA };
+      surface = 'water';
     } else {
       p = next;
       if (record) path.push(p);
       continue;
     }
-    const flatTop = hit === 'terrain' && Math.abs(p.y - Math.round(p.y)) < 1e-6;
+    const flatTop =
+      surface === 'terrain' && Math.abs(p.y - Math.round(p.y)) < 1e-6;
     if (
       aim.ammo === 3 &&
       v.y < 0 &&
       skips.length < 2 &&
-      (hit === 'water' || flatTop)
+      (surface === 'water' || flatTop)
     ) {
-      skips.push({ p: { ...p }, step: i + 1 });
+      skips.push({ p: { ...p }, step: i + 1, surface });
       p = { ...p, y: p.y + 0.035 };
       v.x *= 0.83;
       v.z *= 0.83;
@@ -142,11 +157,34 @@ export function fly(round, shooter, aim, record = true) {
       if (record) path.push(p);
       continue;
     }
+    hit = surface;
+    material = surface === 'terrain' ? wall.material : M.air;
     if (record) path.push(p);
     break;
   }
-  return { p, path, hit, direct, skips, vector: norm(v) };
+  return { p, path, hit, material, direct, part, skips, vector: norm(v) };
 }
+// Use the struck voxel before the crater removes it, including hits on a block face.
+export function impactLabel(shot, result) {
+  if (shot.hit === 'terrain') {
+    return [M.teal, M.cream, M.rust, M.brass, M.spring].includes(shot.material)
+      ? 'Cover hit'
+      : 'Terrain hit';
+  }
+  if (shot.hit === 'tank') {
+    if (shot.part === 'track') return 'Track hit';
+    if (shot.part === 'turret') return 'Turret hit';
+    return 'Hull hit';
+  }
+  // Gull bombs can land ashore even when the targeting flare splashed down.
+  if (
+    result.blasts.some((p) => p.y > SEA) ||
+    result.debris.some((p) => p.y >= SEA)
+  )
+    return 'Terrain hit';
+  return result.damage.some(Boolean) ? 'Water impact' : 'Water miss';
+}
+
 export const windFor = (rng) => {
   const az = rng() * Math.PI * 2,
     strength = 0.5 + rng() * 4.5;
@@ -158,15 +196,12 @@ export function makeRound(seed, number = 1, bonus = false) {
   const tanks = [1, -1].map((side, i) => {
     const x = 24.5,
       z = i ? 81.5 : 30.5;
-    return {
-      x,
-      z,
-      y: world.top(x, z),
-      side,
-      hp: 100,
-      sunk: false,
-      stock: [Infinity, 2 + (!i && bonus ? 1 : 0), 1, 2],
-    };
+    return makeTank(x, world.top(x, z), z, side, [
+      Infinity,
+      2 + (!i && bonus ? 1 : 0),
+      1,
+      2,
+    ]);
   });
   const rng = random(seed ^ 0xb194d3);
   return {
@@ -191,33 +226,73 @@ export function gullTargets(round, shot) {
   });
 }
 
-export function resolve(round, shooter, ammo, shot) {
+function cutTerrain(round, ammo, shot) {
+  const world = round.world,
+    debris = [],
+    drill = [],
+    blasts = [];
+  let centre = shot.p;
+  if (ammo === 1) {
+    for (let step = 0; step <= 12; step++) {
+      centre = offset(shot.p, shot.vector, step * 0.5);
+      drill.push(centre);
+      debris.push(...world.carve(centre, 0.86, false));
+    }
+  }
+  if (ammo === 2) blasts.push(...gullTargets(round, shot));
+  else blasts.push(centre);
+  for (const b of blasts) debris.push(...world.carve(b, craterRadius[ammo]));
+  const echoes = chainAndCollapse(world, debris);
+  return { debris, drill, blasts, echoes };
+}
+
+// Solve against a private snapshot while the shell is airborne. The worker can
+// take the grid buffer; detonation only needs the edit log and final tank poses.
+export function prepareImpact(round, shooter, ammo, shot) {
+  if (shot.hit === 'water' && ammo !== 2) return null;
+  const world = Object.assign(Object.create(World.prototype), {
+    cells: round.world.cells.slice(),
+    charges: round.world.charges.map((crate) => ({ ...crate })),
+    dirty: new Set(),
+    edits: [],
+  });
+  // Inherit the live pose and HP getter. Recoil writes its own pose on the copy.
+  const tanks = round.tanks.map((tank) =>
+    Object.assign(Object.create(tank), { cells: new Set(tank.cells) }),
+  );
+  const forecast = { ...round, world, tanks };
+  const result = resolve(forecast, shooter, ammo, shot);
+  return { world, tanks, result, lastDrift: forecast.lastDrift };
+}
+
+export function resolve(round, shooter, ammo, shot, prepared) {
+  if (prepared) {
+    const { world } = round;
+    for (const edit of prepared.world.edits)
+      world.cells[edit >>> 8] = edit & 255;
+    for (const id of prepared.world.dirty) world.dirty.add(id);
+    for (const [i, crate] of prepared.world.charges.entries())
+      world.charges[i].spent = crate.spent;
+    prepared.tanks.forEach(({ x, y, z, sunk, cells }, i) => {
+      const tank = round.tanks[i];
+      Object.assign(tank, { x, y, z, sunk });
+      if (cells.size !== tank.cells.size)
+        for (const cell of tank.cells)
+          if (!cells.has(cell)) tank.cells.delete(cell);
+    });
+    if (shooter === 1) round.lastDrift = prepared.lastDrift;
+    return prepared.result;
+  }
   const { world, tanks } = round;
-  const debris = [],
-    blasts = [],
-    damage = [0, 0],
-    before = tanks.map((t) => t.hp);
-  let echoes = [];
-  const drill = [],
+  const before = tanks.map((t) => t.hp),
+    tankDebris = [],
     settles = [];
+  let cuts = { debris: [], drill: [], blasts: [], echoes: [] };
   if (shot.hit !== 'water' || ammo === 2) {
-    let centre = { ...shot.p };
-    if (ammo === 1) {
-      for (let step = 0; step <= 12; step++) {
-        centre = offset(shot.p, shot.vector, step * 0.5);
-        drill.push(centre);
-        debris.push(...world.carve(centre, 0.86, false));
-      }
-    }
-    if (ammo === 2) {
-      blasts.push(...gullTargets(round, shot));
-    } else blasts.push(centre);
-    for (const b of blasts) {
-      debris.push(...world.carve(b, craterRadius[ammo]));
-    }
-    echoes = chainAndCollapse(world, debris);
+    cuts = cutTerrain(round, ammo, shot);
+    const { blasts, echoes } = cuts;
     if (shot.direct !== null && ammo !== 2)
-      damage[shot.direct] = hitDamage[ammo];
+      tanks[shot.direct].chip(shot.p, hitDamage[ammo], tankDebris);
     const centres = [...blasts, ...echoes];
     for (const [index, b] of centres.entries()) {
       tanks.forEach((tank, i) => {
@@ -228,15 +303,15 @@ export function resolve(round, shooter, ammo, shot) {
           Math.max(0, Math.abs(b.y - (tank.y + 1)) - 1),
           b.z - tank.z,
         );
-        damage[i] += Math.round(
+        const chips = Math.round(
           (secondary ? 15 : hitDamage[ammo]) *
             clamp(1 - d / (secondary ? 5 : 4), 0, 1),
         );
+        tank.chip(b, chips, tankDebris);
       });
     }
-    tanks.forEach((tank, i) => {
-      tank.hp = Math.max(0, tank.hp - damage[i]);
-      settles.push(recoilTank(world, tank, centres, shot.vector));
+    tanks.forEach((tank) => {
+      settles.push(recoilTank(world, tank, centres, shot.vector, tankDebris));
     });
   }
   if (shooter === 1 && round.previous) {
@@ -253,10 +328,8 @@ export function resolve(round, shooter, ammo, shot) {
       ? shooter
       : null;
   return {
-    debris,
-    blasts,
-    drill,
-    echoes,
+    ...cuts,
+    tankDebris,
     settles,
     winner,
     direct: shot.direct,
@@ -267,7 +340,7 @@ export function resolve(round, shooter, ammo, shot) {
 const gaussian = (rng) =>
   Math.sqrt(-2 * Math.log(Math.max(0.00001, rng()))) *
   Math.cos(2 * Math.PI * rng());
-export function gunner(round) {
+export function* planAim(round) {
   const [enemy, self] = round.tanks,
     { rng } = round,
     turn = round.aiTurns++;
@@ -312,6 +385,7 @@ export function gunner(round) {
       best = aim;
       score = value;
     }
+    if (i % 4 === 3 && i < 63) yield;
   }
   const shrink = 0.65 ** turn;
   for (const [key, base, floor] of [
@@ -342,6 +416,13 @@ export function gunner(round) {
     best.ammo = 2;
   round.previous = { ...best };
   return best;
+}
+export function gunner(round) {
+  const plan = planAim(round);
+  let step;
+  do step = plan.next();
+  while (!step.done);
+  return step.value;
 }
 export class Match {
   constructor(seed, bonus = false) {

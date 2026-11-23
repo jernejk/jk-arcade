@@ -67,6 +67,13 @@ const phaseIs = (p, name) =>
 async function range(p, id, value) {
   await p.locator(id).fill(String(value));
 }
+async function finishChunkUploads(p) {
+  for (let i = 0; i < 24; i++) {
+    if (await p.evaluate(() => window.__craterwake.meshesPending === 0)) return;
+    await p.clock.runFor(16);
+  }
+  assert.fail('dirty chunk uploads did not finish within 24 frames');
+}
 for (const [name, viewport] of [
   ['phone', { width: 390, height: 844 }],
   ['desktop', { width: 1366, height: 900 }],
@@ -238,6 +245,7 @@ test('expiry fires the selected shot and a water miss gets a short splash', asyn
   assert.equal((await state(p)).phase, 'shell-cam');
   await advance(p, 5000);
   assert.equal(await p.locator('#beat').textContent(), 'Splash');
+  assert.match(await p.textContent('#feedback'), /^Water miss\b/);
   assert.equal((await state(p)).checksum, before);
   await advance(p, 820);
   assert.equal((await state(p)).phase, 'their-shot');
@@ -278,6 +286,43 @@ test('a complete best-of-three via turn expiry reaches a real results card and p
     s.score[1] === 2 ? 'Corkscrew 3' : 'Corkscrew 2',
   );
 });
+test('a reload releases the outgoing WebGL context while a cacheable pagehide retains it', async (t) => {
+  if (skip) return t.skip(skip);
+  const p = await open(t);
+  await begin(p);
+  await p.waitForFunction(() => window.__craterwake?.calls > 0);
+  const retained = await p.evaluate(() => {
+    const canvas = document.querySelector('#sea');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    window.dispatchEvent(
+      new PageTransitionEvent('pagehide', { persisted: true }),
+    );
+    window.addEventListener(
+      'pagehide',
+      (e) => {
+        sessionStorage.setItem(
+          'reload-check',
+          JSON.stringify([e.persisted, gl.isContextLost()]),
+        );
+      },
+      { once: true },
+    );
+    return !gl.isContextLost();
+  });
+  assert.ok(retained);
+  await p.reload();
+  assert.deepEqual(
+    await p.evaluate(() => JSON.parse(sessionStorage.getItem('reload-check'))),
+    [false, true],
+  );
+  await begin(p);
+  await p.keyboard.press('Space');
+  await phaseIs(p, 'impact');
+  const s = await state(p);
+  assert.deepEqual(s.hp, [100, 99]);
+  assert.equal(s.checksum, '5c000090');
+});
+
 test('a cached cabinet reloads offline and plays with local storage denied', async (t) => {
   if (skip) return t.skip(skip);
   const p = await open(t, { denied: true });
@@ -305,11 +350,7 @@ test('Gull Strike releases its three bombs before the ground changes and the reb
   assert.equal((await state(p)).checksum, terrain);
   await advance(p, 640);
   assert.notEqual((await state(p)).checksum, terrain);
-  await p.waitForFunction(
-    () => window.__craterwake.meshesPending === 0,
-    undefined,
-    { polling: 50 },
-  );
+  await finishChunkUploads(p);
   await advance(p, 250);
   await p.locator('#skip').press('Enter');
   assert.equal((await state(p)).phase, 'their-shot');
@@ -416,12 +457,9 @@ test('390 × 844 shows the complete opening and rival guides, then frames the st
   await p.keyboard.press('2');
   await p.keyboard.press('Space');
   await advance(p, 5000);
-  await p.waitForFunction(
-    () => window.__craterwake.meshesPending === 0,
-    undefined,
-    { polling: 50 },
-  );
+  await finishChunkUploads(p);
   await p.clock.runFor(750);
+  assert.match(await p.textContent('#feedback'), /Cover hit/);
   const bore = await p.evaluate(() => window.readBore());
   assert.ok(
     bore.alignment < -0.93,
@@ -450,6 +488,13 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
         field = this;
         return draw.apply(this, args);
       };
+      window.depthMatchesCrater = () => {
+        const { data, width } = field.depth.image;
+        return data.every((value, i) => {
+          const top = field.round.world.top(i % width, Math.floor(i / width));
+          return value === Math.round((top * 255) / 40);
+        });
+      };
       window.impactStats = () => {
         const e = field.effects;
         return {
@@ -458,16 +503,9 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
           waves: e.waves.count,
           bounces: e.bodies.filter((b) => b.bounces).length,
           settled: e.bodies.filter((b) => b.asleep).length,
-          shake: document
-            .querySelector('canvas')
-            .getAnimations()
-            .flatMap((a) => a.effect.getKeyframes())
-            .reduce((max, f) => {
-              const m = new DOMMatrix(
-                f.transform === 'none' ? undefined : f.transform,
-              );
-              return Math.max(max, Math.hypot(m.e, m.f));
-            }, 0),
+          shake: field.camera.view?.enabled
+            ? Math.hypot(field.camera.view.offsetX, field.camera.view.offsetY)
+            : 0,
         };
       };
     });
@@ -477,6 +515,7 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
     await advance(p, 4000);
     await p.clock.runFor(360);
     const early = await p.evaluate(() => window.impactStats());
+    assert.ok(await p.evaluate(() => window.depthMatchesCrater()));
     assert.match(await p.textContent('#beat'), /chain ×2/i);
     if (reducedMotion === 'reduce') {
       assert.deepEqual(
@@ -487,9 +526,9 @@ test('spring chain stages its shockwaves and bouncing rubble within phone budget
       assert.ok(early.waves >= 2 && early.waves <= 7);
       assert.ok(
         early.shards > 0 &&
-          early.shards <= 144 &&
+          early.shards <= 96 &&
           early.puffs > 0 &&
-          early.puffs <= 48,
+          early.puffs <= 36,
       );
       assert.ok(early.shake > 0 && early.shake <= 6);
       assert.ok((await state(p)).calls <= 70);
@@ -520,4 +559,162 @@ test('Skipper is selectable with 4 and both water skips occur in the original ch
   assert.match(await p.textContent('#beat'), /bounce 2/);
   await advance(p, 3000);
   assert.equal((await state(p)).phase, 'impact');
+});
+
+test('Skipper reports its water landing after bouncing off terrain and water', async (t) => {
+  if (skip) return t.skip(skip);
+  const p = await open(t, { clock: true });
+  await begin(p);
+  const start = (await state(p)).checksum;
+  await range(p, '#elevation', 5);
+  await range(p, '#throttle', 11);
+  for (let i = 0; i < 30; i++) await p.keyboard.press('d');
+  await p.keyboard.press('4');
+  await p.keyboard.press('Space');
+  await advance(p, 5000);
+  assert.equal(await p.textContent('#beat'), 'Splash');
+  assert.match(await p.textContent('#feedback'), /^Water miss · 2 skips\b/);
+  assert.equal((await state(p)).checksum, start);
+});
+
+test('a point-blank Gull Strike reports the cover hit and the five voxels Kettle lost', async (t) => {
+  if (skip) return t.skip(skip);
+  const p = await open(t, { clock: true });
+  await begin(p);
+  await range(p, '#elevation', 5);
+  await range(p, '#throttle', 10);
+  await p.keyboard.press('3');
+  await p.keyboard.press('Space');
+  await advance(p, 5000);
+  await advance(p, 640);
+  assert.equal(
+    await p.textContent('#feedback'),
+    'Cover hit · Kettle −5% · 43 short',
+  );
+  const hit = await state(p);
+  assert.deepEqual(hit.hp, [95, 100]);
+  assert.equal(hit.checksum, '29d83c6d');
+});
+
+test('a turret breach exposes a visible core through the next aim and clears on knockout in Normal and Calm', async (t) => {
+  if (skip) return t.skip(skip);
+  const wrecks = [];
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const p = await open(t, { clock: true, reducedMotion });
+    await p.evaluate(async () => {
+      const { Battlefield } = await import('./src/scene.js');
+      const { armour, core } = await import('./src/tank.js');
+      const { Raycaster } = await import('./vendor/three.module.min.js');
+      const draw = Battlefield.prototype.draw;
+      Battlefield.prototype.draw = function (...args) {
+        const stats = draw.apply(this, args);
+        const target = this.round.tanks[1];
+        window.inspectCore = () => {
+          const group = this.toys[1].group,
+            cam = this.camera;
+          const point = group.localToWorld(core.centre.clone());
+          const ray = new Raycaster(
+            cam.position,
+            point.clone().sub(cam.position).normalize(),
+          );
+          const first = ray.intersectObjects(
+            [group, ...this.chunks.values()],
+            true,
+          )[0];
+          const local = first && group.worldToLocal(first.point.clone());
+          const corners = [];
+          for (const x of [core.box.min.x, core.box.max.x])
+            for (const z of [core.box.min.z, core.box.max.z]) {
+              const top = core.centre.clone().set(x, core.box.max.y, z);
+              corners.push(group.localToWorld(top).project(cam));
+            }
+          const extent = (axis) => {
+            const coords = corners.map((corner) => corner[axis]);
+            return (Math.max(...coords) - Math.min(...coords)) / 2;
+          };
+          return {
+            clear: local && core.box.containsPoint(local),
+            width: extent('x') * this.canvas.clientWidth,
+            height: extent('y') * this.canvas.clientHeight,
+            puffs: this.effects.cloud.count,
+          };
+        };
+        window.readTank = () => ({
+          missing: armour.flatMap((v, i) => (target.cells.has(v) ? [] : [i])),
+          turretInstances: this.toys[1].turret.children.find(
+            (m) => m.isInstancedMesh,
+          ).count,
+          shards: this.effects.shards.count,
+          bodies: this.effects.bodies.length,
+        });
+        return stats;
+      };
+    });
+    await begin(p);
+    await advance(p, 32);
+    const fresh = await p.evaluate(() => window.readTank());
+    const badge = p.locator('#hp1 .core-status');
+    assert.equal(await badge.isVisible(), false);
+    for (let i = 0; i < 8; i++) await p.keyboard.press('d');
+    await range(p, '#throttle', 75);
+    await p.keyboard.press('Space');
+    await advance(p, 5000);
+    await p.clock.runFor(150);
+    const hit = await p.evaluate(() => window.readTank());
+    assert.match(
+      await p.textContent('#feedback'),
+      /Turret hit.*Rivet −18%.*Core exposed/,
+    );
+    assert.equal(await p.textContent('#hp1 strong'), '82%');
+    assert.equal(await badge.isVisible(), true);
+    assert.equal(hit.missing.length, 18);
+    assert.ok(hit.turretInstances < fresh.turretInstances);
+    if (reducedMotion === 'reduce') {
+      assert.deepEqual([hit.bodies, hit.shards], [0, 0]);
+    } else {
+      assert.ok(hit.bodies >= 12 && hit.shards <= 96);
+    }
+    await p.clock.runFor(1000);
+    const core = await p.evaluate(() => window.inspectCore());
+    assert.ok(
+      core.clear && core.width >= 32 && core.height >= 28,
+      JSON.stringify(core),
+    );
+    t.diagnostic(
+      reducedMotion +
+        ' core top face projects to ' +
+        Math.round(core.width) +
+        ' × ' +
+        Math.round(core.height) +
+        ' CSS px',
+    );
+    assert.equal(core.puffs, 0);
+    await advance(p, 1100);
+    assert.equal((await state(p)).phase, 'impact');
+    await advance(p, 650);
+    assert.equal((await state(p)).phase, 'their-shot');
+    assert.equal(await badge.isVisible(), true);
+    await advance(p, 1450);
+    await advance(p, 5000);
+    await advance(p, 3000);
+    assert.equal((await state(p)).phase, 'aim');
+    assert.equal(await badge.isVisible(), true);
+    assert.equal(await badge.textContent(), 'Core exposed');
+    assert.match(
+      await p.textContent('#feedback'),
+      /Last shot .*Heading \+8° · Angle 43° · Power 75/,
+    );
+    await p.keyboard.press('d');
+    await range(p, '#elevation', 50);
+    await range(p, '#throttle', 80);
+    await p.keyboard.press('Space');
+    await advance(p, 5000);
+    assert.equal(await p.textContent('#hp1 strong'), '0%');
+    assert.match(await p.textContent('#feedback'), /Rivet core destroyed!/);
+    assert.equal(await badge.isVisible(), false);
+    await advance(p, 3000);
+    assert.equal((await state(p)).phase, 'round-over');
+    wrecks.push([hit.missing, hit.turretInstances]);
+  }
+  assert.deepEqual(wrecks[0], wrecks[1]);
 });

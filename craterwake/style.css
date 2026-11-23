@@ -48,6 +48,12 @@ body:before {
     0 0 0 2px #d6be914f,
     0 10px 65px #13232b94;
 }
+/* The cabinet covers the entire backing art on narrow portrait screens. */
+@media (max-width: 520px) and (max-aspect-ratio: 117/200) {
+  body::before {
+    display: none;
+  }
+}
 button,
 a {
   font: inherit;
@@ -234,6 +240,7 @@ h1 {
 }
 .plates {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
@@ -274,13 +281,33 @@ h1 {
   display: block;
   height: 100%;
   background: #7dc9ad;
-  transition: width 0.3s;
+  transform-origin: left;
+  transition: transform 0.3s;
 }
 .hp.rival {
   background: linear-gradient(#6e4847, #48373a);
 }
 .hp.rival em {
   background: var(--coral);
+}
+.core-status {
+  color: #ffe6a1;
+  font:
+    700 12px/1.5 system-ui,
+    sans-serif;
+}
+.core-status::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 10px;
+  margin-right: 5px;
+  vertical-align: -1px;
+  border-radius: 2px;
+  background:
+    linear-gradient(#3c312d, #3c312d) center 3px / 4px 3px no-repeat,
+    linear-gradient(#3c312d, #3c312d) center 5px / 2px 3px no-repeat,
+    #edbd5e;
 }
 .hp.hit:after {
   content: '';
@@ -611,6 +638,7 @@ footer {
 #tray button[aria-pressed='true'] {
   border-color: #3a887d;
 }
+#hud[data-phase='shell-cam'] footer,
 #hud[data-phase='impact'] footer {
   visibility: hidden;
 }
